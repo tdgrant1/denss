@@ -11,6 +11,6 @@ setup(name='denss',
       url='https://github.com/tdgrant1/denss/',
       license='GPLv3',
       description='Calculate electron density from solution scattering data.',
-      long_description=open('README').read(),
+      long_description=open('README.md').read(),
       requires=['numpy', 'scipy'],
      )
