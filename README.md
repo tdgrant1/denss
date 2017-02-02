@@ -33,7 +33,7 @@ a script, provided the `saxstats.py` file is in the same directory as
 `denss.py` that you're running from.
 
 ## Requirements
-DENSS requires that NumPy and SciPy are installed. These packages are 
+DENSS requires that Python 2.7, NumPy and SciPy are installed. These packages are 
 are often installed by default, or are available for your operating system
 using package managers such as PIP or Anaconda. 
 (The current code was built using the Anaconda package management system 
