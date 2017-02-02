@@ -52,6 +52,9 @@ the output and supply the smooth curve to DENSS. If using GNOM, a bash
 script is provided (```gnom2dat```) to extract the smooth fit of the 
 intensity (and add some missing error bars).
 
+`6lyz.dat` is a simulated scattering profile from lysozyme PDB 6LYZ using
+FoXS. This file can be used as input to DENSS for testing.
+
 ## Usage
 DENSS can be run with basic defaults:
 ```
