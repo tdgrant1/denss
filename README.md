@@ -110,8 +110,10 @@ Additional advanced options are:
                         Convergence criterion. Minimum threshold of chi2 std
                         dev, as a fraction of the median chi2 of last 100
                         steps. (default 0.001)
-  --plot-on             Create simple plots of results (requires Matplotlib).
-  --plot-off            Do not create simple plots of results. (Default)
+  --plot-on             Create simple plots of results 
+                        (requires Matplotlib, default is module exists).
+  --plot-off            Do not create simple plots of results 
+                        (Default if Matplotlib does not exist).
   ```
 
 ## Results
@@ -128,6 +130,8 @@ radius of gyration calculated directly from the electron density map, and
 
 Electron density maps are written in Xplor ASCII text format. These files can
 be opened directly in some visualization programs such as Chimera and PyMOL. 
+In particular, the PyMOL "volume" function is well suited for displaying these
+maps with density information displayed as varying color and opacity.
 Maps can be converted to other formats using tools such as the Situs map2map tool.
 
 Output files include:
@@ -153,7 +157,10 @@ N typically requires long compute times and lots of memory (tests show N>50 may
 start to slow things down noticeably). Preliminary tests have shown oversampling
 as low as 2 is often sufficient for accurate reconstruction. However, lesser
 oversampling also results in low sampling of scattering profile, so direct
-comparison with experimental data becomes more difficult.
+comparison with experimental data becomes more difficult. Note that D given by 
+the user is only used to determine the size of the box and does not limit the
+the electron density of the object by default. If one wishes to impose D as a
+limit, enable --usedmax-on (off by default). 
 
 The electron density map is initially set to be random based on the random seed
 selected by the program. One can therefore exactly reproduce the results of a previous
