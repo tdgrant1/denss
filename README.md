@@ -162,6 +162,10 @@ the user is only used to determine the size of the box and does not limit the
 the electron density of the object by default. If one wishes to impose D as a
 limit, enable --usedmax-on (off by default). 
 
+While the NumPy implementation of FFT is most efficient when N is a power of two,
+considerable performance gains can still be gained when N is not a power of two,
+and there is no requirement in DENSS for N to equal a power of two. 
+
 The electron density map is initially set to be random based on the random seed
 selected by the program. One can therefore exactly reproduce the results of a previous
 calculation by giving the random seed to the program with the `--seed` option and
