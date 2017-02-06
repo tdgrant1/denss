@@ -35,9 +35,22 @@ a script, provided the `saxstats.py` file is in the same directory as
 ## Requirements
 DENSS requires that Python 2.7, NumPy and SciPy are installed. These packages are 
 are often installed by default, or are available for your operating system
-using package managers such as PIP or Anaconda. 
-(The current code was built using the Anaconda package management system 
-on Mac OS X 10.11.)
+using package managers such as PIP or [Anaconda](https://www.continuum.io/downloads).
+The current code was built using the Anaconda package management system 
+on Mac OS X 10.11. If using Anaconda, install the Python 2.7 version. 
+Alternatively you can have two separate python environments under Anaconda
+by installing the latest Python 3 version of Anaconda, and create a separate
+Python 2.7 environment by typing at the command prompt:
+```
+conda create -n python2 python=2.7 anaconda
+```
+Afterwards you can enable the Python 2.7 environment by typing the following
+during any terminal session:
+```
+source activate python2
+```
+Once the Python 2.7 environment is enabled, you can run denss.py in that terminal
+shell.
 
 ## Input files
 The only file required for using DENSS is the one dimensional solution
@@ -45,12 +58,16 @@ scattering profile, given as a three column ASCII text file with columns
 q, I, error where q is given as 4 pi sin(theta)/lambda in angstroms, I is
 scattering intensity, and error is the error on the intensity. To take
 advantage of the oversampling typically granted by small angle scattering
-data, one should first use a fitting program such as GNOM from ATSAS to fit
+data, one should first use a fitting program such as GNOM from 
+[ATSAS](https://www.embl-hamburg.de/biosaxs/software.html) to fit
 the experimental data with a smooth curve, and then extract the fitted data
 (including the forward scattering intensity where q = 0, i.e. I(0)) from
 the output and supply the smooth curve to DENSS. If using GNOM, a bash
 script is provided (```gnom2dat```) to extract the smooth fit of the 
-intensity (and add some missing error bars).
+intensity (and add some missing error bars). To do so type
+```
+gnom2dat saxs.out
+```
 
 `6lyz.dat` is a simulated scattering profile from lysozyme PDB 6LYZ using
 FoXS. This file can be used as input to DENSS for testing.
@@ -129,7 +146,8 @@ radius of gyration calculated directly from the electron density map, and
 `Support Volume` is the volume of the support region.
 
 Electron density maps are written in Xplor ASCII text format. These files can
-be opened directly in some visualization programs such as Chimera and PyMOL. 
+be opened directly in some visualization programs such as 
+[Chimera](http://www.rbvi.ucsf.edu/chimera/) and [PyMOL](https://www.pymol.org). 
 In particular, the PyMOL "volume" function is well suited for displaying these
 maps with density information displayed as varying color and opacity.
 Maps can be converted to other formats using tools such as the Situs map2map tool.
