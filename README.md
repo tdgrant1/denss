@@ -75,6 +75,10 @@ FoXS. This file can be used as input to DENSS for testing.
 ## Usage
 DENSS can be run with basic defaults:
 ```
+denss.py -f <saxs.dat> -d <estimated maximum dimension> 
+```
+or as a script:
+```
 python denss.py -f <saxs.dat> -d <estimated maximum dimension> 
 ```
 Additional options you may want to set are:
