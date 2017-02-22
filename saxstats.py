@@ -244,7 +244,7 @@ def pdb2support(pdb,D,voxel=10.,oversampling=1.0,filename="support_dam.pdb",radi
     support[np.unravel_index(xyz_nearby_i,support.shape)] = True
     return support
 
-def denss(q,I,sigq,D,supportpdb=None,rhostart=None,ne=None,rhobounds=None,voxel=10.,oversampling=2.,usedmax=False,recenter=True,positivity=True,extrapolate=True,write=True,filename="map",steps=1000,seed=None,shrinkwrap=True,shrinkwrap_sigma_start=3,shrinkwrap_sigma_end=1.5,shrinkwrap_sigma_decay=0.99,shrinkwrap_threshold_fraction=0.2,shrinkwrap_iter=20,shrinkwrap_minstep=100,chi_end_fraction=0.001):
+def denss(q,I,sigq,D,supportpdb=None,rhostart=None,ne=None,rhobounds=None,voxel=5.,oversampling=3.,usedmax=False,recenter=True,positivity=True,extrapolate=True,write=True,filename="map",steps=3000,seed=None,shrinkwrap=True,shrinkwrap_sigma_start=3,shrinkwrap_sigma_end=1.5,shrinkwrap_sigma_decay=0.99,shrinkwrap_threshold_fraction=0.2,shrinkwrap_iter=20,shrinkwrap_minstep=100,chi_end_fraction=0.001):
     """Calculate electron density from scattering data."""
     side = oversampling*D
     halfside = side/2
