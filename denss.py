@@ -41,7 +41,7 @@ parser.add_argument("-v", "--voxel", default=5., type=float, help="Set desired v
 parser.add_argument("--oversampling", default=5., type=float, help="Sampling ratio")
 parser.add_argument("-n", "--ne", default=10000, type=float, help="Number of electrons in object")
 parser.add_argument("-s", "--steps", default=3000, type=int, help="Maximum number of steps (iterations)")
-parser.add_argument("-o", "--output", help="Output map filename")
+parser.add_argument("-o", "--output", default=None, help="Output map filename")
 parser.add_argument("--seed", default=None, help="Random seed to initialize the map")
 parser.add_argument("--rhostart", default=None, type=str, help="Filename of starting electron density in xplor format")
 parser.add_argument("--rhobounds", default=None, nargs=2, type=float, help="Lower and upper bounds of number of electrons per grid point in object")
