@@ -81,10 +81,14 @@ or as a script:
 ```
 python denss.py -f <saxs.dat> -d <estimated maximum dimension> 
 ```
+For example, using the supplied 6lyz.dat data, DENSS can be run with:
+```
+denss.py -f 6lyz.dat -d 50.0
+```
 Additional options you may want to set are:
 ```
   -v VOXEL, --voxel VOXEL       Set desired voxel size (default 5 angstroms)
-  --oversampling OVERSAMPLING   Sampling ratio (default 5)
+  --oversampling OVERSAMPLING   Sampling ratio (default 3)
   -n NE, --ne NE                Number of electrons in object (used only for scaling)
   -s STEPS, --steps STEPS       Maximum number of steps (iterations)
   -o OUTPUT, --output OUTPUT    Output map filename (default filename)
