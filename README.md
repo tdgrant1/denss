@@ -24,7 +24,8 @@ The core functions are stored in the `saxstats.py` module. The actual script
 to run DENSS is `denss.py`.
 
 ## Installation
-DENSS can be installed by typing at the command prompt:
+DENSS can be installed by typing at the command prompt in the directory
+where you downloaded DENSS:
 ```
 python setup.py install
 ```
@@ -179,16 +180,14 @@ output.log                 A log file containing parameters for the calculation
 ## Alignment, Averaging, and Resolution Estimation
 The solutions are non-unique, meaning many different electron density maps will yield
 the same scattering profile. Different random starting points will return different
-results. Therefore, running the algorithm many times (>=10) is strongly advised. 
+results. Therefore, running the algorithm many times (>10) is strongly advised. 
 Subsequent alignment and averaging can be performed in Chimera
 using the Fit in Map tool and `vop add`. 
-Additionally, one can start with a given electron density map, perhaps for refinement
-of an averaged map, using the `--rhostart` option. 
 
 For fully unsupervised (i.e. unbiased) alignment and averaging, and subsequent
-estimation of resolution, the EMAN2 single particle tomography tool 
+estimation of resolution, the [EMAN2](http://blake.bcm.edu/emanwiki/EMAN2) single particle tomography tool 
 e2spt_classaverage.py is well suited for this task. Though, this takes
-some patience. To use this tool, you must first install EMAN2. 
+some patience. To use this tool, you must first install EMAN2 ([this page helped me](http://blake.bcm.tmc.edu/emanwiki/EMAN2/COMPILE_EMAN2_MAC_OS_X)). 
 To calculate multiple reconstructions easily, you can use a for loop. E.g. in bash:
 ```
 for i in {0..19}; do denss.py -f 6lyz.dat -d 50.0 -o lysozyme_${i} ; done
@@ -200,7 +199,7 @@ This can be done by opening the maps in Chimera, and clicking Save Map As... in
 the Volume Viewer. If you install Situs, this can be done on the command line in 
 one step using the map2map tool:
 ```
-for i lysozyme_*[0-9].xplor ; do map2map $i ${i%.*}.mrc <<< '2' ; done
+for i in lysozyme_*[0-9].xplor ; do map2map $i ${i%.*}.mrc <<< '2' ; done
 ```
 Now we can combine the 20 maps into one 3D "stack" in EMAN2 format (.hdf).
 ```
@@ -209,7 +208,7 @@ e2buildstacks.py --stackname lysozyme_stack.hdf lysozyme_*[0-9].mrc
 EMAN2 likes even numbers of samples in maps, whereas denss.py uses odd numbers,
 so first we have to alter the maps by one sample in EMAN2. Look in your .log file
 output from denss.py, or look at the header of your .xplor file, to find the 
-the "Grid size", i.e. the number of voxels in each dimension. This should be an 
+"Grid size", i.e. the number of voxels in each dimension. This should be an 
 odd number calculated by denss.py. Subtract one from this number. So if the Grid
 size is 31 x 31 x 31, then we want n=30. Use EMAN2 on our new .hdf file to convert:
 ```
@@ -222,9 +221,14 @@ Shell Correlation curve, from which we can estimate resolution. Typing:
 ```
 e2spt_classaverage.py --input lysozyme_stack_resized.hdf 
 ```
-will run everything for you. The output will be in a folder named something
+will run everything for you. If you have multiple cores on your computer,
+you can speed things up with:
+```
+e2spt_classaverage.py --input lysozyme_stack_resized.hdf --parallel=thread:n
+```
+where n is the number of cores to use. The output will be in a folder named something
 like spt_01. The averaged density will be named something like final_avg.hdf.
-Fortunately, Chimera can open .hdf files by default. Then, if you'd like to
+Fortunately, Chimera can open .hdf files by default. Then, if you would like to
 view it in PyMOL you can save it as an MRC formatted map in Chimera.
 
 Resolution can be estimated from the FSC curve also written to the spt_01
@@ -253,6 +257,8 @@ The electron density map is initially set to be random based on the random seed
 selected by the program. One can therefore exactly reproduce the results of a previous
 calculation by giving the random seed to the program with the `--seed` option and
 the same input parameters. The parameters of previous runs can all be found in the log file.
+Additionally, one can start with a given electron density map, perhaps for refinement
+of an averaged map, using the `--rhostart` option. 
 
 
 
