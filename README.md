@@ -176,6 +176,63 @@ output.log                 A log file containing parameters for the calculation
                            and summary of the results.
 ```
 
+## Alignment, Averaging, and Resolution Estimation
+The solutions are non-unique, meaning many different electron density maps will yield
+the same scattering profile. Different random starting points will return different
+results. Therefore, running the algorithm many times (>=10) is strongly advised. 
+Subsequent alignment and averaging can be performed in Chimera
+using the Fit in Map tool and `vop add`. 
+Additionally, one can start with a given electron density map, perhaps for refinement
+of an averaged map, using the `--rhostart` option. 
+
+For fully unsupervised (i.e. unbiased) alignment and averaging, and subsequent
+estimation of resolution, the EMAN2 single particle tomography tool 
+e2spt_classaverage.py is well suited for this task. Though, this takes
+some patience. To use this tool, you must first install EMAN2. 
+To calculate multiple reconstructions easily, you can use a for loop. E.g. in bash:
+```
+for i in {0..19}; do denss.py -f 6lyz.dat -d 50.0 -o lysozyme_${i} ; done
+```
+This will calculate 20 reconstructions with the output files numbered.
+EMAN2 is supposed to work with .xplor files, but I haven't had success. 
+So first convert the .xplor files to .mrc files (MRC/CCP4 formats are similar).
+This can be done by opening the maps in Chimera, and clicking Save Map As... in 
+the Volume Viewer. If you install Situs, this can be done on the command line in 
+one step using the map2map tool:
+```
+for i lysozyme_*[0-9].xplor ; do map2map $i ${i%.*}.mrc <<< '2' ; done
+```
+Now we can combine the 20 maps into one 3D "stack" in EMAN2 format (.hdf).
+```
+e2buildstacks.py --stackname lysozyme_stack.hdf lysozyme_*[0-9].mrc
+```
+EMAN2 likes even numbers of samples in maps, whereas denss.py uses odd numbers,
+so first we have to alter the maps by one sample in EMAN2. Look in your .log file
+output from denss.py, or look at the header of your .xplor file, to find the 
+the "Grid size", i.e. the number of voxels in each dimension. This should be an 
+odd number calculated by denss.py. Subtract one from this number. So if the Grid
+size is 31 x 31 x 31, then we want n=30. Use EMAN2 on our new .hdf file to convert:
+```
+e2proc3d.py lysozyme_stack.hdf lysozyme_stack_resized.hdf --clip 30
+```
+Now that we have our correctly formatted stack, we can run the alignment
+and averaging. The e2spt_classaverage.py script does this all quite well
+using default parameters. It will even output a gold standard Fourier
+Shell Correlation curve, from which we can estimate resolution. Typing:
+```
+e2spt_classaverage.py --input lysozyme_stack_resized.hdf 
+```
+will run everything for you. The output will be in a folder named something
+like spt_01. The averaged density will be named something like final_avg.hdf.
+Fortunately, Chimera can open .hdf files by default. Then, if you'd like to
+view it in PyMOL you can save it as an MRC formatted map in Chimera.
+
+Resolution can be estimated from the FSC curve also written to the spt_01
+directory as fsc_0.txt. Plot this in your favorite plotting program to
+view. A good cutoff for FSC is 0.5, or even 0.143, but 0.5 is safe. Take the
+reciprocal of the x axis position where FSC rises above 0.5, and that is your
+estimated resolution.
+
 ## Miscellaneous
 The combination of total real space box size (D x oversampling) divided by 
 voxel size determines N. The number of grid points scales as N^3, so large 
@@ -196,12 +253,6 @@ The electron density map is initially set to be random based on the random seed
 selected by the program. One can therefore exactly reproduce the results of a previous
 calculation by giving the random seed to the program with the `--seed` option and
 the same input parameters. The parameters of previous runs can all be found in the log file.
-The solutions are non-unique, meaning many different electron density maps will yield
-the same scattering profile. Therefore, running the algorithm many times (>=10) is
-strongly advised. Subsequent alignment and averaging can be performed in Chimera
-using the Fit in Map tool and `vop add`. Additionally, one can start with a
-given electron density map, perhaps for refinement of an averaged map, using
-the `--rhostart` option. 
 
 
 
