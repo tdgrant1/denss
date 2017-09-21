@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 #
+#    saxstats.py
 #    SAXStats
 #    A collection of python functions useful for solution scattering
 #
@@ -25,27 +26,25 @@
 
 import sys, logging, datetime
 import numpy as np
-from scipy import spatial, ndimage
+from scipy import ndimage
 
 def chi2(exp, calc, sig):
     """Return the chi2 discrepancy between experimental and calculated data"""
     return np.sum(np.square(exp - calc) / np.square(sig))
 
-def center_rho(rho):
-    """Move electron density map so its center of mass aligns with the center of the grid by interpolation"""
-    rhocom = np.array(ndimage.measurements.center_of_mass(rho))
+def center_rho(rho,centering="com"):
+    """Move electron density map so its center of mass aligns with the center of the grid
+    
+    centering - which part of the density to center on. By default, center on the 
+                center of mass ("com"). Can also center on maximum density value ("max").
+    """
+    if centering == "max":
+        rhocom = np.unravel_index(rho.argmax(), rho.shape)
+    else:
+        rhocom = np.array(ndimage.measurements.center_of_mass(rho))
     gridcenter = np.array(rho.shape)/2.
     shift = gridcenter-rhocom
     rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
-    return rho
-
-def center_rho_roll(rho):
-    """Move electron density map so its center of mass aligns near the center of the grid by rolling array"""
-    rhocom = np.array(ndimage.measurements.center_of_mass(rho))
-    gridcenter = np.array(rho.shape)/2.
-    shift = gridcenter-rhocom
-    shift = shift.astype(int)
-    rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
     return rho
 
 def rho2rg(rho,side=None,r=None,support=None,dx=None):
@@ -78,6 +77,7 @@ def write_xplor(rho,side,filename="map.xplor"):
     f.write("%8d !NTITLE\n" % len(title_lines))
     for line in title_lines:
         f.write("%-264s\n" % line)
+    #f.write("%8d%8d%8d%8d%8d%8d%8d%8d%8d\n" % (xs,0,xs-1,ys,0,ys-1,zs,0,zs-1))
     f.write("%8d%8d%8d%8d%8d%8d%8d%8d%8d\n" % (xs,-xs/2+1,xs/2,ys,-ys/2+1,ys/2,zs,-zs/2+1,zs/2))
     f.write("% -.5E% -.5E% -.5E% -.5E% -.5E% -.5E\n" % (side,side,side,90,90,90))
     f.write("ZYX\n")
@@ -94,157 +94,7 @@ def write_xplor(rho,side,filename="map.xplor"):
     f.write("  %.4E  %.4E" % (np.average(rho), np.std(rho)))
     f.close()
 
-def read_xplor(filename="map.xplor"):
-    """Read an XPLOR formatted electron density map."""
-    with open(filename) as f:
-        n = 0
-        for line in f:
-            n+=1
-            if n==5:
-                na, amin, amax, nb, bmin, bmax, nc, cmin, cmax = map(int, line.split())
-                print line
-                print na, amin, amax, nb, bmin, bmax, nc, cmin, cmax
-                break
-    rho = np.zeros((na, nb, nc))
-    i = 0
-    j = 0
-    k = 0
-    n = 0
-    x = []
-    y = []
-    with open(filename) as f:
-        for line in f:
-            n+=1
-            #ignore header, section headers, and last two lines
-            if n>7 and n%(int((na*nb)/6) + (lambda x: 0 if(x%6==0) else 1)(na*nb) + 1) - 8 != 0 and (n-8)/(int((na*nb)/6) + (lambda x: 0 if(x%6==0) else 1)(na*nb) + 1)<nc:
-                x.append(zip(*(iter(line),) * 12))
-    for i in range(len(x)):
-        for j in range(len(x[i])):
-            y.append(float(''.join(x[i][j])))
-    print len(y)
-    rho = np.array(y).reshape((na,nb,nc))
-    return rho
-
-class Xplor(object):
-    """Xplor electron density map."""
-    def __init__(self, argument):
-        if isinstance(argument, str):
-            self.read(argument)
-        elif isinstance(argument, np.ndarray):
-            self.rho = argument
-        else:
-            pass
-
-    def attributes(self):
-        """Print required attributes, and current settings"""
-        print "self.header %10s" % self.header
-        print "self.na %10s" % self.na
-        print "self.amin %10s" % self.amin
-        print "self.amax %10s" % self.amax
-        print "self.nb %10s" % self.nb
-        print "self.bmin %10s" % self.bmin
-        print "self.bmax %10s" % self.bmax
-        print "self.nc %10s" % self.nc
-        print "self.cmin %10s" % self.cmin
-        print "self.cmax %10s" % self.cmax
-        print "self.a %10s" % self.a
-        print "self.b %10s" % self.b
-        print "self.c %10s" % self.c
-        print "self.rho %10s" % np.array(self.rho.shape)
-
-    def read(self,filename="map.xplor"):
-        """Read an XPLOR formatted electron density map."""
-        self.header = []
-        with open(filename) as f:
-            n = 0
-            for line in f:
-                n+=1
-                if n==3:
-                    self.header.append(line)
-                if n==4:
-                    self.header.append(line)
-                if n==5:
-                    self.na, self.amin, self.amax, self.nb, self.bmin, self.bmax, self.nc, self.cmin, self.cmax = map(int, line.split())
-                if n==6:
-                    self.a, self.b, self.c, self.alpha, self.beta, self.gamma = map(float,line.split())
-                    break
-        i = 0
-        j = 0
-        k = 0
-        n = 0
-        x = []
-        y = []
-        with open(filename) as f:
-            for line in f:
-                n+=1
-                #ignore header, section headers, and last two lines
-                if (
-                    n>7
-                    and
-                    n % (int((self.na*self.nb)/6) + (lambda x: 0 if(x%6==0) else 1)(self.na*self.nb) + 1) - 8 != 0
-                    and
-                    (n-8)/(int((self.na*self.nb)/6) + (lambda x: 0 if(x%6==0) else 1)(self.na*self.nb) + 1) < self.nc
-                    ):
-                    x.append(zip(*(iter(line),) * 12))
-        for i in range(len(x)):
-            for j in range(len(x[i])):
-                y.append(float(''.join(x[i][j])))
-        self.rho = np.array(y).reshape((self.na,self.nb,self.nc))
-        self.rho = np.swapaxes(self.rho,0,2)
-
-    def write(self,filename="map.xplor"):
-        """Write an XPLOR formatted electron density map."""
-        self.header = ['REMARK FILENAME="'+filename+'"','REMARK DATE= '+str(datetime.datetime.today())]
-        f = open(filename,'wb')
-        f.write("\n")
-        f.write("%8d !NTITLE\n" % len(self.header))
-        for line in self.header:
-            f.write("%-264s\n" % line)
-        f.write("%8d%8d%8d%8d%8d%8d%8d%8d%8d\n" % (self.na,-self.na/2+1,self.na/2,self.nb,-self.nb/2+1,self.nb/2,self.nc,-self.nc/2+1,self.nc/2))
-        f.write("% -.5E% -.5E% -.5E% -.5E% -.5E% -.5E\n" % (self.a,self.b,self.c,self.alpha,self.beta,self.gamma))
-        f.write("ZYX\n")
-        for k in range(self.nc):
-            f.write("%8s\n" % k)
-            for j in range(self.nb):
-                for i in range(self.na):
-                    if (i+j*self.nb) % 6 == 5:
-                        f.write("% -.5E\n" % self.rho[i,j,k])
-                    else:
-                        f.write("% -.5E" % self.rho[i,j,k])
-            f.write("\n")
-        f.write("    -9999\n")
-        f.write("  %.4E  %.4E" % (np.average(self.rho), np.std(self.rho)))
-        f.close()
-
-def pdb2support(pdb,D,voxel=10.,oversampling=1.0,filename="support_dam.pdb",radii=None):
-    """Calculate simple support from pdb coordinates."""
-    side = oversampling*D
-    halfside = side/2
-    n = int(side/voxel)
-    if n%2==0: n += 1
-    dx = side/n
-    x_ = np.linspace(-halfside,halfside,n)
-    x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
-    xyz = np.column_stack([x.flat,y.flat,z.flat])
-    support = np.zeros(x.shape,dtype=bool)
-    xyz_nearby = []
-    xyz_nearby_i = []
-    #assumes atom radius of 1.7 angstroms plus 1.5 for solvent molecule.
-    #ideally should replace this with something like Connolly surface.
-    if radii is None:
-        radii = np.ones((pdb.natoms)) * (1.7 + 1.5)
-    else:
-        radii = np.atleast_1d(radii)
-        if radii.size == 1:
-            radii = np.ones((pdb.natoms)) * radii
-    for i in range(pdb.natoms):
-        xyz_nearby_i.append(np.where(spatial.distance.cdist(pdb.coords[i,None],xyz) < 3.2)[1])
-    xyz_nearby_i = np.unique(np.concatenate(xyz_nearby_i))
-    writedam(filename,xyz[xyz_nearby_i])
-    support[np.unravel_index(xyz_nearby_i,support.shape)] = True
-    return support
-
-def denss(q,I,sigq,D,supportpdb=None,rhostart=None,ne=None,rhobounds=None,voxel=5.,oversampling=3.,usedmax=False,recenter=True,positivity=True,extrapolate=True,write=True,filename="map",steps=3000,seed=None,shrinkwrap=True,shrinkwrap_sigma_start=3,shrinkwrap_sigma_end=1.5,shrinkwrap_sigma_decay=0.99,shrinkwrap_threshold_fraction=0.2,shrinkwrap_iter=20,shrinkwrap_minstep=100,chi_end_fraction=0.001):
+def denss(q,I,sigq,D,ne=None,voxel=5.,oversampling=3.,limit_dmax=False,dmax_start_step=500,recenter=True,recenter_maxstep=None,positivity=True,extrapolate=True,write=True,filename="map",steps=3000,seed=None,shrinkwrap=True,shrinkwrap_sigma_start=3,shrinkwrap_sigma_end=1.5,shrinkwrap_sigma_decay=0.99,shrinkwrap_threshold_fraction=0.2,shrinkwrap_iter=20,shrinkwrap_minstep=100,chi_end_fraction=0.01,write_freq=100,enforce_connectivity=True,enforce_connectivity_steps=[500]):
     """Calculate electron density from scattering data."""
     side = oversampling*D
     halfside = side/2
@@ -260,7 +110,7 @@ def denss(q,I,sigq,D,supportpdb=None,rhostart=None,ne=None,rhobounds=None,voxel=
     df = 1/side
     qx_ = np.fft.fftfreq(x_.size)*n*df*2*np.pi
     qz_ = np.fft.rfftfreq(x_.size)*n*df*2*np.pi
-    qx, qy, qz = np.meshgrid(qx_,qx_,qz_,indexing='ij')
+    qx, qy, qz = np.meshgrid(qx_,qx_,qx_,indexing='ij')
     qr = np.sqrt(qx**2+qy**2+qz**2)
     qmax = np.max(qr)
     qstep = np.min(qr[qr>0])
@@ -276,58 +126,32 @@ def denss(q,I,sigq,D,supportpdb=None,rhostart=None,ne=None,rhobounds=None,voxel=
     #allow for any range of q data
     qdata = qbinsc[np.where( (qbinsc>=q.min()) & (qbinsc<=q.max()) )]
     Idata = np.interp(qdata,q,I)
-    qbin_args_data = range(np.where(qbinsc==qdata.min())[0][0], np.where(qbinsc==qdata.max())[0][0]+1)
     if extrapolate:
         qextend = qbinsc[np.where(qbinsc>=qdata.max())]
         Iextend = qextend**-4
         Iextend = Iextend/Iextend[0] * Idata[-1]
         qdata = np.concatenate((qdata,qextend[1:]))
         Idata = np.concatenate((Idata,Iextend[1:]))
-    #how to scale Idata if I(0) is not known, i.e. if only WAXS data?
-    realne = np.copy(ne)
-    factor = ne**2/Idata[0]
-    Idata *= factor
-    sigqdata = np.interp(qdata,q,sigq)
-    sigqdata *= factor
     #create list of qbin indices just in region of data for later F scaling
-    qbin_args = range(np.where(qbinsc==qdata.min())[0][0], np.where(qbinsc==qdata.max())[0][0]+1)
-    Imean = np.zeros((steps,len(qbins)))
-    indices = np.zeros(len(qbins),dtype='O')
-    for i in range(len(qbins)):
-        indices[i] = np.where(qbin_labels==i)
+    qbin_args = qbin_args = np.in1d(qbinsc,qdata,assume_unique=True)
+    realne = np.copy(ne)
+    sigqdata = np.interp(qdata,q,sigq)
+    Imean = np.zeros((steps+1,len(qbins)))
     chi = np.zeros((steps+1))
     rg = np.zeros((steps+1))
     supportV = np.zeros((steps+1))
     chibest = np.inf
-    beta = 0.9 #HIO feedback parameter. Not currently in use.
-    if rhobounds is not None:
-        rho_bounds = np.array(rhobounds)
-        print rho_bounds
     usesupport = True
-    if supportpdb is not None and usesupport:
-        support = pdb2support(supportpdb, D=D, voxel=voxel, oversampling=oversampling)
-        print "Support Volume = %d" % (dV*np.sum(support))
-        writepdb(supportpdb,filename+"-support-aligned.pdb")
-        write_xplor(np.ones_like(x)*support,side,filename+"_support.xplor")
-    elif usesupport and usedmax:
-        support = np.zeros(x.shape,dtype=bool)
-        support[r<=D*0.6] = True
-    else:
-        support = np.ones(x.shape,dtype=bool)
+    beta = 0.7 #HIO negative feedback parameter
+    support = np.ones(x.shape,dtype=bool)
     if seed is None:
         seed = np.random.randint(2**32-1)
     else:
         seed = int(seed)
-    print "Seed = %i " % seed
     prng = np.random.RandomState(seed)
     rho = prng.random_sample(size=x.shape)
-    rho *= ne / np.sum(rho)
     update_support = True
     sigma = shrinkwrap_sigma_start
-    if rhostart is not None:
-        rhostart = Xplor(rhostart)
-        rho = np.fft.irfftn(np.fft.rfftn(rhostart.rho),r.shape)
-        rho *= ne / np.sum(rho)
 
     logging.info('Grid size (voxels): %i x %i x %i', n, n, n)
     logging.info('Real space box width (angstroms): %3.3f', side)
@@ -336,91 +160,116 @@ def denss(q,I,sigq,D,supportpdb=None,rhostart=None,ne=None,rhobounds=None,voxel=
     logging.info('Real space voxel size (angstroms): %3.3f', dx)
     logging.info('Real space voxel volume (angstroms^3): %3.3f', dV)
     logging.info('Reciprocal space box width (angstroms^(-1)): %3.3f', qx_.max()-qx_.min())
-    logging.info('Reciprocal space box range (angstroms^(-1)): %3.3f < qx < %3.2f', qx_.min(), qx_.max())
+    logging.info('Reciprocal space box range (angstroms^(-1)): %3.3f < qx < %3.3f', qx_.min(), qx_.max())
     logging.info('Maximum q vector (diagonal) (angstroms^(-1)): %3.3f', qr.max())
     logging.info('Number of q shells: %i', nbins)
     logging.info('Width of q shells (angstroms^(-1)): %3.3f', qstep)
-    if rhostart is not None:
-        logging.info('Random seed: N/A. Starting map: %s', rhostart)
-    else:
-        logging.info('Random seed: %i', seed)
+    logging.info('Random seed: %i', seed)
+
+    ERsteps = 20
+    HIOsteps = 50
 
     print "Step  Chi2      Rg      Support Volume"
     print "----- --------- ------- --------------"
     for j in range(steps):
-        F = np.fft.rfftn(rho)
+        F = np.fft.fftn(rho)
         #APPLY RECIPROCAL SPACE RESTRAINTS
         #calculate spherical average of intensities from 3D Fs
-        Imean[j] = ndimage.mean(np.abs(F)**2, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
+        I3D = np.abs(F)**2
+        Imean[j] = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
+        if j==0:
+            np.savetxt(filename+'_step0_saxs.dat',np.vstack((qbinsc,Imean[j],Imean[j]*.05)).T,delimiter=" ",fmt="%.5e")
+            write_xplor(rho,side,filename+"_original.xplor")
         #scale Fs to match data
-        qbin_args2 = qbin_args #[:5+j/300]
-        for i in qbin_args2:
-            I_data = Idata[i]
-            I_calc = Imean[j,i]
-            if not np.allclose(I_calc,0.0):
-                factor = np.sqrt(I_data/I_calc)
-                F[indices[i]] = F[indices[i]] * factor
-        chi[j] = np.sum(((Imean[j,qbin_args_data]-Idata[qbin_args_data])/sigqdata[qbin_args_data])**2)/len(qbin_args_data)
+        factors = np.ones((len(qbins)))
+        factors[qbin_args] = np.sqrt(Idata/Imean[j,qbin_args])
+        F *= factors[qbin_labels]
+        chi[j] = np.sum(((Imean[j,qbin_args]-Idata)/sigqdata)**2)/qbin_args.size
         #APPLY REAL SPACE RESTRAINTS
-        rhoprime = np.fft.irfftn(F,rho.shape)
+        rhoprime = np.fft.ifftn(F,rho.shape)
+        rhoprime = rhoprime.real
+        if j%write_freq == 0:
+            write_xplor(rhoprime,side,filename+"_current.xplor")
         rg[j] = rho2rg(rhoprime,r=r,support=support,dx=dx)
         newrho = np.zeros_like(rho)
-        #Solvent flattening
-        newrho[support] = rhoprime[support]
-        newrho[~support] = 0.0
-        #Hybrid Input-Output
-        #newrho[support] = rhoprime[support]
-        #newrho[~support] = rho[~support] - beta*rhoprime[~support]
+        #do 20 steps ER, then 50 steps HIO, repeated until convergence
+        if j%(ERsteps+HIOsteps) < ERsteps:
+            ER = True
+        else:
+            ER = False
+        #HIO does not seem to work currently
+        #only use Error Reduction
+        ER = True
+        if ER:
+            #Error Reduction
+            newrho[support] = rhoprime[support]
+            newrho[~support] = 0.0
+        else:
+            #Hybrid Input-Output
+            newrho[support] = rhoprime[support]
+            newrho[~support] = rho[~support] - beta*rhoprime[~support]
         #enforce positivity by making all negative density points zero.
         if positivity:
+            netmp = np.sum(newrho)
             newrho[newrho<0] = 0.0
-            newrho *= ne / np.sum(newrho)
-        if rhobounds is not None:
-            outofbounds = np.zeros_like(support)
-            outofbounds[(newrho<rho_bounds[0])&(newrho>rho_bounds[1])] = True
-            neoutofbounds = np.sum(newrho[outofbounds])
-            if neoutofbounds != 0:
-                newrho.clip(rho_bounds[0],rho_bounds[1])
-                newrho[~outofbounds] *= (ne - np.sum(newrho[~outofbounds])) / neoutofbounds
+            if np.sum(newrho) != 0:
+                newrho *= netmp / np.sum(newrho)
         #update support using shrinkwrap method
+        if j%shrinkwrap_iter==0:
+            if recenter:
+                if recenter_maxstep is None:
+                    newrho = center_rho(newrho)
+                elif j <= recenter_maxstep:
+                    newrho = center_rho(newrho,centering="max")
         if shrinkwrap and j >= shrinkwrap_minstep and j%shrinkwrap_iter==0:
-            if recenter: newrho = center_rho(newrho)
-            rho_blurred = ndimage.filters.gaussian_filter(newrho,sigma=sigma)
+            rho_blurred = ndimage.filters.gaussian_filter(newrho,sigma=sigma,mode='wrap')
             support = np.zeros(rho.shape,dtype=bool)
             support[rho_blurred >= shrinkwrap_threshold_fraction*rho_blurred.max()] = True
-            if usedmax: support[r>0.6*D] = False
             if sigma > shrinkwrap_sigma_end:
                 sigma = shrinkwrap_sigma_decay*sigma
+            if enforce_connectivity and j in enforce_connectivity_steps:
+                #label the support into separate segments based on a 3x3x3 grid
+                struct = ndimage.generate_binary_structure(3, 3)
+                labeled_support, num_features = ndimage.label(support, structure=struct)
+                sums = np.zeros((num_features))
+                print num_features
+                #find the feature with the greatest number of electrons
+                for feature in range(num_features):
+                    sums[feature-1] = np.sum(newrho[labeled_support==feature])
+                big_feature = np.argmax(sums)+1
+                #remove features from the support that are not the primary feature
+                support[labeled_support != big_feature] = False
+        if limit_dmax and j > dmax_start_step:
+            support[r>0.6*D] = False
+            if np.sum(support) <= 0:
+                support = np.ones(rho.shape,dtype=bool)
         supportV[j] = np.sum(support)*dV
         sys.stdout.write("\r% 5i % 4.2e % 3.2f       % 5i          " % (j, chi[j], rg[j], supportV[j]))
         sys.stdout.flush()
         
-        if j > 101 + shrinkwrap_minstep and np.std(chi[j-100:j]) < chi_end_fraction * np.median(chi[j-100:j]) and 1 == 1:
+        if j > 101 + shrinkwrap_minstep and np.std(chi[j-100:j]) < chi_end_fraction * np.median(chi[j-100:j]):
+            rho = newrho
+            F = np.fft.fftn(rho)
             break
         else:
             rho = newrho
-            rho *= ne / np.sum(rho)
-            F = np.fft.rfftn(rho)
-            Fbest = F
-            rhobest = rho
-            Imeanbest = Imean[j]
-            chis = chi
-            update_support = True
+            F = np.fft.fftn(rho)
     print
-    F = Fbest
     
     #calculate spherical average intensity from 3D Fs
-    Imean = ndimage.mean(np.abs(F)**2, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
-    #scale Fs to match data one last time
-    for i in qbin_args2:
-        I_data = Idata[i]
-        I_calc = Imean[i]
-        if not np.allclose(I_calc,0.0):
-            factor = np.sqrt(I_data/I_calc)
-            F[indices[i]] = F[indices[i]] * factor
-    chi[j+1] = np.sum(((Imean[qbin_args]-Idata)/sigqdata)**2)/len(qbin_args)
-    rho = np.fft.irfftn(F,rho.shape)
-    rho *= realne / np.sum(rho)
+    Imean[j+1] = ndimage.mean(np.abs(F)**2, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
+    chi[j+1] = np.sum(((Imean[j+1,qbin_args]-Idata)/sigqdata)**2)/qbin_args.size
+    #scale Fs to match data
+    factors = np.ones((len(qbins)))
+    factors[qbin_args] = np.sqrt(Idata/Imean[j+1,qbin_args])
+    F *= factors[qbin_labels]
+    rho = np.fft.ifftn(F,rho.shape)
+    rho = rho.real
+    #recenter rho
+    write_xplor(rho,side,filename+"_precentered.xplor")
+    rho = center_rho(rho)
+    if ne is not None:
+        rho *= ne / np.sum(rho)
 
     rg[j+1] = rho2rg(rho=rho,r=r,support=support,dx=dx)
     supportV[j+1] = supportV[j]
@@ -430,10 +279,10 @@ def denss(q,I,sigq,D,supportpdb=None,rhostart=None,ne=None,rhobounds=None,voxel=
         write_xplor(np.ones_like(rho)*support,side,filename+"_support.xplor")
 
     logging.info('Number of steps: %i', j)
-    logging.info('Final Chi2: %3.3f', chis[j+1])
+    logging.info('Final Chi2: %3.3f', chi[j+1])
     logging.info('Final Rg: %3.3f', rg[j+1])
     logging.info('Final Support Volume: %3.3f', supportV[j+1])
 
-    return qdata, Idata, sigqdata, qbinsc, Imean, chi, rg, supportV
+    return qdata, Idata, sigqdata, qbinsc, Imean[j+1], chi, rg, supportV
 
 
