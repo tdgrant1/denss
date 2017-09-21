@@ -34,7 +34,7 @@ a script, provided the `saxstats.py` file is in the same directory as
 `denss.py` that you're running from.
 
 ## Requirements
-DENSS requires that Python 2.7, NumPy and SciPy are installed. These packages are 
+DENSS requires that Python 2.7, NumPy (minimum v1.10.0) and SciPy are installed. These packages are 
 are often installed by default, or are available for your operating system
 using package managers such as PIP or [Anaconda](https://www.continuum.io/downloads).
 The current code was built using the Anaconda package management system 
@@ -64,10 +64,10 @@ data, one should first use a fitting program such as GNOM from
 the experimental data with a smooth curve, and then extract the fitted data
 (including the forward scattering intensity where q = 0, i.e. I(0)) from
 the output and supply the smooth curve to DENSS. If using GNOM, a bash
-script is provided (```gnom2dat```) to extract the smooth fit of the 
+script is provided (```gnom2fit```) to extract the smooth fit of the 
 intensity (and add some missing error bars). To do so type
 ```
-gnom2dat saxs.out
+gnom2fit saxs.out
 ```
 
 `6lyz.dat` is a simulated scattering profile from lysozyme PDB 6LYZ using
@@ -88,58 +88,77 @@ denss.py -f 6lyz.dat -d 50.0
 ```
 Additional options you may want to set are:
 ```
-  -v VOXEL, --voxel VOXEL       Set desired voxel size (default 5 angstroms)
-  --oversampling OVERSAMPLING   Sampling ratio (default 3)
-  -n NE, --ne NE                Number of electrons in object (used only for scaling)
-  -s STEPS, --steps STEPS       Maximum number of steps (iterations)
-  -o OUTPUT, --output OUTPUT    Output map filename (default filename)
+  -v VOXEL, --voxel VOXEL
+                        Set desired voxel size, setting resolution of map
+  --oversampling OVERSAMPLING
+                        Sampling ratio
+  -n NSAMPLES, --nsamples NSAMPLES
+                        Number of samples, i.e. grid points, along a single
+                        dimension. (sets voxel size, overridden
+                        by --voxel)
+  --ne NE               Number of electrons in object
+  -s STEPS, --steps STEPS
+                        Maximum number of steps (iterations)
+  -o OUTPUT, --output OUTPUT
+                        Output map filename
 ```
 Additional advanced options are:
 ```
   --seed SEED           Random seed to initialize the map
-  --rhostart RHOSTART   Filename of starting electron density in xplor format
-  --rhobounds RHOBOUNDS RHOBOUNDS
-                        Lower and upper bounds of number of electrons per grid
-                        point in object
-  --supportpdb SUPPORTPDB
-                        PDB file used to create support
-  --usedmax-on          Limit electron density to sphere of radius Dmax/2.
-  --usedmax-off         Do not limit electron density to sphere of radius
-                        Dmax/2. (Default)
-  --recenter-on         Recenter electron density when updating support.
+  --limit_dmax_on       Limit electron density to sphere of radius 0.6*Dmax
+                        from center of object. (default)
+  --limit_dmax_off      Do not limit electron density to sphere of radius
+                        0.6*Dmax from center of object.
+  --dmax_start_step DMAX_START_STEP
+                        Starting step for limiting density to sphere of Dmax
+                        (default=500)
+  --recenter_on         Recenter electron density when updating support.
                         (default)
-  --recenter-off        Do not recenter electron density when updating
+  --recenter_off        Do not recenter electron density when updating
                         support.
-  --positivity-on       Enforce positivity restraint inside support. (default)
-  --positivity-off      Do not enforce positivity restraint inside support.
-  --extrapolate-on      Extrapolate data by Porod law to high resolution limit
+  --recenter_maxstep RECENTER_MAXSTEP
+                        Maximum step to recenter electron density.
+                        (default=1000)
+  --positivity_on       Enforce positivity restraint inside support. (default)
+  --positivity_off      Do not enforce positivity restraint inside support.
+  --extrapolate_on      Extrapolate data by Porod law to high resolution limit
                         of voxels. (default)
-  --extrapolate-off     Do not extrapolate data by Porod law to high
+  --extrapolate_off     Do not extrapolate data by Porod law to high
                         resolution limit of voxels.
-  --shrinkwrap-on       Turn shrinkwrap on (default)
-  --shrinkwrap-off      Turn shrinkwrap off
+  --shrinkwrap_on       Turn shrinkwrap on (default)
+  --shrinkwrap_off      Turn shrinkwrap off
   --shrinkwrap_sigma_start SHRINKWRAP_SIGMA_START
-                        Starting sigma for Gaussian blurring, in voxels (default 3)
+                        Starting sigma for Gaussian blurring, in voxels
   --shrinkwrap_sigma_end SHRINKWRAP_SIGMA_END
-                        Ending sigma for Gaussian blurring, in voxels (default 1.5)
+                        Ending sigma for Gaussian blurring, in voxels
   --shrinkwrap_sigma_decay SHRINKWRAP_SIGMA_DECAY
-                        Rate of decay of sigma, fraction (default 0.99)
+                        Rate of decay of sigma, fraction
   --shrinkwrap_threshold_fraction SHRINKWRAP_THRESHOLD_FRACTION
                         Minimum threshold defining support, in fraction of
-                        maximum density (default 0.20)
+                        maximum density
   --shrinkwrap_iter SHRINKWRAP_ITER
                         Number of iterations between updating support with
-                        shrinkwrap (default 20)
+                        shrinkwrap
   --shrinkwrap_minstep SHRINKWRAP_MINSTEP
-                        First step to begin shrinkwrap (default 0)
+                        First step to begin shrinkwrap
+  --enforce_connectivity_on
+                        Enforce connectivity of support, i.e. remove extra
+                        blobs (default)
+  --enforce_connectivity_off
+                        Do not enforce connectivity of support
+  --enforce_connectivity_steps ENFORCE_CONNECTIVITY_STEPS [ENFORCE_CONNECTIVITY_STEPS ...]
+                        List of steps to enforce connectivity (Default=500,
+                        see enforce_connectivity)
   --chi_end_fraction CHI_END_FRACTION
                         Convergence criterion. Minimum threshold of chi2 std
                         dev, as a fraction of the median chi2 of last 100
-                        steps. (default 0.001)
-  --plot-on             Create simple plots of results 
-                        (requires Matplotlib, default is module exists).
-  --plot-off            Do not create simple plots of results 
-                        (Default if Matplotlib does not exist).
+                        steps.
+  --write_freq WRITE_FREQ
+                        How often to write out current density map (in steps).
+  --plot_on             Create simple plots of results (requires Matplotlib,
+                        default if module exists).
+  --plot_off            Do not create simple plots of results. (Default if
+                        Matplotlib does not exist)
   ```
 
 ## Results
@@ -180,7 +199,7 @@ output.log                 A log file containing parameters for the calculation
 ## Alignment, Averaging, and Resolution Estimation
 The solutions are non-unique, meaning many different electron density maps will yield
 the same scattering profile. Different random starting points will return different
-results. Therefore, running the algorithm many times (>10) is strongly advised. 
+results. Therefore, running the algorithm many times (>20) is strongly advised. 
 Subsequent alignment and averaging can be performed in Chimera
 using the Fit in Map tool and `vop add`. 
 
@@ -226,16 +245,30 @@ you can speed things up with:
 ```
 e2spt_classaverage.py --input lysozyme_stack_resized.hdf --parallel=thread:n
 ```
-where n is the number of cores to use. The output will be in a folder named something
-like spt_01. The averaged density will be named something like final_avg.hdf.
+where n is the number of cores to use. Additionally, one can add the --keep and 
+--keepsig flags to filter out outlier volumes based on standard deviations of the 
+correlations.  The output will be in a folder named something like spt_01. 
+The averaged density will be named something like final_avg.hdf.
 Fortunately, Chimera can open .hdf files by default. Then, if you would like to
-view it in PyMOL you can save it as an MRC formatted map in Chimera.
+view it in PyMOL you can save it as an MRC formatted map in Chimera or convert
+it to MRC using the Situs map2map tool.
 
 Resolution can be estimated from the FSC curve also written to the spt_01
 directory as fsc_0.txt. Plot this in your favorite plotting program to
-view. A good cutoff for FSC is 0.5, or even 0.143, but 0.5 is safe. Take the
-reciprocal of the x axis position where FSC rises above 0.5, and that is your
-estimated resolution.
+view. Take the reciprocal of the x axis position where FSC falls below 0.5, 
+and that is your estimated resolution.
+
+A bash script is provided called `superdenss` that runs this pipeline automatically
+in parallel assuming EMAN2, Situs and gnu parallel are all installed. The script is
+a little awkward to use to pass the arguments correctly. To run the above example type
+(note the quotes in the command line):
+```
+superdenss -f 6lyz.dat -i " -d 50.0 " -o lysozyme -n 20
+```
+This will create a folder named "lysozyme" with all the output files for each of
+the 20 individual runs of DENSS and a folder named spt_01 which will contain the
+final averaged density. You can add other denss.py options into the -i option in
+in between the quotes.
 
 ## Miscellaneous
 The combination of total real space box size (D x oversampling) divided by 
@@ -247,7 +280,7 @@ oversampling also results in low sampling of scattering profile, so direct
 comparison with experimental data becomes more difficult. Note that D given by 
 the user is only used to determine the size of the box and does not limit the
 the electron density of the object by default. If one wishes to impose D as a
-limit, enable --usedmax-on (off by default). 
+limit, enable --limit_dmax_on (off by default). 
 
 While the NumPy implementation of FFT is most efficient when N is a power of two,
 considerable performance gains can still be gained when N is not a power of two,
@@ -257,8 +290,7 @@ The electron density map is initially set to be random based on the random seed
 selected by the program. One can therefore exactly reproduce the results of a previous
 calculation by giving the random seed to the program with the `--seed` option and
 the same input parameters. The parameters of previous runs can all be found in the log file.
-Additionally, one can start with a given electron density map, perhaps for refinement
-of an averaged map, using the `--rhostart` option. 
+ 
 
 
 
