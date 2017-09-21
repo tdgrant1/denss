@@ -4,5 +4,5 @@ name=${1%.*}
 awk '{ sub("\r$", ""); print }' $1 > tmp.out 
 sed -n -e '/J\ EXP/,/Distance/p' tmp.out | tail -n +3 | sed -e '$ d' > tmp.dat
 x=`awk '{if(NF==5) {printf "%s",$3;exit;}}' tmp.dat`
-awk '{if(NF==2) {printf "%s %s %.4E\n", $1, $2, '$x'} else {print $1, $5, $3}}' tmp.dat > ${name}_gnom.dat
+awk '{if(NF==2) {printf "%s %s %s\n", $1, $2, "'$x'"} else {print $1, $5, $3}}' tmp.dat | sed -e :a -e '$d;N;2,3ba' -e 'P;D' > ${name}_fit.dat
 echo
