@@ -1,11 +1,5 @@
 #!/bin/bash
 
-#id will be given as -o option to saxsmap
-id=$1
-#put options in quotes in command line just like you would give to denss
-#dont include -o output filename option. it will come from id
-options=$2
-
 while getopts hf:o:i:n:w opt; do
   case $opt in
     h)
