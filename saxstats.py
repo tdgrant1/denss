@@ -133,7 +133,7 @@ def denss(q,I,sigq,D,ne=None,voxel=5.,oversampling=3.,limit_dmax=False,dmax_star
         qdata = np.concatenate((qdata,qextend[1:]))
         Idata = np.concatenate((Idata,Iextend[1:]))
     #create list of qbin indices just in region of data for later F scaling
-    qbin_args = qbin_args = np.in1d(qbinsc,qdata,assume_unique=True)
+    qbin_args = np.in1d(qbinsc,qdata,assume_unique=True)
     realne = np.copy(ne)
     sigqdata = np.interp(qdata,q,sigq)
     Imean = np.zeros((steps+1,len(qbins)))
