@@ -142,7 +142,6 @@ def denss(q,I,sigq,D,ne=None,voxel=5.,oversampling=3.,limit_dmax=False,dmax_star
     supportV = np.zeros((steps+1))
     chibest = np.inf
     usesupport = True
-    beta = 0.7 #HIO negative feedback parameter
     support = np.ones(x.shape,dtype=bool)
     if seed is None:
         seed = np.random.randint(2**32-1)
@@ -165,9 +164,6 @@ def denss(q,I,sigq,D,ne=None,voxel=5.,oversampling=3.,limit_dmax=False,dmax_star
     logging.info('Number of q shells: %i', nbins)
     logging.info('Width of q shells (angstroms^(-1)): %3.3f', qstep)
     logging.info('Random seed: %i', seed)
-
-    ERsteps = 20
-    HIOsteps = 50
 
     print "Step  Chi2      Rg      Support Volume"
     print "----- --------- ------- --------------"
@@ -192,22 +188,9 @@ def denss(q,I,sigq,D,ne=None,voxel=5.,oversampling=3.,limit_dmax=False,dmax_star
             write_xplor(rhoprime,side,filename+"_current.xplor")
         rg[j] = rho2rg(rhoprime,r=r,support=support,dx=dx)
         newrho = np.zeros_like(rho)
-        #do 20 steps ER, then 50 steps HIO, repeated until convergence
-        if j%(ERsteps+HIOsteps) < ERsteps:
-            ER = True
-        else:
-            ER = False
-        #HIO does not seem to work currently
-        #only use Error Reduction
-        ER = True
-        if ER:
-            #Error Reduction
-            newrho[support] = rhoprime[support]
-            newrho[~support] = 0.0
-        else:
-            #Hybrid Input-Output
-            newrho[support] = rhoprime[support]
-            newrho[~support] = rho[~support] - beta*rhoprime[~support]
+        #Error Reduction
+        newrho[support] = rhoprime[support]
+        newrho[~support] = 0.0
         #enforce positivity by making all negative density points zero.
         if positivity:
             netmp = np.sum(newrho)
