@@ -158,8 +158,8 @@ if args.plot:
     fig, ax = plt.subplots()
 
     ax.errorbar(q, I, fmt='k-', yerr=sigq, capsize=0, elinewidth=0.1, ecolor=cc.to_rgba('0',alpha=0.5),label='Raw Data')
-    ax.plot(qbinsc, Idata, 'bo',alpha=0.5,label='Interpolated Data')
-    ax.plot(qdata,Imean,'r.',label='Scattering from Density')
+    ax.plot(qdata, Idata, 'bo',alpha=0.5,label='Interpolated Data')
+    ax.plot(qbinsc,Imean,'r.',label='Scattering from Density')
     handles,labels = ax.get_legend_handles_labels()
     handles = [handles[2], handles[0], handles[1]]
     labels = [labels[2], labels[0], labels[1]]
