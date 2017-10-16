@@ -24,7 +24,12 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import sys, logging, datetime
+import sys
+import logging
+import datetime
+import re
+import os
+import json
 import numpy as np
 from scipy import ndimage
 
@@ -34,8 +39,8 @@ def chi2(exp, calc, sig):
 
 def center_rho(rho,centering="com"):
     """Move electron density map so its center of mass aligns with the center of the grid
-    
-    centering - which part of the density to center on. By default, center on the 
+
+    centering - which part of the density to center on. By default, center on the
                 center of mass ("com"). Can also center on maximum density value ("max").
     """
     if centering == "max":
@@ -72,29 +77,289 @@ def write_xplor(rho,side,filename="map.xplor"):
     """Write an XPLOR formatted electron density map."""
     xs, ys, zs = rho.shape
     title_lines = ['REMARK FILENAME="'+filename+'"','REMARK DATE= '+str(datetime.datetime.today())]
-    f = open(filename,'wb')
-    f.write("\n")
-    f.write("%8d !NTITLE\n" % len(title_lines))
-    for line in title_lines:
-        f.write("%-264s\n" % line)
-    #f.write("%8d%8d%8d%8d%8d%8d%8d%8d%8d\n" % (xs,0,xs-1,ys,0,ys-1,zs,0,zs-1))
-    f.write("%8d%8d%8d%8d%8d%8d%8d%8d%8d\n" % (xs,-xs/2+1,xs/2,ys,-ys/2+1,ys/2,zs,-zs/2+1,zs/2))
-    f.write("% -.5E% -.5E% -.5E% -.5E% -.5E% -.5E\n" % (side,side,side,90,90,90))
-    f.write("ZYX\n")
-    for k in range(zs):
-        f.write("%8s\n" % k)
-        for j in range(ys):
-            for i in range(xs):
-                if (i+j*ys) % 6 == 5:
-                    f.write("% -.5E\n" % rho[i,j,k])
-                else:
-                    f.write("% -.5E" % rho[i,j,k])
+    with open(filename,'wb') as f:
         f.write("\n")
-    f.write("    -9999\n")
-    f.write("  %.4E  %.4E" % (np.average(rho), np.std(rho)))
-    f.close()
+        f.write("%8d !NTITLE\n" % len(title_lines))
+        for line in title_lines:
+            f.write("%-264s\n" % line)
+        #f.write("%8d%8d%8d%8d%8d%8d%8d%8d%8d\n" % (xs,0,xs-1,ys,0,ys-1,zs,0,zs-1))
+        f.write("%8d%8d%8d%8d%8d%8d%8d%8d%8d\n" % (xs,-xs/2+1,xs/2,ys,-ys/2+1,ys/2,zs,-zs/2+1,zs/2))
+        f.write("% -.5E% -.5E% -.5E% -.5E% -.5E% -.5E\n" % (side,side,side,90,90,90))
+        f.write("ZYX\n")
+        for k in range(zs):
+            f.write("%8s\n" % k)
+            for j in range(ys):
+                for i in range(xs):
+                    if (i+j*ys) % 6 == 5:
+                        f.write("% -.5E\n" % rho[i,j,k])
+                    else:
+                        f.write("% -.5E" % rho[i,j,k])
+            f.write("\n")
+        f.write("    -9999\n")
+        f.write("  %.4E  %.4E" % (np.average(rho), np.std(rho)))
 
-def denss(q,I,sigq,D,ne=None,voxel=5.,oversampling=3.,limit_dmax=False,dmax_start_step=500,recenter=True,recenter_maxstep=None,positivity=True,extrapolate=True,write=True,filename="map",steps=3000,seed=None,shrinkwrap=True,shrinkwrap_sigma_start=3,shrinkwrap_sigma_end=1.5,shrinkwrap_sigma_decay=0.99,shrinkwrap_threshold_fraction=0.2,shrinkwrap_iter=20,shrinkwrap_minstep=100,chi_end_fraction=0.01,write_freq=100,enforce_connectivity=True,enforce_connectivity_steps=[500]):
+def loadOutFile(filename):
+    """Loads a GNOM .out file and returns q, Ireg, sqrt(Ireg), and a
+    dictionary of miscellaneous results from GNOM. Taken from the BioXTAS
+    RAW software package, used with permission under the GPL license."""
+
+    five_col_fit = re.compile('\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s*$')
+    three_col_fit = re.compile('\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s*$')
+    two_col_fit = re.compile('\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s*$')
+
+    results_fit = re.compile('\s*Current\s+\d*[.]\d*[+eE-]*\d*\s+\d*[.]\d*[+eE-]*\d*\s+\d*[.]\d*[+eE-]*\d*\s+\d*[.]\d*[+eE-]*\d*\s+\d*[.]\d*[+eE-]*\d*\s+\d*[.]\d*[+eE-]*\d*\s*\d*[.]?\d*[+eE-]*\d*\s*$')
+
+    te_fit = re.compile('\s*Total\s+[Ee]stimate\s*:\s+\d*[.]\d+\s*\(?[A-Za-z\s]+\)?\s*$')
+    te_num_fit = re.compile('\d*[.]\d+')
+    te_quality_fit = re.compile('[Aa][A-Za-z\s]+\)?\s*$')
+
+    p_rg_fit = re.compile('\s*Real\s+space\s*\:?\s*Rg\:?\s*\=?\s*\d*[.]\d+[+eE-]*\d*\s*\+-\s*\d*[.]\d+[+eE-]*\d*')
+    q_rg_fit = re.compile('\s*Reciprocal\s+space\s*\:?\s*Rg\:?\s*\=?\s*\d*[.]\d+[+eE-]*\d*\s*')
+
+    p_i0_fit = re.compile('\s*Real\s+space\s*\:?[A-Za-z0-9\s\.,+-=]*\(0\)\:?\s*\=?\s*\d*[.]\d+[+eE-]*\d*\s*\+-\s*\d*[.]\d+[+eE-]*\d*')
+    q_i0_fit = re.compile('\s*Reciprocal\s+space\s*\:?[A-Za-z0-9\s\.,+-=]*\(0\)\:?\s*\=?\s*\d*[.]\d+[+eE-]*\d*\s*')
+
+    qfull = []
+    qshort = []
+    Jexp = []
+    Jerr  = []
+    Jreg = []
+    Ireg = []
+
+    R = []
+    P = []
+    Perr = []
+
+    outfile = []
+
+    #In case it returns NaN for either value, and they don't get picked up in the regular expression
+    q_rg=None         #Reciprocal space Rg
+    q_i0=None         #Reciprocal space I0
+
+
+    with open(filename) as f:
+        for line in f:
+            twocol_match = two_col_fit.match(line)
+            threecol_match = three_col_fit.match(line)
+            fivecol_match = five_col_fit.match(line)
+            results_match = results_fit.match(line)
+            te_match = te_fit.match(line)
+            p_rg_match = p_rg_fit.match(line)
+            q_rg_match = q_rg_fit.match(line)
+            p_i0_match = p_i0_fit.match(line)
+            q_i0_match = q_i0_fit.match(line)
+
+            outfile.append(line)
+
+            if twocol_match:
+                # print line
+                found = twocol_match.group().split()
+
+                qfull.append(float(found[0]))
+                Ireg.append(float(found[1]))
+
+            elif threecol_match:
+                #print line
+                found = threecol_match.group().split()
+
+                R.append(float(found[0]))
+                P.append(float(found[1]))
+                Perr.append(float(found[2]))
+
+            elif fivecol_match:
+                #print line
+                found = fivecol_match.group().split()
+
+                qfull.append(float(found[0]))
+                qshort.append(float(found[0]))
+                Jexp.append(float(found[1]))
+                Jerr.append(float(found[2]))
+                Jreg.append(float(found[3]))
+                Ireg.append(float(found[4]))
+
+            elif results_match:
+                found = results_match.group().split()
+                Actual_DISCRP = float(found[1])
+                Actual_OSCILL = float(found[2])
+                Actual_STABIL = float(found[3])
+                Actual_SYSDEV = float(found[4])
+                Actual_POSITV = float(found[5])
+                Actual_VALCEN = float(found[6])
+
+                if len(found) == 8:
+                    Actual_SMOOTH = float(found[7])
+                else:
+                    Actual_SMOOTH = -1
+
+            elif te_match:
+                te_num_search = te_num_fit.search(line)
+                te_quality_search = te_quality_fit.search(line)
+
+                TE_out = float(te_num_search.group().strip())
+                quality = te_quality_search.group().strip().rstrip(')').strip()
+
+
+            if p_rg_match:
+                found = p_rg_match.group().split()
+                try:
+                    rg = float(found[-3])
+                except:
+                    rg = float(found[-2])
+                try:
+                    rger = float(found[-1])
+                except:
+                    rger = float(found[-1].strip('+-'))
+
+            elif q_rg_match:
+                found = q_rg_match.group().split()
+                q_rg = float(found[-1])
+
+            if p_i0_match:
+                found = p_i0_match.group().split()
+                i0 = float(found[-3])
+                i0er = float(found[-1])
+
+            elif q_i0_match:
+                found = q_i0_match.group().split()
+                q_i0 = float(found[-1])
+
+    name = os.path.basename(filename)
+
+    chisq = np.sum(np.square(np.array(Jexp)-np.array(Jreg))/np.square(Jerr))/(len(Jexp)-1) #DOF normalied chi squared
+
+    results = { 'dmax'      : R[-1],        #Dmax
+                'TE'        : TE_out,       #Total estimate
+                'rg'        : rg,           #Real space Rg
+                'rger'      : rger,         #Real space rg error
+                'i0'        : i0,           #Real space I0
+                'i0er'      : i0er,         #Real space I0 error
+                'q_rg'      : q_rg,         #Reciprocal space Rg
+                'q_i0'      : q_i0,         #Reciprocal space I0
+                'quality'   : quality,      #Quality of GNOM out file
+                'discrp'    : Actual_DISCRP,#DISCRIP, kind of chi squared (normalized by number of points, with a regularization parameter thing thrown in)
+                'oscil'     : Actual_OSCILL,#Oscillation of solution
+                'stabil'    : Actual_STABIL,#Stability of solution
+                'sysdev'    : Actual_SYSDEV,#Systematic deviation of solution
+                'positv'    : Actual_POSITV,#Relative norm of the positive part of P(r)
+                'valcen'    : Actual_VALCEN,#Validity of the chosen interval in real space
+                'smooth'    : Actual_SMOOTH,#Smoothness of the chosen interval? -1 indicates no real value, for versions of GNOM < 5.0 (ATSAS <2.8)
+                'filename'  : name,         #GNOM filename
+                'algorithm' : 'GNOM',       #Lets us know what algorithm was used to find the IFT
+                'chisq'     : chisq         #Actual chi squared value
+                    }
+
+    return np.array(qfull), np.array(Ireg), np.sqrt(np.array(Ireg)), results
+
+def loadDatFile(filename):
+    ''' Loads a Primus .dat format file. Taken from the BioXTAS RAW software package,
+    used with permission under the GPL license.'''
+
+    iq_pattern = re.compile('\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s*')
+
+    i = []
+    q = []
+    err = []
+
+    with open(filename) as f:
+        lines = f.readlines()
+
+    comment = ''
+    line = lines[0]
+    j=0
+    while line.split() and line.split()[0].strip()[0] == '#':
+        comment = comment+line
+        j = j+1
+        line = lines[j]
+
+    fileHeader = {'comment':comment}
+    parameters = {'filename' : os.path.split(filename)[1],
+                  'counters' : fileHeader}
+
+    if comment.find('model_intensity') > -1:
+        #FoXS file with a fit! has four data columns
+        is_foxs_fit=True
+        imodel = []
+    else:
+        is_foxs_fit = False
+
+    for line in lines:
+        iq_match = iq_pattern.match(line)
+
+        if iq_match:
+            if not is_foxs_fit:
+                found = iq_match.group().split()
+                q.append(float(found[0]))
+                i.append(float(found[1]))
+                err.append(float(found[2]))
+            else:
+                found = line.split()
+                q.append(float(found[0]))
+                i.append(float(found[1]))
+                imodel.append(float(found[2]))
+                err.append(float(found[3]))
+
+    i = np.array(i)
+    q = np.array(q)
+    err = np.array(err)
+
+    if is_foxs_fit:
+        i = np.array(imodel)
+
+    #Check to see if there is any header from RAW, and if so get that.
+    header = []
+    for j in range(len(lines)):
+        if '### HEADER:' in lines[j]:
+            header = lines[j+1:]
+
+    hdict = None
+    results = {}
+
+    if len(header)>0:
+        hdr_str = ''
+        for each_line in header:
+            hdr_str=hdr_str+each_line
+        try:
+            hdict = dict(json.loads(hdr_str))
+        except Exception:
+            hdict = {}
+
+    if hdict:
+        for each in hdict.iterkeys():
+            if each != 'filename':
+                results[each] = hdict[each]
+
+    if 'analysis' in results:
+        if 'GNOM' in results['analysis']:
+            results = results['analysis']['GNOM']
+
+    return q, i, err, results
+
+def loadProfile(fname):
+    """Determines which loading function to run, and then runs it."""
+
+    if os.path.splitext(fname)[1] == '.out':
+        q, I, Ierr, results = loadOutFile(fname)
+        isout = True
+    else:
+        q, I, Ierr, results = loadDatFile(fname)
+        isout = False
+
+    keys = {key.lower().strip().translate(None, '_ '): key for key in results.keys()}
+
+    if 'dmax' in keys:
+        dmax = float(results[keys['dmax']])
+    else:
+        dmax = -1.
+
+    return q, I, Ierr, dmax, isout
+
+
+def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, dmax_start_step=500,
+        recenter=True, recenter_maxstep=None, positivity=True, extrapolate=True, write=True,
+        filename="map", steps=3000, seed=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
+        shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
+        shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01, write_freq=100,
+        enforce_connectivity=True, enforce_connectivity_steps=[500]):
     """Calculate electron density from scattering data."""
     side = oversampling*D
     halfside = side/2
@@ -229,7 +494,7 @@ def denss(q,I,sigq,D,ne=None,voxel=5.,oversampling=3.,limit_dmax=False,dmax_star
         supportV[j] = np.sum(support)*dV
         sys.stdout.write("\r% 5i % 4.2e % 3.2f       % 5i          " % (j, chi[j], rg[j], supportV[j]))
         sys.stdout.flush()
-        
+
         if j > 101 + shrinkwrap_minstep and np.std(chi[j-100:j]) < chi_end_fraction * np.median(chi[j-100:j]):
             rho = newrho
             F = np.fft.fftn(rho)
@@ -238,7 +503,7 @@ def denss(q,I,sigq,D,ne=None,voxel=5.,oversampling=3.,limit_dmax=False,dmax_star
             rho = newrho
             F = np.fft.fftn(rho)
     print
-    
+
     #calculate spherical average intensity from 3D Fs
     Imean[j+1] = ndimage.mean(np.abs(F)**2, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
     chi[j+1] = np.sum(((Imean[j+1,qbin_args]-Idata)/sigqdata)**2)/qbin_args.size
