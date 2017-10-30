@@ -45,6 +45,7 @@ while getopts hf:o:i:n:w opt; do
 done
 
 id=$output
+if [ -z $n ]; then n=20 ; fi
 range=`eval echo {0..$((n-1))}`
 dir=${output}
 newdir=$dir
