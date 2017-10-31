@@ -41,7 +41,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("-f", "--file", type=str, help="SAXS data file")
 parser.add_argument("-d", "--dmax", default=100., type=float, help="Estimated maximum dimension")
 parser.add_argument("-v", "--voxel", default=None, type=float, help="Set desired voxel size, setting resolution of map")
-parser.add_argument("--oversampling", default=3., type=float, help="Sampling ratio")
+parser.add_argument("-os","--oversampling", default=3., type=float, help="Sampling ratio")
 parser.add_argument("-n", "--nsamples", default=None, type=int, help="Number of samples, i.e. grid points, along a single dimension. (Default = 31, sets voxel size, overridden by --voxel)")
 parser.add_argument("--ne", default=10000, type=float, help="Number of electrons in object")
 parser.add_argument("-s", "--steps", default=3000, type=int, help="Maximum number of steps (iterations)")
@@ -145,28 +145,38 @@ fit[:len(Idata),1] = Idata
 fit[:len(sigqdata),2] = sigqdata
 fit[:len(qbinsc),3] = qbinsc
 fit[:len(Imean),4] = Imean
-np.savetxt(output+'_map.fit',fit,delimiter=' ',fmt='%.5e')
-
-Iq4sas = np.zeros(( len(qbinsc)-2,3 ))
-Iq4sas[:,0] = qbinsc[:-2]
-Iq4sas[:,1] = Imean[:-2]
-Iq4sas[:,2] = Imean[:-2] * 0.01
+np.savetxt(output+'_map.fit',fit,delimiter=' ',fmt='%.5e', header='q(data),I(data),error(data),q(density),I(density)')
+np.savetxt(output+'_stats_by_step.dat',np.vstack((chis, rg, supportV)).T,delimiter=" ",fmt="%.5e",header='Chi2 Rg SupportVolume')
 
 if args.plot:
     import matplotlib.pyplot as plt
     from  matplotlib.colors import colorConverter as cc
-    fig, ax = plt.subplots()
+    import matplotlib.gridspec as gridspec
 
-    ax.errorbar(q, I, fmt='k-', yerr=sigq, capsize=0, elinewidth=0.1, ecolor=cc.to_rgba('0',alpha=0.5),label='Raw Data')
-    ax.plot(qdata, Idata, 'bo',alpha=0.5,label='Interpolated Data')
-    ax.plot(qbinsc,Imean,'r.',label='Scattering from Density')
-    handles,labels = ax.get_legend_handles_labels()
+    f = plt.figure(figsize=[6,6])
+    gs = gridspec.GridSpec(2, 1, height_ratios=[3,1])
+    
+    ax0 = plt.subplot(gs[0])
+    ax0.errorbar(q[q<=qdata[-1]], I[q<=qdata[-1]], fmt='k-', yerr=sigq, capsize=0, elinewidth=0.1, ecolor=cc.to_rgba('0',alpha=0.5),label='Raw Data')
+    ax0.plot(qdata, Idata, 'bo',alpha=0.5,label='Interpolated Data')
+    ax0.plot(qbinsc,Imean,'r.',label='Scattering from Density')
+    handles,labels = ax0.get_legend_handles_labels()
     handles = [handles[2], handles[0], handles[1]]
     labels = [labels[2], labels[0], labels[1]]
-    ax.legend(handles,labels)
-    ax.semilogy()
-    ax.set_ylabel('I(q)')
-    ax.set_xlabel(r'q ($\mathrm{\AA^{-1}}$)')
+    ax0.legend(handles,labels)
+    ax0.semilogy()
+    ax0.set_ylabel('log I(q)')
+    
+    ax1 = plt.subplot(gs[1])
+    ax1.plot(qdata, qdata*0, 'k--')
+    ax1.plot(qdata, np.log10(Imean)-np.log10(Idata), 'ro-')
+    ylim = ax1.get_ylim()
+    ymax = np.max(np.abs(ylim))
+    ax1.set_ylim([-ymax,ymax])
+    ax1.yaxis.major.locator.set_params(nbins=5)
+    ax1.set_ylabel('Residuals')
+    ax1.set_xlabel(r'q ($\mathrm{\AA^{-1}}$)')
+    #plt.setp(ax0.get_xticklabels(), visible=False)
     plt.tight_layout()
     plt.savefig(output+'_fit',ext='png',dpi=150)
     plt.close()
@@ -192,8 +202,6 @@ if args.plot:
     plt.tight_layout()
     plt.savefig(output+'_supportV',ext='png',dpi=150)
     plt.close()
-
-np.savetxt(output+'_stats_by_step.dat',np.vstack((chis, rg, supportV)).T,delimiter=" ",fmt="%.5e")
 
 logging.info('END')
 
