@@ -157,12 +157,18 @@ if args.plot:
     gs = gridspec.GridSpec(2, 1, height_ratios=[3,1])
     
     ax0 = plt.subplot(gs[0])
-    ax0.errorbar(q[q<=qdata[-1]], I[q<=qdata[-1]], fmt='k-', yerr=sigq, capsize=0, elinewidth=0.1, ecolor=cc.to_rgba('0',alpha=0.5),label='Raw Data')
+    #handle sigq values whose error bounds would go negative and be missing on the log scale
+    sigq2 = np.copy(sigq)
+    sigq2[sigq>I] = I[sigq>I]*.999
+    ax0.errorbar(q[q<=qdata[-1]], I[q<=qdata[-1]], fmt='k-', yerr=[sigq2,sigq], capsize=0, elinewidth=0.1, ecolor=cc.to_rgba('0',alpha=0.5),label='Raw Data')
     ax0.plot(qdata, Idata, 'bo',alpha=0.5,label='Interpolated Data')
     ax0.plot(qbinsc,Imean,'r.',label='Scattering from Density')
     handles,labels = ax0.get_legend_handles_labels()
     handles = [handles[2], handles[0], handles[1]]
     labels = [labels[2], labels[0], labels[1]]
+    ymin = np.min(np.hstack((I,Idata,Imean)))
+    ymax = np.max(np.hstack((I,Idata,Imean)))
+    ax0.set_ylim([0.5*ymin,1.5*ymax])
     ax0.legend(handles,labels)
     ax0.semilogy()
     ax0.set_ylabel('log I(q)')
