@@ -121,7 +121,7 @@ def denss(q,I,sigq,D,ne=None,voxel=5.,oversampling=3.,limit_dmax=False,dmax_star
     #only move the non-zero terms, since the zeroth term should be at q=0.
     qbinsc[1:] += qstep/2.
     #create an array labeling each voxel according to which qbin it belongs
-    qbin_labels = np.digitize(qr, qbins)
+    qbin_labels = np.searchsorted(qbins,qr,"right")
     qbin_labels -= 1
     #allow for any range of q data
     qdata = qbinsc[np.where( (qbinsc>=q.min()) & (qbinsc<=q.max()) )]
