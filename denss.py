@@ -47,12 +47,12 @@ parser.add_argument("--ne", default=10000, type=float, help="Number of electrons
 parser.add_argument("-s", "--steps", default=3000, type=int, help="Maximum number of steps (iterations)")
 parser.add_argument("-o", "--output", default=None, help="Output map filename")
 parser.add_argument("--seed", default=None, help="Random seed to initialize the map")
-parser.add_argument("--limit_dmax_on", dest="limit_dmax", action="store_true", help="Limit electron density to sphere of radius 0.6*Dmax from center of object. (default)")
-parser.add_argument("--limit_dmax_off", dest="limit_dmax", action="store_false", help="Do not limit electron density to sphere of radius 0.6*Dmax from center of object.")
+parser.add_argument("--limit_dmax_on", dest="limit_dmax", action="store_true", help="Limit electron density to sphere of radius 0.6*Dmax from center of object.")
+parser.add_argument("--limit_dmax_off", dest="limit_dmax", action="store_false", help="Do not limit electron density to sphere of radius 0.6*Dmax from center of object. (default)")
 parser.add_argument("--dmax_start_step", default=500, type=int, help="Starting step for limiting density to sphere of Dmax (default=500)")
 parser.add_argument("--recenter_on", dest="recenter", action="store_true", help="Recenter electron density when updating support. (default)")
 parser.add_argument("--recenter_off", dest="recenter", action="store_false", help="Do not recenter electron density when updating support.")
-parser.add_argument("--recenter_maxstep", default=1000, type=int, help="Maximum step to recenter electron density. (default=1000)")
+parser.add_argument("--recenter_steps", default=None, type=int, help="List of steps to recenter electron density. (default=501,1001)")
 parser.add_argument("--positivity_on", dest="positivity", action="store_true", help="Enforce positivity restraint inside support. (default)")
 parser.add_argument("--positivity_off", dest="positivity", action="store_false", help="Do not enforce positivity restraint inside support.")
 parser.add_argument("--extrapolate_on", dest="extrapolate", action="store_true", help="Extrapolate data by Porod law to high resolution limit of voxels. (default)")
@@ -114,6 +114,12 @@ else:
 if type(args.enforce_connectivity_steps) is not list:
     args.enforce_connectivity_steps = [ args.enforce_connectivity_steps ]
 
+if type(args.recenter_steps) is not list:
+    if args.recenter_steps is None:
+        args.recenter_steps = [501, 601, 701, 801, 901, 1001]
+    else:
+        args.enforce_connectivity_steps = [ args.enforce_connectivity_steps ]
+
 logging.info('Maximum number of steps: %i', args.steps)
 logging.info('q range of input data: %3.3f < q < %3.3f', q.min(), q.max())
 logging.info('Maximum dimension: %3.3f', D)
@@ -135,7 +141,7 @@ logging.info('Enforce connectivity: %s', args.enforce_connectivity)
 logging.info('Enforce connectivity steps: %s', args.enforce_connectivity_steps)
 logging.info('Chi2 end fraction: %3.3e', args.chi_end_fraction)
 
-qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV = saxs.denss(q=q,I=I,sigq=sigq,D=D,ne=args.ne,voxel=voxel,oversampling=args.oversampling,limit_dmax=args.limit_dmax,dmax_start_step=args.dmax_start_step,recenter=args.recenter,recenter_maxstep=args.recenter_maxstep,positivity=args.positivity,extrapolate=args.extrapolate,write=True,filename=output,steps=args.steps,seed=args.seed,shrinkwrap=args.shrinkwrap,shrinkwrap_sigma_start=args.shrinkwrap_sigma_start,shrinkwrap_sigma_end=args.shrinkwrap_sigma_end,shrinkwrap_sigma_decay=args.shrinkwrap_sigma_decay,shrinkwrap_threshold_fraction=args.shrinkwrap_threshold_fraction,shrinkwrap_iter=args.shrinkwrap_iter,shrinkwrap_minstep=args.shrinkwrap_minstep,chi_end_fraction=args.chi_end_fraction,write_freq=args.write_freq,enforce_connectivity=args.enforce_connectivity,enforce_connectivity_steps=args.enforce_connectivity_steps)
+qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV = saxs.denss(q=q,I=I,sigq=sigq,D=D,ne=args.ne,voxel=voxel,oversampling=args.oversampling,limit_dmax=args.limit_dmax,dmax_start_step=args.dmax_start_step,recenter=args.recenter,recenter_steps=args.recenter_steps,positivity=args.positivity,extrapolate=args.extrapolate,write=True,filename=output,steps=args.steps,seed=args.seed,shrinkwrap=args.shrinkwrap,shrinkwrap_sigma_start=args.shrinkwrap_sigma_start,shrinkwrap_sigma_end=args.shrinkwrap_sigma_end,shrinkwrap_sigma_decay=args.shrinkwrap_sigma_decay,shrinkwrap_threshold_fraction=args.shrinkwrap_threshold_fraction,shrinkwrap_iter=args.shrinkwrap_iter,shrinkwrap_minstep=args.shrinkwrap_minstep,chi_end_fraction=args.chi_end_fraction,write_freq=args.write_freq,enforce_connectivity=args.enforce_connectivity,enforce_connectivity_steps=args.enforce_connectivity_steps)
 
 print output
 

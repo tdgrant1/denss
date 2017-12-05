@@ -94,7 +94,7 @@ def write_xplor(rho,side,filename="map.xplor"):
     f.write("  %.4E  %.4E" % (np.average(rho), np.std(rho)))
     f.close()
 
-def denss(q,I,sigq,D,ne=None,voxel=5.,oversampling=3.,limit_dmax=False,dmax_start_step=500,recenter=True,recenter_maxstep=None,positivity=True,extrapolate=True,write=True,filename="map",steps=3000,seed=None,shrinkwrap=True,shrinkwrap_sigma_start=3,shrinkwrap_sigma_end=1.5,shrinkwrap_sigma_decay=0.99,shrinkwrap_threshold_fraction=0.2,shrinkwrap_iter=20,shrinkwrap_minstep=100,chi_end_fraction=0.01,write_freq=100,enforce_connectivity=True,enforce_connectivity_steps=[500]):
+def denss(q,I,sigq,D,ne=None,voxel=5.,oversampling=3.,limit_dmax=False,dmax_start_step=500,recenter=True,recenter_steps=None,positivity=True,extrapolate=True,write=True,filename="map",steps=3000,seed=None,shrinkwrap=True,shrinkwrap_sigma_start=3,shrinkwrap_sigma_end=1.5,shrinkwrap_sigma_decay=0.99,shrinkwrap_threshold_fraction=0.2,shrinkwrap_iter=20,shrinkwrap_minstep=100,chi_end_fraction=0.01,write_freq=100,enforce_connectivity=True,enforce_connectivity_steps=[500]):
     """Calculate electron density from scattering data."""
     side = oversampling*D
     halfside = side/2
@@ -175,7 +175,7 @@ def denss(q,I,sigq,D,ne=None,voxel=5.,oversampling=3.,limit_dmax=False,dmax_star
         Imean[j] = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
         if j==0:
             np.savetxt(filename+'_step0_saxs.dat',np.vstack((qbinsc,Imean[j],Imean[j]*.05)).T,delimiter=" ",fmt="%.5e")
-            write_xplor(rho,side,filename+"_original.xplor")
+            #write_xplor(rho,side,filename+"_original.xplor")
         #scale Fs to match data
         factors = np.ones((len(qbins)))
         factors[qbin_args] = np.sqrt(Idata/Imean[j,qbin_args])
@@ -198,12 +198,13 @@ def denss(q,I,sigq,D,ne=None,voxel=5.,oversampling=3.,limit_dmax=False,dmax_star
             if np.sum(newrho) != 0:
                 newrho *= netmp / np.sum(newrho)
         #update support using shrinkwrap method
-        if j%shrinkwrap_iter==0:
-            if recenter:
-                if recenter_maxstep is None:
-                    newrho = center_rho(newrho)
-                elif j <= recenter_maxstep:
-                    newrho = center_rho(newrho,centering="max")
+        if recenter and j in recenter_steps:
+            rhocom = np.array(ndimage.measurements.center_of_mass(newrho))
+            gridcenter = np.array(rho.shape)/2.
+            shift = gridcenter-rhocom
+            shift = shift.astype(int)
+            newrho = np.roll(np.roll(np.roll(newrho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
+            support = np.roll(np.roll(np.roll(support, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
         if shrinkwrap and j >= shrinkwrap_minstep and j%shrinkwrap_iter==0:
             rho_blurred = ndimage.filters.gaussian_filter(newrho,sigma=sigma,mode='wrap')
             support = np.zeros(rho.shape,dtype=bool)
@@ -248,9 +249,7 @@ def denss(q,I,sigq,D,ne=None,voxel=5.,oversampling=3.,limit_dmax=False,dmax_star
     F *= factors[qbin_labels]
     rho = np.fft.ifftn(F,rho.shape)
     rho = rho.real
-    #recenter rho
-    write_xplor(rho,side,filename+"_precentered.xplor")
-    rho = center_rho(rho)
+    
     if ne is not None:
         rho *= ne / np.sum(rho)
 
