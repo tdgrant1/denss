@@ -33,7 +33,6 @@ import json
 import struct
 import numpy as np
 from scipy import ndimage
-import struct
 
 def chi2(exp, calc, sig):
     """Return the chi2 discrepancy between experimental and calculated data"""
@@ -576,7 +575,6 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
 
     if write:
         write_xplor(rho,side,filename+".xplor")
-        write_mrc(rho,side,filename+".mrc")
         write_xplor(np.ones_like(rho)*support,side,filename+"_support.xplor")
         write_mrc(rho,side,filename+".mrc")
         write_mrc(np.ones_like(rho)*support,side,filename+"_support.mrc")

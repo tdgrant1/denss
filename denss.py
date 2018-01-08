@@ -32,13 +32,16 @@ import imp
 try:
     imp.find_module('matplotlib')
     matplotlib_found = True
+    import matplotlib.pyplot as plt
+    from  matplotlib.colors import colorConverter as cc
+    import matplotlib.gridspec as gridspec
 except ImportError:
     matplotlib_found = False
 
 print saxs.__file__
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-f", "--file", type=str, help="SAXS data file")
+parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
 parser.add_argument("-d", "--dmax", default=None, type=float, help="Estimated maximum dimension")
 parser.add_argument("-v", "--voxel", default=None, type=float, help="Set desired voxel size, setting resolution of map")
 parser.add_argument("-os","--oversampling", default=3., type=float, help="Sampling ratio")
@@ -90,7 +93,8 @@ if args.output is None:
 else:
     output = args.output
 
-logging.basicConfig(filename=output+'.log',level=logging.INFO,filemode='w',format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
+logging.basicConfig(filename=output+'.log',level=logging.INFO,filemode='w',
+    format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
 logging.info('BEGIN')
 logging.info('Data filename: %s', args.file)
 logging.info('Output prefix: %s', output)
@@ -110,10 +114,10 @@ elif args.voxel is None and args.nsamples is not None:
 else:
     voxel = args.voxel
 
-if type(args.enforce_connectivity_steps) is not list:
+if not isinstance(args.enforce_connectivity_steps, list):
     args.enforce_connectivity_steps = [ args.enforce_connectivity_steps ]
 
-if type(args.recenter_steps) is not list:
+if not isinstance(args.recenter_steps, list):
     if args.recenter_steps is None:
         args.recenter_steps = [501, 601, 701, 801, 901, 1001]
     else:
@@ -140,7 +144,20 @@ logging.info('Enforce connectivity: %s', args.enforce_connectivity)
 logging.info('Enforce connectivity steps: %s', args.enforce_connectivity_steps)
 logging.info('Chi2 end fraction: %3.3e', args.chi_end_fraction)
 
-qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV = saxs.denss(q=q,I=I,sigq=sigq,D=dmax,ne=args.ne,voxel=voxel,oversampling=args.oversampling,limit_dmax=args.limit_dmax,dmax_start_step=args.dmax_start_step,recenter=args.recenter,recenter_steps=args.recenter_steps,positivity=args.positivity,extrapolate=args.extrapolate,write=True,filename=output,steps=args.steps,seed=args.seed,shrinkwrap=args.shrinkwrap,shrinkwrap_sigma_start=args.shrinkwrap_sigma_start,shrinkwrap_sigma_end=args.shrinkwrap_sigma_end,shrinkwrap_sigma_decay=args.shrinkwrap_sigma_decay,shrinkwrap_threshold_fraction=args.shrinkwrap_threshold_fraction,shrinkwrap_iter=args.shrinkwrap_iter,shrinkwrap_minstep=args.shrinkwrap_minstep,chi_end_fraction=args.chi_end_fraction,write_freq=args.write_freq,enforce_connectivity=args.enforce_connectivity,enforce_connectivity_steps=args.enforce_connectivity_steps)
+qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV = saxs.denss(q=q,I=I,
+    sigq=sigq,D=dmax,ne=args.ne,voxel=voxel,oversampling=args.oversampling,
+    limit_dmax=args.limit_dmax,dmax_start_step=args.dmax_start_step,
+    recenter=args.recenter,recenter_steps=args.recenter_steps,
+    positivity=args.positivity,extrapolate=args.extrapolate,write=True,
+    filename=output,steps=args.steps,seed=args.seed,shrinkwrap=args.shrinkwrap,
+    shrinkwrap_sigma_start=args.shrinkwrap_sigma_start,
+    shrinkwrap_sigma_end=args.shrinkwrap_sigma_end,
+    shrinkwrap_sigma_decay=args.shrinkwrap_sigma_decay,
+    shrinkwrap_threshold_fraction=args.shrinkwrap_threshold_fraction,
+    shrinkwrap_iter=args.shrinkwrap_iter,shrinkwrap_minstep=args.shrinkwrap_minstep,
+    chi_end_fraction=args.chi_end_fraction,write_freq=args.write_freq,
+    enforce_connectivity=args.enforce_connectivity,
+    enforce_connectivity_steps=args.enforce_connectivity_steps)
 
 print output
 
@@ -153,11 +170,7 @@ fit[:len(Imean),4] = Imean
 np.savetxt(output+'_map.fit',fit,delimiter=' ',fmt='%.5e', header='q(data),I(data),error(data),q(density),I(density)')
 np.savetxt(output+'_stats_by_step.dat',np.vstack((chis, rg, supportV)).T,delimiter=" ",fmt="%.5e",header='Chi2 Rg SupportVolume')
 
-if args.plot:
-    import matplotlib.pyplot as plt
-    from  matplotlib.colors import colorConverter as cc
-    import matplotlib.gridspec as gridspec
-
+if args.plot and matplotlib_found:
     f = plt.figure(figsize=[6,6])
     gs = gridspec.GridSpec(2, 1, height_ratios=[3,1])
 
