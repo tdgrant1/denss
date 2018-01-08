@@ -110,9 +110,9 @@ Additional advanced options are:
 ```
   --seed SEED           Random seed to initialize the map
   --limit_dmax_on       Limit electron density to sphere of radius 0.6*Dmax
-                        from center of object. (default)
+                        from center of object. 
   --limit_dmax_off      Do not limit electron density to sphere of radius
-                        0.6*Dmax from center of object.
+                        0.6*Dmax from center of object. (default)
   --dmax_start_step DMAX_START_STEP
                         Starting step for limiting density to sphere of Dmax
                         (default=500)

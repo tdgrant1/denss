@@ -13,6 +13,7 @@ while getopts hf:o:i:n:w opt; do
       echo " -i: input options for denss exactly as they would be given to denss, including"
       echo "     dashed options. Enclose everything in quotes. Dont include --file or --output."
       echo " -n: the number of reconstructions to run (default 20)"
+      echo " -c: the number of cores to use for parallel processing (default 4)"
       echo " -w: overwrite the existing folder (appends/increments folder index if not given)"
       echo " ----------------------------------------------------------------------------- "
       echo ""
@@ -30,6 +31,9 @@ while getopts hf:o:i:n:w opt; do
     n)
       n=$OPTARG
       ;;
+    c)
+      c=$OPTARG
+      ;;
     w)
       overwrite=True
       ;;
@@ -45,7 +49,9 @@ while getopts hf:o:i:n:w opt; do
 done
 
 id=$output
+if [ -z $n ]; then n=20 ; fi
 range=`eval echo {0..$((n-1))}`
+if [ -z $c ]; then c=4 ; fi
 dir=${output}
 newdir=$dir
 dirn=0
@@ -68,37 +74,11 @@ cd $newdir
 cp ../${file} .
 pwd
 
-parallel denss.py -f \{1} -o \{2}_{3} ${options} ::: ${file} ::: ${id} ::: ${range}
+parallel -j ${c} denss.py -f \{1} -o \{2}_{3} ${options} ::: ${file} ::: ${id} ::: ${range}
 
 for j in ${id}*[0-9].xplor; do map2map ${j} ${j%.*}.mrc <<< '2' ; done
 ngrid=`awk 'NR==5 {print $1-1}' ${id[i]}_0.xplor`
 e2buildstacks.py --stackname ${id}.hdf *.mrc
 e2proc3d.py ${id}.hdf ${id}_resized.hdf --clip ${ngrid}
-e2spt_classaverage.py --input ${id}_resized.hdf --parallel=thread:20 --saveali --savesteps --keep 3.0 --keepsig
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+e2spt_classaverage.py --input ${id}_resized.hdf --parallel=thread:${c} --saveali --savesteps --keep 3.0 --keepsig
 

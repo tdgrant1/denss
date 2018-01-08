@@ -33,6 +33,7 @@ import json
 import struct
 import numpy as np
 from scipy import ndimage
+import struct
 
 def chi2(exp, calc, sig):
     """Return the chi2 discrepancy between experimental and calculated data"""
@@ -266,6 +267,7 @@ def loadOutFile(filename):
                 found = q_rg_match.group().split()
                 q_rg = float(found[-1])
 
+
             if p_i0_match:
                 found = p_i0_match.group().split()
                 i0 = float(found[-3])
@@ -405,9 +407,8 @@ def loadProfile(fname):
 
     return q, I, Ierr, dmax, isout
 
-
 def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, dmax_start_step=500,
-        recenter=True, recenter_maxstep=None, positivity=True, extrapolate=True, write=True,
+        recenter=True, recenter_steps=None, positivity=True,extrapolate=True,write=True,
         filename="map", steps=3000, seed=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
         shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
         shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01, write_freq=100,
@@ -438,7 +439,7 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
     #only move the non-zero terms, since the zeroth term should be at q=0.
     qbinsc[1:] += qstep/2.
     #create an array labeling each voxel according to which qbin it belongs
-    qbin_labels = np.digitize(qr, qbins)
+    qbin_labels = np.searchsorted(qbins,qr,"right")
     qbin_labels -= 1
     #allow for any range of q data
     qdata = qbinsc[np.where( (qbinsc>=q.min()) & (qbinsc<=q.max()) )]
@@ -492,7 +493,7 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
         Imean[j] = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
         if j==0:
             np.savetxt(filename+'_step0_saxs.dat',np.vstack((qbinsc,Imean[j],Imean[j]*.05)).T,delimiter=" ",fmt="%.5e")
-            write_xplor(rho,side,filename+"_original.xplor")
+            #write_xplor(rho,side,filename+"_original.xplor")
         #scale Fs to match data
         factors = np.ones((len(qbins)))
         factors[qbin_args] = np.sqrt(Idata/Imean[j,qbin_args])
@@ -515,12 +516,13 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
             if np.sum(newrho) != 0:
                 newrho *= netmp / np.sum(newrho)
         #update support using shrinkwrap method
-        if j%shrinkwrap_iter==0:
-            if recenter:
-                if recenter_maxstep is None:
-                    newrho = center_rho(newrho)
-                elif j <= recenter_maxstep:
-                    newrho = center_rho(newrho,centering="max")
+        if recenter and j in recenter_steps:
+            rhocom = np.array(ndimage.measurements.center_of_mass(newrho))
+            gridcenter = np.array(rho.shape)/2.
+            shift = gridcenter-rhocom
+            shift = shift.astype(int)
+            newrho = np.roll(np.roll(np.roll(newrho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
+            support = np.roll(np.roll(np.roll(support, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
         if shrinkwrap and j >= shrinkwrap_minstep and j%shrinkwrap_iter==0:
             rho_blurred = ndimage.filters.gaussian_filter(newrho,sigma=sigma,mode='wrap')
             support = np.zeros(rho.shape,dtype=bool)
@@ -565,9 +567,7 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
     F *= factors[qbin_labels]
     rho = np.fft.ifftn(F,rho.shape)
     rho = rho.real
-    #recenter rho
-    write_xplor(rho,side,filename+"_precentered.xplor")
-    rho = center_rho(rho)
+
     if ne is not None:
         rho *= ne / np.sum(rho)
 
@@ -578,6 +578,8 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
         write_xplor(rho,side,filename+".xplor")
         write_mrc(rho,side,filename+".mrc")
         write_xplor(np.ones_like(rho)*support,side,filename+"_support.xplor")
+        write_mrc(rho,side,filename+".mrc")
+        write_mrc(np.ones_like(rho)*support,side,filename+"_support.mrc")
 
     logging.info('Number of steps: %i', j)
     logging.info('Final Chi2: %3.3f', chi[j+1])
