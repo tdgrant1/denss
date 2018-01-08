@@ -30,6 +30,7 @@ import datetime
 import re
 import os
 import json
+import struct
 import numpy as np
 from scipy import ndimage
 
@@ -72,6 +73,57 @@ def rho2rg(rho,side=None,r=None,support=None,dx=None):
     rg2 = rg2 - np.linalg.norm(rhocom)**2
     rg = np.sign(rg2)*np.abs(rg2)**0.5
     return rg
+
+def write_mrc(rho,side,filename="map.mrc"):
+    """Write an MRC formatted electron density map.
+       See here: http://www2.mrc-lmb.cam.ac.uk/research/locally-developed-software/image-processing-software/#image
+    """
+    xs, ys, zs = rho.shape
+    nxstart = -xs/2+1
+    nystart = -ys/2+1
+    nzstart = -zs/2+1
+    with open(filename, "wb") as fout:
+        # NC, NR, NS, MODE = 2 (image : 32-bit reals)
+        fout.write(struct.pack('<iiii', xs, ys, zs, 2))
+        # NCSTART, NRSTART, NSSTART
+        fout.write(struct.pack('<iii', nxstart, nystart, nzstart))
+        # MX, MY, MZ
+        fout.write(struct.pack('<iii', xs, ys, zs))
+        # X length, Y, length, Z length
+        fout.write(struct.pack('<fff', side, side, side))
+        # Alpha, Beta, Gamma
+        fout.write(struct.pack('<fff', 90.0, 90.0, 90.0))
+        # MAPC, MAPR, MAPS
+        fout.write(struct.pack('<iii', 1, 2, 3))
+        # DMIN, DMAX, DMEAN
+        fout.write(struct.pack('<fff', np.min(rho), np.max(rho), np.average(rho)))
+        # ISPG, NSYMBT, LSKFLG
+        fout.write(struct.pack('<iii', 1, 0, 0))
+        # EXTRA
+        fout.write(struct.pack('<'+'f'*12, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0))
+        for i in range(0, 12):
+            fout.write(struct.pack('<f', 0.0))
+
+        # XORIGIN, YORIGIN, ZORIGIN
+        fout.write(struct.pack('<fff', nxstart*(side/xs), nystart*(side/ys), nzstart*(side/zs)))
+        # MAP
+        fout.write('MAP ')
+        # MACHST (little endian)
+        fout.write(struct.pack('<BBBB', 0x44, 0x41, 0x00, 0x00))
+        # RMS (std)
+        fout.write(struct.pack('<f', np.std(rho)))
+        # NLABL
+        fout.write(struct.pack('<i', 0))
+        # LABEL(20,10) 10 80-character text labels
+        for i in xrange(0, 800):
+            fout.write(struct.pack('<B', 0x00))
+
+        # Write out data
+        for k in range(zs):
+            for j in range(ys):
+                for i in range(xs):
+                    s = struct.pack('<f', rho[i,j,k])
+                    fout.write(s)
 
 def write_xplor(rho,side,filename="map.xplor"):
     """Write an XPLOR formatted electron density map."""
@@ -524,6 +576,7 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
 
     if write:
         write_xplor(rho,side,filename+".xplor")
+        write_mrc(rho,side,filename+".mrc")
         write_xplor(np.ones_like(rho)*support,side,filename+"_support.xplor")
 
     logging.info('Number of steps: %i', j)
