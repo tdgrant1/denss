@@ -55,7 +55,8 @@ shell.
 
 ## Input files
 DENSS primarily accepts [GNOM](https://www.embl-hamburg.de/biosaxs/gnom.html)
-.out files created by [ATSAS](https://www.embl-hamburg.de/biosaxs/software.html).
+.out files created by [ATSAS](https://www.embl-hamburg.de/biosaxs/software.html)
+(credit for .out parsing - Jesse Hopkins).
 DENSS uses the smoothed curve fit to the experimental data and extrapolated to
 q = 0, i.e. I(0). You can also use any other smooth and  extrapolated curve,
 such as the output from FoXS or CRYSOL, as long as it is supplied in a three
@@ -100,7 +101,7 @@ Additional options you may want to set are:
                         Number of samples, i.e. grid points, along a single
                         dimension. (sets voxel size, overridden
                         by --voxel)
-  --ne NE               Number of electrons in object
+  --ne NE               Number of electrons in object (for scaling final density map)
   -s STEPS, --steps STEPS
                         Maximum number of steps (iterations)
   -o OUTPUT, --output OUTPUT
@@ -120,9 +121,9 @@ Additional advanced options are:
                         (default)
   --recenter_off        Do not recenter electron density when updating
                         support.
-  --recenter_maxstep RECENTER_MAXSTEP
-                        Maximum step to recenter electron density.
-                        (default=1000)
+  --recenter_steps RECENTER_STEPS
+                        List of steps to recenter electron density.
+                        (default=range(501,1001,100))
   --positivity_on       Enforce positivity restraint inside support. (default)
   --positivity_off      Do not enforce positivity restraint inside support.
   --extrapolate_on      Extrapolate data by Porod law to high resolution limit
@@ -132,19 +133,19 @@ Additional advanced options are:
   --shrinkwrap_on       Turn shrinkwrap on (default)
   --shrinkwrap_off      Turn shrinkwrap off
   --shrinkwrap_sigma_start SHRINKWRAP_SIGMA_START
-                        Starting sigma for Gaussian blurring, in voxels
+                        Starting sigma for Gaussian blurring, in voxels (default 3.0)
   --shrinkwrap_sigma_end SHRINKWRAP_SIGMA_END
-                        Ending sigma for Gaussian blurring, in voxels
+                        Ending sigma for Gaussian blurring, in voxels  (default 1.5)
   --shrinkwrap_sigma_decay SHRINKWRAP_SIGMA_DECAY
-                        Rate of decay of sigma, fraction
+                        Rate of decay of sigma, fraction (default 0.99)
   --shrinkwrap_threshold_fraction SHRINKWRAP_THRESHOLD_FRACTION
                         Minimum threshold defining support, in fraction of
-                        maximum density
+                        maximum density (default 0.20)
   --shrinkwrap_iter SHRINKWRAP_ITER
                         Number of iterations between updating support with
-                        shrinkwrap
+                        shrinkwrap (default 20)
   --shrinkwrap_minstep SHRINKWRAP_MINSTEP
-                        First step to begin shrinkwrap
+                        First step to begin shrinkwrap (default 0)
   --enforce_connectivity_on
                         Enforce connectivity of support, i.e. remove extra
                         blobs (default)
@@ -156,9 +157,9 @@ Additional advanced options are:
   --chi_end_fraction CHI_END_FRACTION
                         Convergence criterion. Minimum threshold of chi2 std
                         dev, as a fraction of the median chi2 of last 100
-                        steps.
+                        steps. (default 0.001)
   --write_freq WRITE_FREQ
-                        How often to write out current density map (in steps).
+                        How often to write out current density map (in steps, default 100).
   --plot_on             Create simple plots of results (requires Matplotlib,
                         default if module exists).
   --plot_off            Do not create simple plots of results. (Default if
@@ -170,15 +171,15 @@ As the program runs, the current status will be printed to the screen like so:
 ```
 Step  Chi2      Rg      Support Volume
 ----- --------- ------- --------------
- 2259  1.31e+00  20.34        62196
+ 2259  1.31e+00  14.34        42135
 ```
 Where `Step` represents the number of iterations so far, `Chi2` is the fit of
 the calculated scattering of the map to the experimental data, `Rg` is the
 radius of gyration calculated directly from the electron density map, and
 `Support Volume` is the volume of the support region.
 
-Electron density maps are written in Xplor ASCII text format. These files can
-be opened directly in some visualization programs such as
+Electron density maps are written in Xplor ASCII text format and CCP4/MRC format (credit 
+Andrew Bruno). These files can be opened directly in some visualization programs such as
 [Chimera](http://www.rbvi.ucsf.edu/chimera/) and [PyMOL](https://www.pymol.org).
 In particular, the PyMOL "volume" function is well suited for displaying these
 maps with density information displayed as varying color and opacity.
@@ -186,8 +187,10 @@ Maps can be converted to other formats using tools such as the Situs map2map too
 
 Output files include:
 ```
-output.xplor               electron density map
+output.xplor               electron density map (XPLOR format)
+output.mrc                 electron density map (MRC format)
 output_support.xplor       final support volume formatted as unitary electron density map
+output_support.mrc         final support volume formatted as unitary electron density map
 output_stats_by_step.dat   statistics as a function of step number.
                            three columns: chi^2, Rg, support volume
 output_map.fit             The fit of the calculated scattering profile to the
