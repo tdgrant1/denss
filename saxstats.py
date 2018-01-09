@@ -410,7 +410,7 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
         recenter=True, recenter_steps=None, positivity=True,extrapolate=True,write=True,
         filename="map", steps=3000, seed=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
         shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
-        shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01, write_freq=100,
+        shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01, write_xplor_format=False, write_freq=100,
         enforce_connectivity=True, enforce_connectivity_steps=[500]):
     """Calculate electron density from scattering data."""
     side = oversampling*D
@@ -502,7 +502,9 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
         rhoprime = np.fft.ifftn(F,rho.shape)
         rhoprime = rhoprime.real
         if j%write_freq == 0:
-            write_xplor(rhoprime,side,filename+"_current.xplor")
+            if write_xplor_format:
+                write_xplor(rhoprime,side,filename+"_current.xplor")
+            write_mrc(rhoprime,side,filename+"_current.mrc")
         rg[j] = rho2rg(rhoprime,r=r,support=support,dx=dx)
         newrho = np.zeros_like(rho)
         #Error Reduction
@@ -574,8 +576,9 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
     supportV[j+1] = supportV[j]
 
     if write:
-        write_xplor(rho,side,filename+".xplor")
-        write_xplor(np.ones_like(rho)*support,side,filename+"_support.xplor")
+        if write_xplor_format:
+            write_xplor(rho,side,filename+".xplor")
+            write_xplor(np.ones_like(rho)*support,side,filename+"_support.xplor")
         write_mrc(rho,side,filename+".mrc")
         write_mrc(np.ones_like(rho)*support,side,filename+"_support.mrc")
 

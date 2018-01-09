@@ -72,6 +72,7 @@ parser.add_argument("--enforce_connectivity_on", dest="enforce_connectivity", ac
 parser.add_argument("--enforce_connectivity_off", dest="enforce_connectivity", action="store_false", help="Do not enforce connectivity of support")
 parser.add_argument("--enforce_connectivity_steps", default=500, type=int, nargs='+', help="List of steps to enforce connectivity (Default=500, see enforce_connectivity)")
 parser.add_argument("--chi_end_fraction", default=0.001, type=float, help="Convergence criterion. Minimum threshold of chi2 std dev, as a fraction of the median chi2 of last 100 steps.")
+parser.add_argument("--write_xplor", default=False, action="store_true", help="Write out XPLOR map format (default only write MRC format).")
 parser.add_argument("--write_freq", default=100, type=int, help="How often to write out current density map (in steps).")
 parser.add_argument("--plot_on", dest="plot", action="store_true", help="Create simple plots of results (requires Matplotlib, default if module exists).")
 parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not create simple plots of results. (Default if Matplotlib does not exist)")
@@ -155,7 +156,7 @@ qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV = saxs.denss(q=q,I=I,
     shrinkwrap_sigma_decay=args.shrinkwrap_sigma_decay,
     shrinkwrap_threshold_fraction=args.shrinkwrap_threshold_fraction,
     shrinkwrap_iter=args.shrinkwrap_iter,shrinkwrap_minstep=args.shrinkwrap_minstep,
-    chi_end_fraction=args.chi_end_fraction,write_freq=args.write_freq,
+    chi_end_fraction=args.chi_end_fraction,write_xplor_format=args.write_xplor,write_freq=args.write_freq,
     enforce_connectivity=args.enforce_connectivity,
     enforce_connectivity_steps=args.enforce_connectivity_steps)
 
