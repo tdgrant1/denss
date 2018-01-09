@@ -94,9 +94,9 @@ denss.py -f 6lyz.dat -d 50.0
 Additional options you may want to set are:
 ```
   -v VOXEL, --voxel VOXEL
-                        Set desired voxel size, setting resolution of map
-  --oversampling OVERSAMPLING
-                        Sampling ratio
+                        Set desired voxel size, setting resolution of map (default 5.0 angstroms)
+  -os, --oversampling OVERSAMPLING
+                        Sampling ratio (default 3.0)
   -n NSAMPLES, --nsamples NSAMPLES
                         Number of samples, i.e. grid points, along a single
                         dimension. (sets voxel size, overridden
@@ -105,7 +105,7 @@ Additional options you may want to set are:
   -s STEPS, --steps STEPS
                         Maximum number of steps (iterations)
   -o OUTPUT, --output OUTPUT
-                        Output map filename
+                        Output map filename (default basename of input file)
 ```
 Additional advanced options are:
 ```
