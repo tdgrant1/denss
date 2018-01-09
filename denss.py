@@ -32,14 +32,17 @@ import imp
 try:
     imp.find_module('matplotlib')
     matplotlib_found = True
+    import matplotlib.pyplot as plt
+    from  matplotlib.colors import colorConverter as cc
+    import matplotlib.gridspec as gridspec
 except ImportError:
     matplotlib_found = False
 
 print saxs.__file__
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-f", "--file", type=str, help="SAXS data file")
-parser.add_argument("-d", "--dmax", default=100., type=float, help="Estimated maximum dimension")
+parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
+parser.add_argument("-d", "--dmax", default=None, type=float, help="Estimated maximum dimension")
 parser.add_argument("-v", "--voxel", default=None, type=float, help="Set desired voxel size, setting resolution of map")
 parser.add_argument("-os","--oversampling", default=3., type=float, help="Sampling ratio")
 parser.add_argument("-n", "--nsamples", default=None, type=int, help="Number of samples, i.e. grid points, along a single dimension. (Default = 31, sets voxel size, overridden by --voxel)")
@@ -84,37 +87,37 @@ else:
     parser.set_defaults(plot=False)
 args = parser.parse_args()
 
-file = args.file
-
-D = args.dmax
-
 if args.output is None:
     basename, ext = os.path.splitext(args.file)
     output = basename
 else:
     output = args.output
 
-logging.basicConfig(filename=output+'.log',level=logging.INFO,filemode='w',format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
+logging.basicConfig(filename=output+'.log',level=logging.INFO,filemode='w',
+    format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
 logging.info('BEGIN')
 logging.info('Data filename: %s', args.file)
 logging.info('Output prefix: %s', output)
 
-Iq = np.loadtxt(args.file)
-q = Iq[:,0]
-I = Iq[:,1]
-sigq = Iq[:,2]
+
+q, I, sigq, dmax, isout = saxs.loadProfile(args.file)
+
+if args.dmax is not None:
+    dmax = args.dmax
+elif dmax<=0:
+    dmax = 100
 
 if args.voxel is None and args.nsamples is None:
     voxel = 5.
 elif args.voxel is None and args.nsamples is not None:
-    voxel = D * args.oversampling / args.nsamples
+    voxel = dmax * args.oversampling / args.nsamples
 else:
     voxel = args.voxel
 
-if type(args.enforce_connectivity_steps) is not list:
+if not isinstance(args.enforce_connectivity_steps, list):
     args.enforce_connectivity_steps = [ args.enforce_connectivity_steps ]
 
-if type(args.recenter_steps) is not list:
+if not isinstance(args.recenter_steps, list):
     if args.recenter_steps is None:
         args.recenter_steps = [501, 601, 701, 801, 901, 1001]
     else:
@@ -122,7 +125,7 @@ if type(args.recenter_steps) is not list:
 
 logging.info('Maximum number of steps: %i', args.steps)
 logging.info('q range of input data: %3.3f < q < %3.3f', q.min(), q.max())
-logging.info('Maximum dimension: %3.3f', D)
+logging.info('Maximum dimension: %3.3f', dmax)
 logging.info('Sampling ratio: %3.3f', args.oversampling)
 logging.info('Requested real space voxel size: %3.3f', voxel)
 logging.info('Number of electrons: %3.3f', args.ne)
@@ -141,7 +144,20 @@ logging.info('Enforce connectivity: %s', args.enforce_connectivity)
 logging.info('Enforce connectivity steps: %s', args.enforce_connectivity_steps)
 logging.info('Chi2 end fraction: %3.3e', args.chi_end_fraction)
 
-qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV = saxs.denss(q=q,I=I,sigq=sigq,D=D,ne=args.ne,voxel=voxel,oversampling=args.oversampling,limit_dmax=args.limit_dmax,dmax_start_step=args.dmax_start_step,recenter=args.recenter,recenter_steps=args.recenter_steps,positivity=args.positivity,extrapolate=args.extrapolate,write=True,filename=output,steps=args.steps,seed=args.seed,shrinkwrap=args.shrinkwrap,shrinkwrap_sigma_start=args.shrinkwrap_sigma_start,shrinkwrap_sigma_end=args.shrinkwrap_sigma_end,shrinkwrap_sigma_decay=args.shrinkwrap_sigma_decay,shrinkwrap_threshold_fraction=args.shrinkwrap_threshold_fraction,shrinkwrap_iter=args.shrinkwrap_iter,shrinkwrap_minstep=args.shrinkwrap_minstep,chi_end_fraction=args.chi_end_fraction,write_freq=args.write_freq,enforce_connectivity=args.enforce_connectivity,enforce_connectivity_steps=args.enforce_connectivity_steps)
+qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV = saxs.denss(q=q,I=I,
+    sigq=sigq,D=dmax,ne=args.ne,voxel=voxel,oversampling=args.oversampling,
+    limit_dmax=args.limit_dmax,dmax_start_step=args.dmax_start_step,
+    recenter=args.recenter,recenter_steps=args.recenter_steps,
+    positivity=args.positivity,extrapolate=args.extrapolate,write=True,
+    filename=output,steps=args.steps,seed=args.seed,shrinkwrap=args.shrinkwrap,
+    shrinkwrap_sigma_start=args.shrinkwrap_sigma_start,
+    shrinkwrap_sigma_end=args.shrinkwrap_sigma_end,
+    shrinkwrap_sigma_decay=args.shrinkwrap_sigma_decay,
+    shrinkwrap_threshold_fraction=args.shrinkwrap_threshold_fraction,
+    shrinkwrap_iter=args.shrinkwrap_iter,shrinkwrap_minstep=args.shrinkwrap_minstep,
+    chi_end_fraction=args.chi_end_fraction,write_freq=args.write_freq,
+    enforce_connectivity=args.enforce_connectivity,
+    enforce_connectivity_steps=args.enforce_connectivity_steps)
 
 print output
 
@@ -154,14 +170,10 @@ fit[:len(Imean),4] = Imean
 np.savetxt(output+'_map.fit',fit,delimiter=' ',fmt='%.5e', header='q(data),I(data),error(data),q(density),I(density)')
 np.savetxt(output+'_stats_by_step.dat',np.vstack((chis, rg, supportV)).T,delimiter=" ",fmt="%.5e",header='Chi2 Rg SupportVolume')
 
-if args.plot:
-    import matplotlib.pyplot as plt
-    from  matplotlib.colors import colorConverter as cc
-    import matplotlib.gridspec as gridspec
-
+if args.plot and matplotlib_found:
     f = plt.figure(figsize=[6,6])
     gs = gridspec.GridSpec(2, 1, height_ratios=[3,1])
-    
+
     ax0 = plt.subplot(gs[0])
     #handle sigq values whose error bounds would go negative and be missing on the log scale
     sigq2 = np.copy(sigq)
@@ -178,7 +190,7 @@ if args.plot:
     ax0.legend(handles,labels)
     ax0.semilogy()
     ax0.set_ylabel('log I(q)')
-    
+
     ax1 = plt.subplot(gs[1])
     ax1.plot(qdata, qdata*0, 'k--')
     ax1.plot(qdata, np.log10(Imean)-np.log10(Idata), 'ro-')
