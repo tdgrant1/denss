@@ -103,7 +103,7 @@ Additional options you may want to set are:
                         by --voxel)
   --ne NE               Number of electrons in object (for scaling final density map)
   -s STEPS, --steps STEPS
-                        Maximum number of steps (iterations)
+                        Maximum number of steps (iterations, default 3000)
   -o OUTPUT, --output OUTPUT
                         Output map filename (default basename of input file)
 ```
