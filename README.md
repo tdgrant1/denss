@@ -187,9 +187,7 @@ Maps can be converted to other formats using tools such as the Situs map2map too
 
 Output files include:
 ```
-output.xplor               electron density map (XPLOR format)
 output.mrc                 electron density map (MRC format)
-output_support.xplor       final support volume formatted as unitary electron density map
 output_support.mrc         final support volume formatted as unitary electron density map
 output_stats_by_step.dat   statistics as a function of step number.
                            three columns: chi^2, Rg, support volume
@@ -219,6 +217,7 @@ To calculate multiple reconstructions easily, you can use a for loop. E.g. in ba
 for i in {0..19}; do denss.py -f 6lyz.dat -d 50.0 -o lysozyme_${i} ; done
 ```
 This will calculate 20 reconstructions with the output files numbered.
+The following step is only necessary if you choose to work with XPLOR maps.
 EMAN2 is supposed to work with .xplor files, but I haven't had success.
 So first convert the .xplor files to .mrc files (MRC/CCP4 formats are similar).
 This can be done by opening the maps in Chimera, and clicking Save Map As... in
