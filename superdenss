@@ -76,10 +76,6 @@ pwd
 
 parallel -j ${j} denss.py -f \{1} -o \{2}_{3} ${options} ::: ${file} ::: ${id} ::: ${range}
 
-#for j in ${id}*[0-9].xplor; do map2map ${j} ${j%.*}.mrc <<< '2' ; done
-#ngrid=`awk 'NR==5 {print $1-1}' ${id[i]}_0.xplor`
-ngrid=`grep "Grid size" ${id[i]}_0.log | awk '{print $NF-1}'`
 e2buildstacks.py --stackname ${id}.hdf ${id}*[0-9].mrc
-e2proc3d.py ${id}.hdf ${id}_resized.hdf --clip ${ngrid}
-e2spt_classaverage.py --input ${id}_resized.hdf --parallel=thread:${j} --saveali --savesteps --keep 3.0 --keepsig
+e2spt_classaverage.py --input ${id}.hdf --parallel=thread:${j} --saveali --savesteps --keep 3.0 --keepsig
 

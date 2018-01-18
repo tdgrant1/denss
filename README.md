@@ -64,7 +64,8 @@ column ASCII text file with columns q, I, error where q is given as 4 pi sin(the
 in angstroms, I is scattering intensity, and error is the error on the intensity.
 
 `lysozyme.out` is a GNOM .out file from real lysozyme data. `6lyz.dat` is a
-simulated scattering profile from lysozyme PDB 6LYZ using FoXS. Either file can
+simulated scattering profile from lysozyme PDB 6LYZ using FoXS. `6lyz.out` is
+a GNOM .out file created from the `6lyz.dat` data file. Any of these files can
 be used as input to DENSS for testing.
 
 ## Usage
@@ -158,6 +159,7 @@ Additional advanced options are:
                         Convergence criterion. Minimum threshold of chi2 std
                         dev, as a fraction of the median chi2 of last 100
                         steps. (default 0.001)
+  --write_xplor         Write out XPLOR map format (default only write MRC format).
   --write_freq WRITE_FREQ
                         How often to write out current density map (in steps, default 100).
   --plot_on             Create simple plots of results (requires Matplotlib,
@@ -178,8 +180,9 @@ the calculated scattering of the map to the experimental data, `Rg` is the
 radius of gyration calculated directly from the electron density map, and
 `Support Volume` is the volume of the support region.
 
-Electron density maps are written in Xplor ASCII text format and CCP4/MRC format (credit 
-Andrew Bruno). These files can be opened directly in some visualization programs such as
+Electron density maps are written in CCP4/MRC format (credit Andrew Bruno) and
+optionally as Xplor ASCII text format (with the --write_xplor option enabled). 
+These files can be opened directly in some visualization programs such as
 [Chimera](http://www.rbvi.ucsf.edu/chimera/) and [PyMOL](https://www.pymol.org).
 In particular, the PyMOL "volume" function is well suited for displaying these
 maps with density information displayed as varying color and opacity.
@@ -217,6 +220,7 @@ To calculate multiple reconstructions easily, you can use a for loop. E.g. in ba
 for i in {0..19}; do denss.py -f 6lyz.dat -d 50.0 -o lysozyme_${i} ; done
 ```
 This will calculate 20 reconstructions with the output files numbered.
+
 The following step is only necessary if you choose to work with XPLOR maps.
 EMAN2 is supposed to work with .xplor files, but I haven't had success.
 So first convert the .xplor files to .mrc files (MRC/CCP4 formats are similar).
@@ -226,30 +230,22 @@ one step using the map2map tool:
 ```
 for i in lysozyme_*[0-9].xplor ; do map2map $i ${i%.*}.mrc <<< '2' ; done
 ```
+
 Now we can combine the 20 maps into one 3D "stack" in EMAN2 format (.hdf).
 ```
 e2buildstacks.py --stackname lysozyme_stack.hdf lysozyme_*[0-9].mrc
-```
-EMAN2 likes even numbers of samples in maps, whereas denss.py uses odd numbers,
-so first we have to alter the maps by one sample in EMAN2. Look in your .log file
-output from denss.py, or look at the header of your .xplor file, to find the
-"Grid size", i.e. the number of voxels in each dimension. This should be an
-odd number calculated by denss.py. Subtract one from this number. So if the Grid
-size is 31 x 31 x 31, then we want n=30. Use EMAN2 on our new .hdf file to convert:
-```
-e2proc3d.py lysozyme_stack.hdf lysozyme_stack_resized.hdf --clip 30
 ```
 Now that we have our correctly formatted stack, we can run the alignment
 and averaging. The e2spt_classaverage.py script does this all quite well
 using default parameters. It will even output a gold standard Fourier
 Shell Correlation curve, from which we can estimate resolution. Typing:
 ```
-e2spt_classaverage.py --input lysozyme_stack_resized.hdf
+e2spt_classaverage.py --input lysozyme_stack.hdf
 ```
 will run everything for you. If you have multiple cores on your computer,
 you can speed things up with:
 ```
-e2spt_classaverage.py --input lysozyme_stack_resized.hdf --parallel=thread:n
+e2spt_classaverage.py --input lysozyme_stack.hdf --parallel=thread:n
 ```
 where n is the number of cores to use. Additionally, one can add the --keep and
 --keepsig flags to filter out outlier volumes based on standard deviations of the
@@ -257,7 +253,7 @@ correlations.  The output will be in a folder named something like spt_01.
 The averaged density will be named something like final_avg.hdf.
 Fortunately, Chimera can open .hdf files by default. Then, if you would like to
 view it in PyMOL you can save it as an MRC formatted map in Chimera or convert
-it to MRC using the Situs map2map tool.
+it to MRC using the Situs map2map tool or using the EMAN2 e2proc3d.py program.
 
 Resolution can be estimated from the FSC curve also written to the spt_01
 directory as fsc_0.txt. Plot this in your favorite plotting program to
@@ -265,7 +261,7 @@ view. Take the reciprocal of the x axis position where FSC falls below 0.5,
 and that is your estimated resolution.
 
 A bash script is provided called `superdenss` that runs this pipeline automatically
-in parallel assuming EMAN2, Situs and gnu parallel are all installed. The script is
+in parallel assuming EMAN2 and gnu parallel are all installed. The script is
 a little awkward to use to pass the arguments correctly. To run the above example type
 (note the quotes in the command line):
 ```

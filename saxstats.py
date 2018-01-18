@@ -416,8 +416,8 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
     side = oversampling*D
     halfside = side/2
     n = int(side/voxel)
-    #want odd n so that there exists an F[0,0,0] in the center that equals the number of electrons for easy scaling
-    if n%2==0: n += 1
+    #want n to be even for speed/memory optimization with the FFT, ideally a power of 2, but wont enforce that
+    if n%2==1: n += 1
     dx = side/n
     dV = dx**3
     V = side**3
@@ -435,8 +435,8 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
     qbins = np.linspace(0,nbins*qstep,nbins+1)
     #create modified qbins and put qbins in center of bin rather than at left edge of bin.
     qbinsc = np.copy(qbins)
-    #only move the non-zero terms, since the zeroth term should be at q=0.
-    qbinsc[1:] += qstep/2.
+    #updated with new code using even numbers of samples, so no more zeroth term
+    qbinsc += qstep/2.
     #create an array labeling each voxel according to which qbin it belongs
     qbin_labels = np.searchsorted(qbins,qr,"right")
     qbin_labels -= 1
@@ -490,9 +490,11 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
         #calculate spherical average of intensities from 3D Fs
         I3D = np.abs(F)**2
         Imean[j] = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
+        """
         if j==0:
             np.savetxt(filename+'_step0_saxs.dat',np.vstack((qbinsc,Imean[j],Imean[j]*.05)).T,delimiter=" ",fmt="%.5e")
             #write_xplor(rho,side,filename+"_original.xplor")
+        """
         #scale Fs to match data
         factors = np.ones((len(qbins)))
         factors[qbin_args] = np.sqrt(Idata/Imean[j,qbin_args])
@@ -583,7 +585,7 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
         write_mrc(np.ones_like(rho)*support,side,filename+"_support.mrc")
 
     logging.info('Number of steps: %i', j)
-    logging.info('Final Chi2: %3.3f', chi[j+1])
+    logging.info('Final Chi2: %.3e', chi[j+1])
     logging.info('Final Rg: %3.3f', rg[j+1])
     logging.info('Final Support Volume: %3.3f', supportV[j+1])
 
