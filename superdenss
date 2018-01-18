@@ -1,6 +1,6 @@
 #!/bin/bash
 
-while getopts hf:o:i:n:w opt; do
+while getopts hf:o:i:n:j:w opt; do
   case $opt in
     h)
       echo ""
