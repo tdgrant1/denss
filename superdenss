@@ -73,6 +73,7 @@ fi
 cd $newdir
 cp ../${file} .
 pwd
+echo "superdenss $@" > command
 
 parallel -j ${j} denss.py -f \{1} -o \{2}_{3} ${options} ::: ${file} ::: ${id} ::: ${range}
 

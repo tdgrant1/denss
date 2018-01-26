@@ -411,13 +411,15 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
         filename="map", steps=3000, seed=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
         shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
         shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01, write_xplor_format=False, write_freq=100,
-        enforce_connectivity=True, enforce_connectivity_steps=[500]):
+        enforce_connectivity=True, enforce_connectivity_steps=[500],cutout=True):
     """Calculate electron density from scattering data."""
     side = oversampling*D
     halfside = side/2
     n = int(side/voxel)
     #want n to be even for speed/memory optimization with the FFT, ideally a power of 2, but wont enforce that
     if n%2==1: n += 1
+    #store n for later use if needed
+    nbox = n
     dx = side/n
     dV = dx**3
     V = side**3
@@ -577,12 +579,33 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
     rg[j+1] = rho2rg(rho=rho,r=r,support=support,dx=dx)
     supportV[j+1] = supportV[j]
 
-    if write:
-        if write_xplor_format:
-            write_xplor(rho,side,filename+".xplor")
-            write_xplor(np.ones_like(rho)*support,side,filename+"_support.xplor")
-        write_mrc(rho,side,filename+".mrc")
-        write_mrc(np.ones_like(rho)*support,side,filename+"_support.mrc")
+    if cutout:
+        #here were going to cut rho out of the large real space box
+        #to the voxels that contain the particle
+        #use D to estimate particle size
+        #assume the particle is in the center of the box
+        #calculate how many voxels needed to contain particle of size D
+        #use bigger than D to make sure we don't crop actual particle in case its larger than expected
+        #EMAN2 manual suggests minimum of 1.5, so lets use that
+        nD = int(1.5*D/dx)+1
+        #make sure final box will still have even samples
+        if nD%2==1: nD += 1
+        min = nbox/2 - nD/2
+        max = nbox/2 + nD/2 + 2
+        #create new rho array containing only the particle
+        newrho = rho[min:max,min:max,min:max]
+        rho = newrho
+        #do the same for the support
+        newsupport = support[min:max,min:max,min:max]
+        support = newsupport
+        #update side to new size of box
+        side = dx * (max-min)
+
+    if write_xplor_format:
+        write_xplor(rho,side,filename+".xplor")
+        write_xplor(np.ones_like(rho)*support,side,filename+"_support.xplor")
+    write_mrc(rho,side,filename+".mrc")
+    write_mrc(np.ones_like(rho)*support,side,filename+"_support.mrc")
 
     logging.info('Number of steps: %i', j)
     logging.info('Final Chi2: %.3e', chi[j+1])

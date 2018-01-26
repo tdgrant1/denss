@@ -74,6 +74,8 @@ parser.add_argument("--enforce_connectivity_steps", default=500, type=int, nargs
 parser.add_argument("--chi_end_fraction", default=0.001, type=float, help="Convergence criterion. Minimum threshold of chi2 std dev, as a fraction of the median chi2 of last 100 steps.")
 parser.add_argument("--write_xplor", default=False, action="store_true", help="Write out XPLOR map format (default only write MRC format).")
 parser.add_argument("--write_freq", default=100, type=int, help="How often to write out current density map (in steps, default 100).")
+parser.add_argument("--cutout_on", dest="cutout", action="store_true", help="When writing final map, cut out the particle to make smaller files (default)")
+parser.add_argument("--cutout_off", dest="cutout", action="store_false", help="When writing final map, do not cut out the particle to make smaller files")
 parser.add_argument("--plot_on", dest="plot", action="store_true", help="Create simple plots of results (requires Matplotlib, default if module exists).")
 parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not create simple plots of results. (Default if Matplotlib does not exist)")
 parser.set_defaults(limit_dmax=False)
@@ -82,6 +84,7 @@ parser.set_defaults(recenter=True)
 parser.set_defaults(positivity=True)
 parser.set_defaults(extrapolate=True)
 parser.set_defaults(enforce_connectivity=True)
+parser.set_defaults(cutout=True)
 if matplotlib_found:
     parser.set_defaults(plot=True)
 else:
@@ -158,7 +161,7 @@ qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV = saxs.denss(q=q,I=I,
     shrinkwrap_iter=args.shrinkwrap_iter,shrinkwrap_minstep=args.shrinkwrap_minstep,
     chi_end_fraction=args.chi_end_fraction,write_xplor_format=args.write_xplor,write_freq=args.write_freq,
     enforce_connectivity=args.enforce_connectivity,
-    enforce_connectivity_steps=args.enforce_connectivity_steps)
+    enforce_connectivity_steps=args.enforce_connectivity_steps,cutout=args.cutout)
 
 print output
 
@@ -179,7 +182,7 @@ if args.plot and matplotlib_found:
     #handle sigq values whose error bounds would go negative and be missing on the log scale
     sigq2 = np.copy(sigq)
     sigq2[sigq>I] = I[sigq>I]*.999
-    ax0.errorbar(q[q<=qdata[-1]], I[q<=qdata[-1]], fmt='k-', yerr=[sigq2,sigq], capsize=0, elinewidth=0.1, ecolor=cc.to_rgba('0',alpha=0.5),label='Raw Data')
+    ax0.errorbar(q[q<=qdata[-1]], I[q<=qdata[-1]], fmt='k-', yerr=[sigq2[q<=qdata[-1]],sigq[q<=qdata[-1]]], capsize=0, elinewidth=0.1, ecolor=cc.to_rgba('0',alpha=0.5),label='Raw Data')
     ax0.plot(qdata, Idata, 'bo',alpha=0.5,label='Interpolated Data')
     ax0.plot(qbinsc,Imean,'r.',label='Scattering from Density')
     handles,labels = ax0.get_legend_handles_labels()
