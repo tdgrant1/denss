@@ -561,7 +561,7 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
         else:
             rho = newrho
             F = np.fft.fftn(rho)
-    print
+    print 
 
     #calculate spherical average intensity from 3D Fs
     Imean[j+1] = ndimage.mean(np.abs(F)**2, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
