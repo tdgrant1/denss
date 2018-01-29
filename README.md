@@ -1,13 +1,19 @@
 # DENSS: DENsity from Solution Scattering
 
 Author: Thomas Grant | email: tgrant@hwi.buffalo.edu
+#### [Nature Methods paper describing DENSS](https://www.nature.com/articles/nmeth.4581)
+If you use DENSS in your work, please cite:
+
+Grant, Thomas D. (2018). Ab initio electron density determination directly from 
+solution scattering data. Nature Methods. http://dx.doi.org/10.1038/nmeth.4581.
 
 #### New DENSSWeb server!: [denss.ccr.buffalo.edu](https://denss.ccr.buffalo.edu)
 Try out DENSS without installing the code using the DENSSWeb server to
 perform simple online calculations suitable for most cases. (N is limited
 to 32 samples for efficiency to allow many users to try it out). For more
 complex particle shapes, install DENSS and EMAN2 (see below). Thanks to 
-Andrew Bruno and the CCR for DENSSWeb!
+Andrew Bruno and the CCR for DENSSWeb! (If the link doesn't work and you 
+are using Safari, try it out in another browser)
 
 ### About DENSS
 DENSS is an algorithm used for calculating ab initio electron density maps
