@@ -2,6 +2,14 @@
 
 Author: Thomas Grant | email: tgrant@hwi.buffalo.edu
 
+#### New DENSSWeb server!: [denss.ccr.buffalo.edu](https://denss.ccr.buffalo.edu)
+Try out DENSS without installing the code using the DENSSWeb server to
+perform simple online calculations suitable for most cases. (N is limited
+to 32 samples for efficiency to allow many users to try it out). For more
+complex particle shapes, install DENSS and EMAN2 (see below). Thanks to 
+Andrew Bruno and the CCR for DENSSWeb!
+
+### About DENSS
 DENSS is an algorithm used for calculating ab initio electron density maps
 directly from solution scattering data. DENSS implements a novel iterative
 structure factor retrieval algorithm to cycle between real space density
