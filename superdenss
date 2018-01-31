@@ -8,7 +8,7 @@ while getopts hf:o:i:n:j:w opt; do
       echo " superdenss is a simple wrapper for denss that automates the process of "
       echo " generating multiple density reconstructions and averaging them with EMAN2. "
       echo ""
-      echo " -f: filename of .dat solution scattering data"
+      echo " -f: filename of .out GNOM file or .dat solution scattering data"
       echo " -o: the output prefix to name the output directory and all the files."
       echo " -i: input options for denss exactly as they would be given to denss, including"
       echo "     dashed options. Enclose everything in quotes. Dont include --file or --output."
@@ -48,7 +48,13 @@ while getopts hf:o:i:n:j:w opt; do
   esac
 done
 
+if [ -z $output ];
+then
+    output=${file%.*}
+fi
+
 id=$output
+
 if [ -z $n ]; then n=20 ; fi
 range=`eval echo {0..$((n-1))}`
 if [ -z $j ]; then j=4 ; fi
@@ -75,8 +81,23 @@ cp ../${file} .
 pwd
 echo "superdenss $@" > command
 
-parallel -j ${j} denss.py -f \{1} -o \{2}_{3} ${options} ::: ${file} ::: ${id} ::: ${range}
+if [ `command -v parallel` ];
+then
+    parallel -j ${j} denss.py -f \{1} -o \{2}_{3} ${options} ::: ${file} ::: ${id} ::: ${range}
+else
+    for i in ${range};
+    do
+        denss.py -f ${file} -o ${id}_${i} ${options}
+    done
+fi
 
 e2buildstacks.py --stackname ${id}.hdf ${id}*[0-9].mrc
 e2spt_classaverage.py --input ${id}.hdf --parallel=thread:${j} --saveali --savesteps --keep 3.0 --keepsig
+
+
+
+
+
+
+
 
