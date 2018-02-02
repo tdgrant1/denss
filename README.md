@@ -7,7 +7,12 @@ If you use DENSS in your work, please cite:
 Grant, Thomas D. (2018). Ab initio electron density determination directly from 
 solution scattering data. Nature Methods. http://dx.doi.org/10.1038/nmeth.4581.
 
-#### New DENSSWeb server!: [denss.ccr.buffalo.edu](https://denss.ccr.buffalo.edu)
+#### DENSS.org is now live! [denss.org](https://www.denss.org)
+DENSS.org is the official home of DENSS. Packed with detailed instructions
+for installing and running DENSS on your own computer. It also contains
+useful tips and best practices.
+
+#### New DENSSWeb server! [denss.ccr.buffalo.edu](https://denss.ccr.buffalo.edu)
 Try out DENSS without installing the code using the DENSSWeb server to
 perform simple online calculations suitable for most cases. (N is limited
 to 32 samples for efficiency to allow many users to try it out). For more
