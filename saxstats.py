@@ -408,7 +408,7 @@ def loadProfile(fname):
 
 def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, dmax_start_step=500,
         recenter=True, recenter_steps=None, positivity=True,extrapolate=True,write=True,
-        filename="map", steps=3000, seed=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
+        filename="map", steps=None, seed=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
         shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
         shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01, write_xplor_format=False, write_freq=100,
         enforce_connectivity=True, enforce_connectivity_steps=[500],cutout=True):
@@ -455,6 +455,11 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
     qbin_args = np.in1d(qbinsc,qdata,assume_unique=True)
     realne = np.copy(ne)
     sigqdata = np.interp(qdata,q,sigq)
+    if steps is None:
+        steps = int(shrinkwrap_iter * (np.log(shrinkwrap_sigma_end/shrinkwrap_sigma_start)/np.log(shrinkwrap_sigma_decay)) + shrinkwrap_minstep)
+        steps += 3000
+    else:
+        steps = np.int(steps)
     Imean = np.zeros((steps+1,len(qbins)))
     chi = np.zeros((steps+1))
     rg = np.zeros((steps+1))
@@ -471,6 +476,7 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
     update_support = True
     sigma = shrinkwrap_sigma_start
 
+    logging.info('Maximum number of steps: %i', steps)
     logging.info('Grid size (voxels): %i x %i x %i', n, n, n)
     logging.info('Real space box width (angstroms): %3.3f', side)
     logging.info('Real space box range (angstroms): %3.3f < x < %3.3f', x_.min(), x_.max())
@@ -573,11 +579,16 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
     rho = np.fft.ifftn(F,rho.shape)
     rho = rho.real
 
+    #scale total number of electrons
     if ne is not None:
         rho *= ne / np.sum(rho)
 
     rg[j+1] = rho2rg(rho=rho,r=r,support=support,dx=dx)
     supportV[j+1] = supportV[j]
+
+    #change rho to be the electron density in e-/angstroms^3, rather than number of electrons,
+    #which is what the FFT assumes
+    rho /= dV
 
     if cutout:
         #here were going to cut rho out of the large real space box

@@ -47,7 +47,7 @@ parser.add_argument("-v", "--voxel", default=None, type=float, help="Set desired
 parser.add_argument("-os","--oversampling", default=3., type=float, help="Sampling ratio")
 parser.add_argument("-n", "--nsamples", default=None, type=int, help="Number of samples, i.e. grid points, along a single dimension. (Sets voxel size, overridden by --voxel. Best optimization with n=power of 2)")
 parser.add_argument("--ne", default=10000, type=float, help="Number of electrons in object")
-parser.add_argument("-s", "--steps", default=3000, type=int, help="Maximum number of steps (iterations)")
+parser.add_argument("-s", "--steps", default=None, help="Maximum number of steps (iterations)")
 parser.add_argument("-o", "--output", default=None, help="Output map filename")
 parser.add_argument("--seed", default=None, help="Random seed to initialize the map")
 parser.add_argument("--limit_dmax_on", dest="limit_dmax", action="store_true", help="Limit electron density to sphere of radius 0.6*Dmax from center of object.")
@@ -127,7 +127,7 @@ if not isinstance(args.recenter_steps, list):
     else:
         args.enforce_connectivity_steps = [ args.enforce_connectivity_steps ]
 
-logging.info('Maximum number of steps: %i', args.steps)
+#logging.info('Maximum number of steps: %i', args.steps)
 logging.info('q range of input data: %3.3f < q < %3.3f', q.min(), q.max())
 logging.info('Maximum dimension: %3.3f', dmax)
 logging.info('Sampling ratio: %3.3f', args.oversampling)
@@ -227,6 +227,7 @@ if args.plot and matplotlib_found:
     plt.plot(supportV[supportV>0])
     plt.xlabel('Step')
     plt.ylabel('Support Volume ($\mathrm{\AA^{3}}$)')
+    plt.semilogy()
     plt.tight_layout()
     plt.savefig(output+'_supportV',ext='png',dpi=150)
     plt.close()
