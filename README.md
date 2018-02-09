@@ -233,7 +233,7 @@ using the Fit in Map tool and `vop add`.
 For fully unsupervised (i.e. unbiased) alignment and averaging, and subsequent
 estimation of resolution, the [EMAN2](http://blake.bcm.edu/emanwiki/EMAN2) single particle tomography tool
 e2spt_classaverage.py is well suited for this task. Though, this takes
-some patience. To use this tool, you must first install EMAN2 ([this page helped me](http://blake.bcm.tmc.edu/emanwiki/EMAN2/COMPILE_EMAN2_MAC_OS_X)).
+some patience. To use this tool, you must first install EMAN2.
 To calculate multiple reconstructions easily, you can use a for loop. E.g. in bash:
 ```
 for i in {0..19}; do denss.py -f 6lyz.dat -d 50.0 -o lysozyme_${i} ; done
