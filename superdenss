@@ -1,6 +1,6 @@
 #!/bin/bash
 
-while getopts hf:o:i:n:j:w opt; do
+while getopts hf:o:i:n:j:ew opt; do
   case $opt in
     h)
       echo ""
@@ -14,6 +14,7 @@ while getopts hf:o:i:n:j:w opt; do
       echo "     dashed options. Enclose everything in quotes. Dont include --file or --output."
       echo " -n: the number of reconstructions to run (default 20)"
       echo " -j: the number of cores to use for parallel processing (default 4)"
+      echo " -e: generate and select enantiomers (significantly increases runtime, default=no)"
       echo " -w: overwrite the existing folder (appends/increments folder index if not given)"
       echo " ----------------------------------------------------------------------------- "
       echo ""
@@ -34,10 +35,13 @@ while getopts hf:o:i:n:j:w opt; do
     j)
       j=$OPTARG
       ;;
+    e)
+      enantiomers=True
+      ;;
     w)
       overwrite=True
       ;;
-   \?)
+    \?)
       echo "Invalid option: -$OPTARG" >&2
       exit 1
       ;;
@@ -81,6 +85,8 @@ cp ../${file} .
 pwd
 echo "superdenss $@" > command
 
+printf "Running denss.py %i times \n" $n
+
 if [ `command -v parallel` ];
 then
     parallel -j ${j} denss.py -f \{1} -o \{2}_{3} ${options} ::: ${file} ::: ${id} ::: ${range}
@@ -91,8 +97,17 @@ else
     done
 fi
 
-e2buildstacks.py --stackname ${id}.hdf ${id}*[0-9].mrc
-e2spt_classaverage.py --input ${id}.hdf --parallel=thread:${j} --saveali --savesteps --keep 3.0 --keepsig
+if [ "$enantiomers" == "True" ];
+then
+    maps=`ls ${id}*[0-9].mrc`
+    best_enantiomers.sh $maps
+    #Now run averaging using just the best enantiomers
+    e2buildstacks.py --stackname ${id}.hdf ${id}*enant.hdf
+else
+    e2buildstacks.py --stackname ${id}.hdf ${id}*[0-9].mrc
+fi
+
+e2spt_classaverage.py --path=spt_01 --input ${id}.hdf --parallel=thread:${j} --saveali --savesteps --keep 3.0 --keepsig
 
 
 
