@@ -55,7 +55,7 @@ parser.add_argument("--limit_dmax_off", dest="limit_dmax", action="store_false",
 parser.add_argument("--dmax_start_step", default=500, type=int, help="Starting step for limiting density to sphere of Dmax (default=500)")
 parser.add_argument("--recenter_on", dest="recenter", action="store_true", help="Recenter electron density when updating support. (default)")
 parser.add_argument("--recenter_off", dest="recenter", action="store_false", help="Do not recenter electron density when updating support.")
-parser.add_argument("--recenter_steps", default=None, type=int, help="List of steps to recenter electron density. (default=501,1001)")
+parser.add_argument("--recenter_steps", default=None, type=int, nargs='+', help="List of steps to recenter electron density. (default=501,1001)")
 parser.add_argument("--positivity_on", dest="positivity", action="store_true", help="Enforce positivity restraint inside support. (default)")
 parser.add_argument("--positivity_off", dest="positivity", action="store_false", help="Do not enforce positivity restraint inside support.")
 parser.add_argument("--extrapolate_on", dest="extrapolate", action="store_true", help="Extrapolate data by Porod law to high resolution limit of voxels. (default)")
@@ -125,7 +125,7 @@ if not isinstance(args.recenter_steps, list):
     if args.recenter_steps is None:
         args.recenter_steps = [501, 601, 701, 801, 901, 1001]
     else:
-        args.enforce_connectivity_steps = [ args.enforce_connectivity_steps ]
+        args.recenter_steps = [ args.recenter_steps ]
 
 #logging.info('Maximum number of steps: %i', args.steps)
 logging.info('q range of input data: %3.3f < q < %3.3f', q.min(), q.max())
