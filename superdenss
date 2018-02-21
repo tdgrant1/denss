@@ -107,7 +107,7 @@ else
     e2buildstacks.py --stackname ${id}.hdf ${id}*[0-9].mrc
 fi
 
-e2spt_classaverage.py --path=spt_01 --input ${id}.hdf --parallel=thread:${j} --saveali --savesteps --keep 3.0 --keepsig
+e2spt_classaverage.py --path=spt --input ${id}.hdf --parallel=thread:${j} --saveali --savesteps --keep 3.0 --keepsig
 
 
 
