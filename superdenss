@@ -103,15 +103,15 @@ then
     best_enantiomers.sh $maps
     #Now run averaging using just the best enantiomers
     e2buildstacks.py --stackname ${id}.hdf ${id}*enant.hdf
-    e2spt_binarytree.py --input=${id}.hdf
-    cp spt_02/final_avg.hdf reference.hdf
+    e2spt_binarytree.py --path=spt_bt_ref --input=${id}.hdf
+    cp spt_bt_ref_01/final_avg.hdf reference.hdf
 else
     e2buildstacks.py --stackname ${id}.hdf ${id}*[0-9].mrc
-    e2spt_binarytree.py --input=${id}.hdf
-    cp spt_01/final_avg.hdf reference.hdf
+    e2spt_binarytree.py --path=spt_bt_ref --input=${id}.hdf
+    cp spt_bt_ref_01/final_avg.hdf reference.hdf
 fi
 
-e2spt_classaverage.py --input ${id}.hdf --ref reference.hdf --parallel=thread:${j} --saveali --savesteps --keep 3.0 --keepsig
+e2spt_classaverage.py --path=spt_avg --input ${id}.hdf --ref reference.hdf --parallel=thread:${j} --saveali --savesteps --keep 3.0 --keepsig
 
 
 

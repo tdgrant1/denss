@@ -8,13 +8,13 @@ maps=$@
 
 e2buildstacks.py --stackname stack.hdf $maps
 #create reference from original volumes
-e2spt_binarytree.py --input=stack.hdf
-cp spt_01/final_avg.hdf reference.hdf
+e2spt_binarytree.py --path=spt_en --input=stack.hdf
+cp spt_en_01/final_avg.hdf reference.hdf
 
 #for each of the 20 reconstructions, determine best enantiomer
 #first generate the enantiomers, then compare them against
 #the reference to identify the best
-
+mkdir spt_ali
 for map in $maps;
 do
     #align individual map to principal axes
@@ -47,15 +47,12 @@ do
     repeat="True"
     until [ $repeat == "False" ];
     do
+        rm -f spt_ali/particle_parms_*.json
         #align each of the enantiomers to the reference
         echo "Aligning enantiomers..."
-        e2spt_align.py --path=spt_01 ${map%.*}_allali2xyz.hdf reference.hdf
+        e2spt_align.py --path=spt_ali ${map%.*}_allali2xyz.hdf reference.hdf
         #read .json file to extract which enantiomer has the best fit (the most negative score, -1 is perfect)
-        if [ -f spt_01/particle_parms_02.json ];
-        then
-            mv spt_01/particle_parms_02.json spt_01/particle_parms_01.json
-        fi
-        best_i=`grep "score" spt_01/particle_parms_01.json | awk '{print NR, $2*1}' | sort -k 2 -n | head -n 1 | awk '{print $1}'`
+        best_i=`grep "score" spt_ali/particle_parms_01.json | awk '{print NR, $2*1}' | sort -k 2 -n | head -n 1 | awk '{print $1-1}'`
         if [ "${best_i}" == "" ];
         then
             echo "Calculation failed. Trying again."
