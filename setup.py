@@ -3,7 +3,7 @@
 from distutils.core import setup
 
 setup(name='denss',
-      version='1.0.0',
+      version='1.0.1',
       author='Thomas Grant',
       author_email='tgrant@hwi.buffalo.edu',
       py_modules=['saxstats'],
