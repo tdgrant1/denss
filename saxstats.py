@@ -407,7 +407,7 @@ def loadProfile(fname):
     return q, I, Ierr, dmax, isout
 
 def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, dmax_start_step=500,
-        recenter=True, recenter_steps=None, positivity=True,extrapolate=True,write=True,
+        recenter=True, recenter_steps=None, recenter_mode="com", positivity=True,extrapolate=True,write=True,
         filename="map", steps=None, seed=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
         shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
         shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01, write_xplor_format=False, write_freq=100,
@@ -528,7 +528,10 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
                 newrho *= netmp / np.sum(newrho)
         #update support using shrinkwrap method
         if recenter and j in recenter_steps:
-            rhocom = np.array(ndimage.measurements.center_of_mass(newrho))
+            if recenter_mode == "max":
+                rhocom = np.unravel_index(newrho.argmax(), newrho.shape)
+            else:
+                rhocom = np.array(ndimage.measurements.center_of_mass(newrho))
             gridcenter = np.array(rho.shape)/2.
             shift = gridcenter-rhocom
             shift = shift.astype(int)

@@ -54,9 +54,10 @@ parser.add_argument("--seed", default=None, help="Random seed to initialize the 
 parser.add_argument("--limit_dmax_on", dest="limit_dmax", action="store_true", help="Limit electron density to sphere of radius 0.6*Dmax from center of object.")
 parser.add_argument("--limit_dmax_off", dest="limit_dmax", action="store_false", help="Do not limit electron density to sphere of radius 0.6*Dmax from center of object. (default)")
 parser.add_argument("--dmax_start_step", default=500, type=int, help="Starting step for limiting density to sphere of Dmax (default=500)")
-parser.add_argument("--recenter_on", dest="recenter", action="store_true", help="Recenter electron density when updating support. (default)")
-parser.add_argument("--recenter_off", dest="recenter", action="store_false", help="Do not recenter electron density when updating support.")
-parser.add_argument("--recenter_steps", default=None, type=int, nargs='+', help="List of steps to recenter electron density.")
+parser.add_argument("-rc_on", "--recenter_on", dest="recenter", action="store_true", help="Recenter electron density when updating support. (default)")
+parser.add_argument("-rc_off", "--recenter_off", dest="recenter", action="store_false", help="Do not recenter electron density when updating support.")
+parser.add_argument("-rc_steps", "--recenter_steps", default=None, type=int, nargs='+', help="List of steps to recenter electron density.")
+parser.add_argument("-rc_mode", "--recenter_mode", default="com", type=str, help="Recenter based on either center of mass (com, default) or maximum density value (max)")
 parser.add_argument("-p_on","--positivity_on", dest="positivity", action="store_true", help="Enforce positivity restraint inside support. (default)")
 parser.add_argument("-p_off","--positivity_off", dest="positivity", action="store_false", help="Do not enforce positivity restraint inside support.")
 parser.add_argument("-e_on","--extrapolate_on", dest="extrapolate", action="store_true", help="Extrapolate data by Porod law to high resolution limit of voxels. (default)")
@@ -119,8 +120,8 @@ elif args.mode[0].upper() == "S":
     mode = "SLOW"
     nsamples = 64
     shrinkwrap_minstep = 5000
-    enforce_connectivity_steps = [7500]
-    recenter_steps = [1001,1501,3001,5001,7501,8501]
+    enforce_connectivity_steps = [6000]
+    recenter_steps = [1001,1501,3001,5001,6001,7001,8001]
     steps = 10000
 else:
     mode = "None"
@@ -167,6 +168,7 @@ logging.info('Number of electrons: %3.3f', args.ne)
 logging.info('Limit Dmax: %s', args.limit_dmax)
 logging.info('Recenter: %s', args.recenter)
 logging.info('Recenter Steps: %s', recenter_steps)
+logging.info('Recenter Mode: %s', args.recenter_mode)
 logging.info('Positivity: %s', args.positivity)
 logging.info('Extrapolate high q: %s', args.extrapolate)
 logging.info('Shrinkwrap: %s', args.shrinkwrap)
@@ -190,6 +192,7 @@ qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV = saxs.denss(
     dmax_start_step=args.dmax_start_step,
     recenter=args.recenter,
     recenter_steps=recenter_steps,
+    recenter_mode=args.recenter_mode,
     positivity=args.positivity,
     extrapolate=args.extrapolate,
     write=True,
@@ -244,11 +247,13 @@ if args.plot and matplotlib_found:
 
     ax1 = plt.subplot(gs[1])
     ax1.plot(qdata, qdata*0, 'k--')
-    ax1.plot(qdata, np.log10(Imean)-np.log10(Idata), 'ro-')
+    ax1.plot(qdata, np.log10(Imean[qbinsc==qdata])-np.log10(Idata), 'ro-')
     ylim = ax1.get_ylim()
     ymax = np.max(np.abs(ylim))
     ax1.set_ylim([-ymax,ymax])
     ax1.yaxis.major.locator.set_params(nbins=5)
+    xlim = ax0.get_xlim()
+    ax1.set_xlim(xlim)
     ax1.set_ylabel('Residuals')
     ax1.set_xlabel(r'q ($\mathrm{\AA^{-1}}$)')
     #plt.setp(ax0.get_xticklabels(), visible=False)
