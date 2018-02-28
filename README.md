@@ -227,13 +227,32 @@ output.log                 A log file containing parameters for the calculation
 The solutions are non-unique, meaning many different electron density maps will yield
 the same scattering profile. Different random starting points will return different
 results. Therefore, running the algorithm many times (>20) is strongly advised.
-Subsequent alignment and averaging can be performed in Chimera
-using the Fit in Map tool and `vop add`.
 
 For fully unsupervised (i.e. unbiased) alignment and averaging, and subsequent
 estimation of resolution, the [EMAN2](http://blake.bcm.edu/emanwiki/EMAN2) single particle tomography tool
 e2spt_classaverage.py is well suited for this task. Though, this takes
-some patience. To use this tool, you must first install EMAN2.
+some patience. To use this tool, you must first install EMAN2. Recent updates
+to EMAN2 have made this process quite easy. To begin, download the appropriate
+EMAN2 binary from [this page](http://ncmi.bcm.tmc.edu/ncmi/software/software_details?selected_software=counter_222) 
+Then, change to the folder where you would like to install EMAN2 (such as your home folder)
+and move the eman2 script you downloaded to that directory. Then execute the script.
+For example:
+```
+$ cd $HOME
+$ mv $HOME/Downloads/eman2.21.MacOS.sh .
+$ bash eman2.21.MacOS.sh
+```
+But, obviously, use the correct filenames and paths for your platform. 
+If you have issues getting EMAN2 installed, see their [installation page](http://blake.bcm.edu/emanwiki/EMAN2/Install).
+
+Here I will describe the explicit sequence of commands used for averaging with EMAN2.
+However, there is now a much more convenient and useful script called superdenss
+included in the DENSS download that will run this process for you automatically.
+This script also has some added utilities, most importantly the ability to
+generate and select the best enantiomers for each reconstruction to use in the averaging.
+Using the superdenss script is advised. The specific commands used in superdenss are
+as follows:
+
 To calculate multiple reconstructions easily, you can use a for loop. E.g. in bash:
 ```
 for i in {0..19}; do denss.py -f 6lyz.dat -d 50.0 -o lysozyme_${i} ; done
@@ -279,15 +298,42 @@ directory as fsc_0.txt. Plot this in your favorite plotting program to
 view. Take the reciprocal of the x axis position where FSC falls below 0.5,
 and that is your estimated resolution.
 
+#superdenss
 A bash script is provided called `superdenss` that runs this pipeline automatically
-in parallel assuming EMAN2 and gnu parallel are all installed. The script is
-a little awkward to use to pass the arguments correctly. To run the above example type
-(note the quotes in the command line):
+in parallel assuming EMAN2 and gnu parallel are all installed. To run superdenss
+with the default parameters for denss.py, type:
 ```
-superdenss -f 6lyz.dat -i " -d 50.0 " -o lysozyme -n 20
+superdenss -f 6lyz.dat
+```
+superdenss also takes its own options, as well as all of the options accepted by
+denss.py. The following options are available for superdenss (accessible with the -h option):
+```
+ ------------------------------------------------------------------------------ 
+ superdenss is a simple wrapper for denss that automates the process of 
+ generating multiple density reconstructions and averaging them with EMAN2. 
+
+ -f: filename of .out GNOM file or .dat solution scattering data
+ -o: the output prefix to name the output directory and all the files.
+ -i: input options for denss exactly as they would be given to denss, including
+     dashed options. Enclose everything in quotes. Dont include --file or --output.
+ -n: the number of reconstructions to run (default 20)
+ -j: the number of cores to use for parallel processing (defaults to ncores - 1)
+ -e: generate and select enantiomers (significantly increases runtime, default=no)
+ ----------------------------------------------------------------------------- 
+```
+For example, to run superdenss while checking for the best enantiomers, type:
+```
+superdenss -f 6lyz.dat -e
+```
+If you would like to edit the parameters of denss.py, pass them into the -i option
+of superdenss. This is admittedly a little awkward to use to pass the arguments correctly
+as you must pass the denss.py options enclosed in double quotes after the -i option: 
+To run the above example using a .dat file (note the quotes in the command line):
+```
+superdenss -f 6lyz.dat -e -i " -d 50.0 " -o lysozyme
 ```
 This will create a folder named "lysozyme" with all the output files for each of
-the 20 individual runs of DENSS and a folder named spt_01 which will contain the
+the 20 individual runs of DENSS and a folder named spt_avg_01 which will contain the
 final averaged density. You can add other denss.py options into the -i option in
 in between the quotes.
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-while getopts hf:o:i:n:j:ew opt; do
+while getopts hf:o:i:n:j:e opt; do
   case $opt in
     h)
       echo ""
@@ -13,7 +13,7 @@ while getopts hf:o:i:n:j:ew opt; do
       echo " -i: input options for denss exactly as they would be given to denss, including"
       echo "     dashed options. Enclose everything in quotes. Dont include --file or --output."
       echo " -n: the number of reconstructions to run (default 20)"
-      echo " -j: the number of cores to use for parallel processing (default 4)"
+      echo " -j: the number of cores to use for parallel processing (default one less than system)"
       echo " -e: generate and select enantiomers (significantly increases runtime, default=no)"
       echo " -w: overwrite the existing folder (appends/increments folder index if not given)"
       echo " ----------------------------------------------------------------------------- "
@@ -38,9 +38,6 @@ while getopts hf:o:i:n:j:ew opt; do
     e)
       enantiomers=True
       ;;
-    w)
-      overwrite=True
-      ;;
     \?)
       echo "Invalid option: -$OPTARG" >&2
       exit 1
@@ -61,19 +58,24 @@ id=$output
 
 if [ -z $n ]; then n=20 ; fi
 range=`eval echo {0..$((n-1))}`
-if [ -z $j ]; then j=4 ; fi
+if [ -z $j ];
+then
+    cores=`getconf _NPROCESSORS_ONLN 2>/dev/null || getconf NPROCESSORS_ONLN 2>/dev/null || echo 1` ;
+    if [ $cores -eq 1 ];
+        j=`echo $cores | awk '{print $1}'`
+    else
+        j=`echo $cores | awk '{print $1-1}'`
+fi
+echo "Using $j processors"
 dir=${output}
 newdir=$dir
 dirn=0
 
-if [ "$overwrite" != "True" ];
-then
-    until [ ! -d "${newdir}" ];
-    do
-        newdir=${dir}_${dirn}
-        let dirn++
-    done
-fi
+until [ ! -d "${newdir}" ];
+do
+    newdir=${dir}_${dirn}
+    let dirn++
+done
 
 if [ ! -d "${newdir}" ];
 then
