@@ -319,7 +319,7 @@ directory as fsc_0.txt. Plot this in your favorite plotting program to
 view. Take the reciprocal of the x axis position where FSC falls below 0.5,
 and that is your estimated resolution.
 
-###superdenss
+### superdenss
 A bash script is provided called `superdenss` that runs this pipeline automatically
 in parallel assuming EMAN2 and gnu parallel are all installed. To run superdenss
 with the default parameters for denss.py, type:
