@@ -111,27 +111,37 @@ While using the 6lyz.dat data it can be run as:
 ```
 denss.py -f 6lyz.dat -d 50.0
 ```
-Additional options you may want to set are:
+Options you may want to set are:
 ```
+  -h, --help            show this help message and exit
+  -f FILE, --file FILE  SAXS data file for input (either .dat or .out)
+  -d DMAX, --dmax DMAX  Estimated maximum dimension
   -v VOXEL, --voxel VOXEL
-                        Set desired voxel size, setting resolution of map (default 5.0 angstroms)
-  -os, --oversampling OVERSAMPLING
-                        Sampling ratio (default 3.0)
+                        Set desired voxel size, setting resolution of map
+  -os OVERSAMPLING, --oversampling OVERSAMPLING
+                        Sampling ratio
   -n NSAMPLES, --nsamples NSAMPLES
                         Number of samples, i.e. grid points, along a single
-                        dimension. (sets voxel size, overridden
-                        by --voxel)
-  --ne NE               Number of electrons in object (for scaling final density map)
+                        dimension. (Sets voxel size, overridden by --voxel.
+                        Best optimization with n=power of 2)
+  --ne NE               Number of electrons in object
   -s STEPS, --steps STEPS
-                        Maximum number of steps (iterations, default 3000)
+                        Maximum number of steps (iterations)
   -o OUTPUT, --output OUTPUT
-                        Output map filename (default basename of input file)
+                        Output map filename
+  -m MODE, --mode MODE  Mode. F(AST) sets default options to run quickly for
+                        simple particle shapes. S(LOW) useful for more complex
+                        molecules. (default SLOW)
 ```
+By default DENSS runs in SLOW mode, which is generally suitable for the vast
+majority of particles, including those with complex shapes. You can override all
+the default parameters set by the SLOW mode by explicitly setting any of the options.
+
 Additional advanced options are:
 ```
   --seed SEED           Random seed to initialize the map
   --limit_dmax_on       Limit electron density to sphere of radius 0.6*Dmax
-                        from center of object. 
+                        from center of object.
   --limit_dmax_off      Do not limit electron density to sphere of radius
                         0.6*Dmax from center of object. (default)
   --dmax_start_step DMAX_START_STEP
@@ -141,51 +151,62 @@ Additional advanced options are:
                         (default)
   --recenter_off        Do not recenter electron density when updating
                         support.
-  --recenter_steps RECENTER_STEPS
+  --recenter_steps RECENTER_STEPS [RECENTER_STEPS ...]
                         List of steps to recenter electron density.
-                        (default=range(501,1001,100))
-  --positivity_on       Enforce positivity restraint inside support. (default)
-  --positivity_off      Do not enforce positivity restraint inside support.
-  --extrapolate_on      Extrapolate data by Porod law to high resolution limit
+  -p_on, --positivity_on
+                        Enforce positivity restraint inside support. (default)
+  -p_off, --positivity_off
+                        Do not enforce positivity restraint inside support.
+  -e_on, --extrapolate_on
+                        Extrapolate data by Porod law to high resolution limit
                         of voxels. (default)
-  --extrapolate_off     Do not extrapolate data by Porod law to high
+  -e_off, --extrapolate_off
+                        Do not extrapolate data by Porod law to high
                         resolution limit of voxels.
-  --shrinkwrap_on       Turn shrinkwrap on (default)
-  --shrinkwrap_off      Turn shrinkwrap off
-  --shrinkwrap_sigma_start SHRINKWRAP_SIGMA_START
-                        Starting sigma for Gaussian blurring, in voxels (default 3.0)
-  --shrinkwrap_sigma_end SHRINKWRAP_SIGMA_END
-                        Ending sigma for Gaussian blurring, in voxels  (default 1.5)
-  --shrinkwrap_sigma_decay SHRINKWRAP_SIGMA_DECAY
-                        Rate of decay of sigma, fraction (default 0.99)
-  --shrinkwrap_threshold_fraction SHRINKWRAP_THRESHOLD_FRACTION
+  -sw_on, --shrinkwrap_on
+                        Turn shrinkwrap on (default)
+  -sw_off, --shrinkwrap_off
+                        Turn shrinkwrap off
+  -sw_start SHRINKWRAP_SIGMA_START, --shrinkwrap_sigma_start SHRINKWRAP_SIGMA_START
+                        Starting sigma for Gaussian blurring, in voxels
+  -sw_end SHRINKWRAP_SIGMA_END, --shrinkwrap_sigma_end SHRINKWRAP_SIGMA_END
+                        Ending sigma for Gaussian blurring, in voxels
+  -sw_decay SHRINKWRAP_SIGMA_DECAY, --shrinkwrap_sigma_decay SHRINKWRAP_SIGMA_DECAY
+                        Rate of decay of sigma, fraction
+  -sw_threshold SHRINKWRAP_THRESHOLD_FRACTION, --shrinkwrap_threshold_fraction SHRINKWRAP_THRESHOLD_FRACTION
                         Minimum threshold defining support, in fraction of
-                        maximum density (default 0.20)
-  --shrinkwrap_iter SHRINKWRAP_ITER
+                        maximum density
+  -sw_iter SHRINKWRAP_ITER, --shrinkwrap_iter SHRINKWRAP_ITER
                         Number of iterations between updating support with
-                        shrinkwrap (default 20)
-  --shrinkwrap_minstep SHRINKWRAP_MINSTEP
-                        First step to begin shrinkwrap (default 0)
-  --enforce_connectivity_on
+                        shrinkwrap
+  -sw_minstep SHRINKWRAP_MINSTEP, --shrinkwrap_minstep SHRINKWRAP_MINSTEP
+                        First step to begin shrinkwrap
+  -ec_on, --enforce_connectivity_on
                         Enforce connectivity of support, i.e. remove extra
                         blobs (default)
-  --enforce_connectivity_off
+  -ec_off, --enforce_connectivity_off
                         Do not enforce connectivity of support
+  -ec_steps ENFORCE_CONNECTIVITY_STEPS [ENFORCE_CONNECTIVITY_STEPS ...], 
   --enforce_connectivity_steps ENFORCE_CONNECTIVITY_STEPS [ENFORCE_CONNECTIVITY_STEPS ...]
-                        List of steps to enforce connectivity (Default=500,
-                        see enforce_connectivity)
+                        List of steps to enforce connectivity
   --chi_end_fraction CHI_END_FRACTION
                         Convergence criterion. Minimum threshold of chi2 std
                         dev, as a fraction of the median chi2 of last 100
-                        steps. (default 0.001)
-  --write_xplor         Write out XPLOR map format (default only write MRC format).
+                        steps.
+  --write_xplor         Write out XPLOR map format (default only write MRC
+                        format).
   --write_freq WRITE_FREQ
-                        How often to write out current density map (in steps, default 100).
+                        How often to write out current density map (in steps,
+                        default 100).
+  --cutout_on           When writing final map, cut out the particle to make
+                        smaller files.
+  --cutout_off          When writing final map, do not cut out the particle to
+                        make smaller files (default).
   --plot_on             Create simple plots of results (requires Matplotlib,
                         default if module exists).
   --plot_off            Do not create simple plots of results. (Default if
                         Matplotlib does not exist)
-  ```
+```
 
 ## Results
 As the program runs, the current status will be printed to the screen like so:
@@ -298,7 +319,7 @@ directory as fsc_0.txt. Plot this in your favorite plotting program to
 view. Take the reciprocal of the x axis position where FSC falls below 0.5,
 and that is your estimated resolution.
 
-#superdenss
+###superdenss
 A bash script is provided called `superdenss` that runs this pipeline automatically
 in parallel assuming EMAN2 and gnu parallel are all installed. To run superdenss
 with the default parameters for denss.py, type:
