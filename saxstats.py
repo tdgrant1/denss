@@ -600,8 +600,8 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
         #assume the particle is in the center of the box
         #calculate how many voxels needed to contain particle of size D
         #use bigger than D to make sure we don't crop actual particle in case its larger than expected
-        #EMAN2 manual suggests minimum of 1.5, so lets use that
-        nD = int(1.5*D/dx)+1
+        #lets clip it to a maximum of 2*D to be safe
+        nD = int(2*D/dx)+1
         #make sure final box will still have even samples
         if nD%2==1: nD += 1
         min = nbox/2 - nD/2
