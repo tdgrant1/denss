@@ -39,12 +39,13 @@ do
     e2proc3d.py ${enants[4]} ${enants[7]} --process xform.flip:axis=z
 
     #create stack of enantiomers for alignment
-    e2buildstacks.py --stackname ${map%.*}_allali2xyz.hdf ${ali2xyz%.*}*.hdf
+    e2buildstacks.py --stackname ${map%.*}_allali2xyz.hdf ${enants[@]}
 
     #for some reason e2spt_align.py fails with a malloc error randomly
     #simply repeating this same command until it works appears to do the trick
     #until a bug fix is released
     repeat="True"
+    counter=0
     until [ $repeat == "False" ];
     do
         rm -f spt_ali/particle_parms_*.json
@@ -55,8 +56,15 @@ do
         best_i=`grep "score" spt_ali/particle_parms_01.json | awk '{print NR, $2*1}' | sort -k 2 -n | head -n 1 | awk '{print $1-1}'`
         if [ "${best_i}" == "" ];
         then
-            echo "Calculation failed. Trying again."
-            repeat="True"
+            if [ $counter -le 5 ];
+            then
+                echo "Calculation failed. Trying again."
+                repeat="True"
+                let counter++
+            else
+                echo "Calculation failed. Exceeded number of tries. Skipping to next file."
+                repeat="False"
+            fi
         else
             repeat="False"
         fi
