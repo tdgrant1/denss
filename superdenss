@@ -15,7 +15,6 @@ while getopts hf:o:i:n:j:e opt; do
       echo " -n: the number of reconstructions to run (default 20)"
       echo " -j: the number of cores to use for parallel processing (default one less than system)"
       echo " -e: generate and select enantiomers (significantly increases runtime, default=no)"
-      echo " -w: overwrite the existing folder (appends/increments folder index if not given)"
       echo " ----------------------------------------------------------------------------- "
       echo ""
       exit 0
@@ -104,19 +103,19 @@ fi
 if [ "$enantiomers" == "True" ];
 then
     maps=`ls ${id}*[0-9].mrc`
-    best_enantiomers.sh $maps
+    best_enantiomers.sh -f "$maps" -j $j
     #Now run averaging using just the best enantiomers
     e2buildstacks.py --stackname ${id}.hdf ${id}*enant.hdf
-    e2spt_binarytree.py --path=spt_bt_ref --input=${id}.hdf
-    cp spt_bt_ref_01/final_avg.hdf reference.hdf
 else
     e2buildstacks.py --stackname ${id}.hdf ${id}*[0-9].mrc
-    e2spt_binarytree.py --path=spt_bt_ref --input=${id}.hdf
-    cp spt_bt_ref_01/final_avg.hdf reference.hdf
 fi
 
+e2spt_binarytree.py --path=spt_bt_ref --input=${id}.hdf
+cp spt_bt_ref_01/final_avg.hdf reference.hdf
 e2spt_classaverage.py --path=spt_avg --input ${id}.hdf --ref reference.hdf --parallel=thread:${j} --saveali --savesteps --keep 3.0 --keepsig
-
+e2proc3d.py spt_avg_01/final_avg_ali2ref.hdf ${id}_avg.mrc
+cp spt_avg_01/fsc_0.txt ${id}_fsc.txt
+fsc2res.py -f ${id}_fsc.txt 
 
 
 

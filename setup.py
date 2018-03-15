@@ -3,11 +3,11 @@
 from distutils.core import setup
 
 setup(name='denss',
-      version='1.0.2',
+      version='1.0.3',
       author='Thomas Grant',
       author_email='tgrant@hwi.buffalo.edu',
       py_modules=['saxstats'],
-      scripts=['denss.py','superdenss','ali2xyz.py','best_enantiomers.sh'],
+      scripts=['denss.py','superdenss','best_enantiomers.sh','fsc2res.py'],
       url='https://github.com/tdgrant1/denss/',
       license='GPLv3',
       description='Calculate electron density from solution scattering data.',
