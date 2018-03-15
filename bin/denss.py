@@ -25,7 +25,8 @@
 #
 
 
-import saxstats as saxs
+from saxstats._version import __version__
+import saxstats.saxstats as saxs
 import numpy as np
 import sys, argparse, os
 import logging
@@ -40,7 +41,7 @@ except ImportError:
     matplotlib_found = False
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=saxs.__version__))
+parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
 parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
 parser.add_argument("-d", "--dmax", default=None, type=float, help="Estimated maximum dimension")
 parser.add_argument("-v", "--voxel", default=None, type=float, help="Set desired voxel size, setting resolution of map")
