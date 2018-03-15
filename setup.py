@@ -2,12 +2,14 @@
 
 from distutils.core import setup
 
+execfile('saxstats/_version.py')
+
 setup(name='denss',
-      version='1.0.3',
+      version=__version__,
       author='Thomas Grant',
       author_email='tgrant@hwi.buffalo.edu',
-      py_modules=['saxstats'],
-      scripts=['denss.py','superdenss','best_enantiomers.sh','fsc2res.py'],
+      packages=['saxstats'],
+      scripts=['bin/denss.py','bin/superdenss','bin/best_enantiomers.sh','bin/fsc2res.py'],
       url='https://github.com/tdgrant1/denss/',
       license='GPLv3',
       description='Calculate electron density from solution scattering data.',

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-while getopts hf:o:i:n:j:e opt; do
+while getopts hvf:o:i:n:j:e opt; do
   case $opt in
     h)
       echo ""
@@ -8,6 +8,8 @@ while getopts hf:o:i:n:j:e opt; do
       echo " superdenss is a simple wrapper for denss that automates the process of "
       echo " generating multiple density reconstructions and averaging them with EMAN2. "
       echo ""
+      echo " -h: Print this help text and exit"
+      echo " -v: print denss.py version number and exit"
       echo " -f: filename of .out GNOM file or .dat solution scattering data"
       echo " -o: the output prefix to name the output directory and all the files."
       echo " -i: input options for denss exactly as they would be given to denss, including"
@@ -18,6 +20,9 @@ while getopts hf:o:i:n:j:e opt; do
       echo " ----------------------------------------------------------------------------- "
       echo ""
       exit 0
+      ;;
+    v)
+      version=True
       ;;
     f)
       file=$OPTARG
@@ -47,6 +52,12 @@ while getopts hf:o:i:n:j:e opt; do
       ;;
   esac
 done
+
+if [ "$version" == "True" ];
+then
+    denss.py --version
+    exit
+fi
 
 if [ -z $output ];
 then
