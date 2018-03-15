@@ -50,6 +50,7 @@ if args.plot:
     plt.plot([resx],[0.5],'ro',label='Resolution = '+str(resn)+r'$\mathrm{\AA}$')
     plt.legend()
     plt.xlabel('Resolution (1/$\mathrm{\AA}$)')
+    plt.ylabel('Fourier Shell Correlation')
     plt.savefig(output,ext='png',dpi=150)
     plt.close()
 
