@@ -1,6 +1,6 @@
 #!/bin/bash
 
-while getopts hf:j:n: opt; do
+while getopts hf:j:n:g opt; do
   case $opt in
     h)
       echo ""
@@ -11,6 +11,7 @@ while getopts hf:j:n: opt; do
       echo " -f: filenames of 3D volumes (space separated list enclosed in quotes, e.g. \"*[0-9].mrc\" )"
       echo " -j: the number of cores to use for parallel processing (default one less than system)"
       echo " -n: the number of failed attempts allowed to calculate enantiomer until skipping (default 5)"
+      echo " -g: just generate the eight enantiomers, then exit before deleting them."
       echo " ----------------------------------------------------------------------------- "
       echo ""
       exit 0
@@ -23,6 +24,9 @@ while getopts hf:j:n: opt; do
       ;;
     n)
       attempts=$OPTARG
+      ;;
+    g)
+      gen_only="True"
       ;;
     \?)
       echo "Invalid option: -$OPTARG" >&2
@@ -49,19 +53,32 @@ echo "Using $j processors in the best_enantiomers.sh script"
 
 if [ -z $attempts ]; then attempts=5 ; fi
 
-#Determine the best fitting enantiomer
-#first create a reference from the given maps
-#create eman2 stack of original volumes
+if [ -z $gen_only ];
+then
+    gen_only="False"
+else
+    echo " -g option given. Will only generate the enantiomers, then exit. "
+    gen_only="True"
+fi
 
-e2buildstacks.py --stackname stack.hdf $maps
-#create reference from original volumes
-e2spt_binarytree.py --path=spt_en --input=stack.hdf --parallel=thread:${j}
-cp spt_en_01/final_avg.hdf reference.hdf
+#only create the reference and associated files/directories if the -g option
+#has NOT been given
+if [ $gen_only == "False" ];
+then
+    #Determine the best fitting enantiomer
+    #first create a reference from the given maps
+    #create eman2 stack of original volumes
 
-#for each of the 20 reconstructions, determine best enantiomer
-#first generate the enantiomers, then compare them against
-#the reference to identify the best
-mkdir spt_ali
+    e2buildstacks.py --stackname stack.hdf $maps
+    #create reference from original volumes
+    e2spt_binarytree.py --path=spt_en --input=stack.hdf --parallel=thread:${j}
+    cp spt_en_01/final_avg.hdf reference.hdf
+
+    #for each of the 20 reconstructions, determine best enantiomer
+    #first generate the enantiomers, then compare them against
+    #the reference to identify the best
+    mkdir spt_ali
+fi
 
 #create python script for alignment on the fly
 #first identify the needed EMAN2 python location
@@ -114,6 +131,12 @@ do
     e2proc3d.py ${enants[1]} ${enants[5]} --process xform.flip:axis=z
     e2proc3d.py ${enants[2]} ${enants[6]} --process xform.flip:axis=z
     e2proc3d.py ${enants[4]} ${enants[7]} --process xform.flip:axis=z
+
+    #if -g option is given, just generate the enantiomers, then exit the loop
+    if [ $gen_only == "True" ]
+    then
+        continue
+    fi
 
     #create stack of enantiomers for alignment
     e2buildstacks.py --stackname ${map%.*}_allali2xyz.hdf ${enants[@]}

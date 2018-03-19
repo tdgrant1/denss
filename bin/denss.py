@@ -103,6 +103,7 @@ else:
 logging.basicConfig(filename=output+'.log',level=logging.INFO,filemode='w',
     format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
 logging.info('BEGIN')
+logging.info('DENSS Version: %s', __version__)
 logging.info('Data filename: %s', args.file)
 logging.info('Output prefix: %s', output)
 
@@ -114,7 +115,7 @@ if args.mode[0].upper() == "F":
     mode = "FAST"
     nsamples = 32
     shrinkwrap_minstep = 1000
-    enforce_connectivity_steps = 2000
+    enforce_connectivity_steps = [2000]
     recenter_steps = [501,1001,1501,2001,2501]
     steps = 5000
 elif args.mode[0].upper() == "S":
