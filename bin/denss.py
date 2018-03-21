@@ -111,7 +111,7 @@ logging.info('Output prefix: %s', output)
 #for now that option will be disabled until I come up with a fix
 if args.extrapolate is False:
     print ("There is currently a bug when disabling the Porod "
-           "extrapolation (the -e_off option). For now, extrapolation "
+           "extrapolation (the -e_off option). \n For now, extrapolation "
            "has been re-enabled until a bug fix is released. ")
     args.extrapolate = True
 
@@ -256,7 +256,7 @@ if args.plot and matplotlib_found:
 
     ax1 = plt.subplot(gs[1])
     ax1.plot(qdata, qdata*0, 'k--')
-    ax1.plot(qdata, np.log10(Imean[qbinsc==qdata])-np.log10(Idata), 'ro-')
+    ax1.plot(qdata, np.log10(Imean[np.in1d(qbinsc,qdata)])-np.log10(Idata), 'ro-')
     ylim = ax1.get_ylim()
     ymax = np.max(np.abs(ylim))
     ax1.set_ylim([-ymax,ymax])

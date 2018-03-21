@@ -301,7 +301,12 @@ def loadOutFile(filename):
                 'chisq'     : chisq         #Actual chi squared value
                     }
 
-    return np.array(qfull), np.array(Ireg), np.sqrt(np.array(Ireg)), results
+    Jerr = np.array(Jerr)
+    prepend = np.zeros((len(Ireg)-len(Jerr)))
+    prepend += np.mean(Jerr[:10])
+    Jerr = np.concatenate((prepend,Jerr))
+
+    return np.array(qfull), np.array(Ireg), Jerr, results
 
 def loadDatFile(filename):
     ''' Loads a Primus .dat format file. Taken from the BioXTAS RAW software package,
@@ -437,7 +442,6 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
     qbins = np.linspace(0,nbins*qstep,nbins+1)
     #create modified qbins and put qbins in center of bin rather than at left edge of bin.
     qbinsc = np.copy(qbins)
-    #updated with new code using even numbers of samples, so no more zeroth term
     qbinsc += qstep/2.
     #create an array labeling each voxel according to which qbin it belongs
     qbin_labels = np.searchsorted(qbins,qr,"right")
@@ -446,7 +450,7 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
     qdata = qbinsc[np.where( (qbinsc>=q.min()) & (qbinsc<=q.max()) )]
     Idata = np.interp(qdata,q,I)
     if extrapolate:
-        qextend = qbinsc[np.where(qbinsc>=qdata.max())]
+        qextend = qbinsc[qbinsc>=qdata.max()]
         Iextend = qextend**-4
         Iextend = Iextend/Iextend[0] * Idata[-1]
         qdata = np.concatenate((qdata,qextend[1:]))
@@ -468,7 +472,7 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
     usesupport = True
     support = np.ones(x.shape,dtype=bool)
     if seed is None:
-        seed = np.random.randint(2**32-1)
+        seed = np.random.randint(2**31-1)
     else:
         seed = int(seed)
     prng = np.random.RandomState(seed)
