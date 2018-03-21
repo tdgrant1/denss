@@ -107,6 +107,13 @@ logging.info('DENSS Version: %s', __version__)
 logging.info('Data filename: %s', args.file)
 logging.info('Output prefix: %s', output)
 
+#A bug appears to be present when disabling the porod extrapolation.
+#for now that option will be disabled until I come up with a fix
+if args.extrapolate is False:
+    print ("There is currently a bug when disabling the Porod "
+           "extrapolation (the -e_off option). For now, extrapolation "
+           "has been re-enabled until a bug fix is released. ")
+    args.extrapolate = True
 
 q, I, sigq, dmax, isout = saxs.loadProfile(args.file)
 
