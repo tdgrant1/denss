@@ -411,9 +411,9 @@ def loadProfile(fname):
 
     return q, I, Ierr, dmax, isout
 
-def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, dmax_start_step=500,
-        recenter=True, recenter_steps=None, recenter_mode="com", positivity=True,extrapolate=True,write=True,
-        filename="map", steps=None, seed=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
+def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, limit_dmax_steps=[500],
+        recenter=True, recenter_steps=None, recenter_mode="com", positivity=True, extrapolate=True,write=True,
+        filename="map", steps=None, seed=None, rho_min=None, rho_max=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
         shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
         shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01, write_xplor_format=False, write_freq=100,
         enforce_connectivity=True, enforce_connectivity_steps=[500],cutout=True):
@@ -442,7 +442,7 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
     qbins = np.linspace(0,nbins*qstep,nbins+1)
     #create modified qbins and put qbins in center of bin rather than at left edge of bin.
     qbinsc = np.copy(qbins)
-    qbinsc += qstep/2.
+    qbinsc[1:] += qstep/2.
     #create an array labeling each voxel according to which qbin it belongs
     qbin_labels = np.searchsorted(qbins,qr,"right")
     qbin_labels -= 1
@@ -459,6 +459,9 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
     qbin_args = np.in1d(qbinsc,qdata,assume_unique=True)
     realne = np.copy(ne)
     sigqdata = np.interp(qdata,q,sigq)
+    scale_factor = realne**2 / Idata[0]
+    Idata *= scale_factor
+    sigqdata *= scale_factor
     if steps is None:
         steps = int(shrinkwrap_iter * (np.log(shrinkwrap_sigma_end/shrinkwrap_sigma_start)/np.log(shrinkwrap_sigma_decay)) + shrinkwrap_minstep)
         steps += 3000
@@ -479,6 +482,14 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
     rho = prng.random_sample(size=x.shape)
     update_support = True
     sigma = shrinkwrap_sigma_start
+    #convert density values to absolute number of electrons
+    #since FFT and rho given in electrons, not density, until converted at the end
+    if rho_min is not None:
+        rho_min *= dV
+        #print rho_min
+    if rho_max is not None:
+        rho_max *= dV
+        #print rho_max
 
     logging.info('Maximum number of steps: %i', steps)
     logging.info('Grid size (voxels): %i x %i x %i', n, n, n)
@@ -530,6 +541,17 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
             newrho[newrho<0] = 0.0
             if np.sum(newrho) != 0:
                 newrho *= netmp / np.sum(newrho)
+        #allow further bounds on density, rather than just positivity
+        if rho_min is not None:
+            netmp = np.sum(newrho)
+            newrho[newrho<rho_min] = rho_min
+            if np.sum(newrho) != 0:
+                newrho *= netmp / np.sum(newrho)
+        if rho_max is not None:
+            netmp = np.sum(newrho)
+            newrho[newrho>rho_max] = rho_max
+            if np.sum(newrho) != 0:
+                newrho *= netmp / np.sum(newrho)
         #update support using shrinkwrap method
         if recenter and j in recenter_steps:
             if recenter_mode == "max":
@@ -559,7 +581,7 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
                 big_feature = np.argmax(sums)+1
                 #remove features from the support that are not the primary feature
                 support[labeled_support != big_feature] = False
-        if limit_dmax and j > dmax_start_step:
+        if limit_dmax and j in limit_dmax_steps:
             support[r>0.6*D] = False
             if np.sum(support) <= 0:
                 support = np.ones(rho.shape,dtype=bool)
@@ -567,7 +589,7 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
         sys.stdout.write("\r% 5i % 4.2e % 3.2f       % 5i          " % (j, chi[j], rg[j], supportV[j]))
         sys.stdout.flush()
 
-        if j > 101 + shrinkwrap_minstep and np.std(chi[j-100:j]) < chi_end_fraction * np.median(chi[j-100:j]):
+        if j > 101 and np.std(chi[j-100:j]) < chi_end_fraction * np.median(chi[j-100:j]):
             rho = newrho
             F = np.fft.fftn(rho)
             break
@@ -630,6 +652,11 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, d
     logging.info('Final Rg: %3.3f', rg[j+1])
     logging.info('Final Support Volume: %3.3f', supportV[j+1])
 
-    return qdata, Idata, sigqdata, qbinsc, Imean[j+1], chi, rg, supportV
+    #return original unscaled values of Idata (and therefore Imean) for comparison with real data
+    Idata /= scale_factor
+    sigqdata /= scale_factor
+    Imean /= scale_factor
+
+    return qdata, Idata/scale_factor, sigqdata, qbinsc, Imean[j+1]/scale_factor, chi, rg, supportV
 
 

@@ -52,15 +52,17 @@ parser.add_argument("-s", "--steps", default=None, help="Maximum number of steps
 parser.add_argument("-o", "--output", default=None, help="Output map filename")
 parser.add_argument("-m", "--mode", default="SLOW", type=str, help="Mode. F(AST) sets default options to run quickly for simple particle shapes. S(LOW) useful for more complex molecules. (default SLOW)")
 parser.add_argument("--seed", default=None, help="Random seed to initialize the map")
-parser.add_argument("--limit_dmax_on", dest="limit_dmax", action="store_true", help="Limit electron density to sphere of radius 0.6*Dmax from center of object.")
-parser.add_argument("--limit_dmax_off", dest="limit_dmax", action="store_false", help="Do not limit electron density to sphere of radius 0.6*Dmax from center of object. (default)")
-parser.add_argument("--dmax_start_step", default=500, type=int, help="Starting step for limiting density to sphere of Dmax (default=500)")
+parser.add_argument("-ld_on","--limit_dmax_on", dest="limit_dmax", action="store_true", help="Limit electron density to sphere of radius 0.6*Dmax from center of object.")
+parser.add_argument("-ld_off","--limit_dmax_off", dest="limit_dmax", action="store_false", help="Do not limit electron density to sphere of radius 0.6*Dmax from center of object. (default)")
+parser.add_argument("-ld_steps","--limit_dmax_steps", default=None, type=int, nargs='+', help="List of steps for limiting density to sphere of Dmax (default=500)")
 parser.add_argument("-rc_on", "--recenter_on", dest="recenter", action="store_true", help="Recenter electron density when updating support. (default)")
 parser.add_argument("-rc_off", "--recenter_off", dest="recenter", action="store_false", help="Do not recenter electron density when updating support.")
 parser.add_argument("-rc_steps", "--recenter_steps", default=None, type=int, nargs='+', help="List of steps to recenter electron density.")
 parser.add_argument("-rc_mode", "--recenter_mode", default="com", type=str, help="Recenter based on either center of mass (com, default) or maximum density value (max)")
 parser.add_argument("-p_on","--positivity_on", dest="positivity", action="store_true", help="Enforce positivity restraint inside support. (default)")
 parser.add_argument("-p_off","--positivity_off", dest="positivity", action="store_false", help="Do not enforce positivity restraint inside support.")
+parser.add_argument("-min","--minimum_density", default=None, type=float, help="Minimum density value in e-/angstrom^3 (must also set --ne to be meaningful)")
+parser.add_argument("-max","--maximum_density", default=None, type=float, help="Maximum density value in e-/angstrom^3 (must also set --ne to be meaningful)")
 parser.add_argument("-e_on","--extrapolate_on", dest="extrapolate", action="store_true", help="Extrapolate data by Porod law to high resolution limit of voxels. (default)")
 parser.add_argument("-e_off","--extrapolate_off", dest="extrapolate", action="store_false", help="Do not extrapolate data by Porod law to high resolution limit of voxels.")
 parser.add_argument("-sw_on","--shrinkwrap_on", dest="shrinkwrap", action="store_true", help="Turn shrinkwrap on (default)")
@@ -123,14 +125,14 @@ if args.mode[0].upper() == "F":
     nsamples = 32
     shrinkwrap_minstep = 1000
     enforce_connectivity_steps = [2000]
-    recenter_steps = [501,1001,1501,2001,2501]
+    recenter_steps = range(501,2502,500)
     steps = 5000
 elif args.mode[0].upper() == "S":
     mode = "SLOW"
     nsamples = 64
     shrinkwrap_minstep = 5000
     enforce_connectivity_steps = [6000]
-    recenter_steps = [1001,1501,3001,5001,6001,7001,8001]
+    recenter_steps = range(1001,8002,1000)
     steps = 10000
 else:
     mode = "None"
@@ -151,6 +153,13 @@ if args.recenter_steps is not None:
     recenter_steps = args.recenter_steps
 if not isinstance(recenter_steps, list):
     recenter_steps = [ recenter_steps ]
+
+if args.limit_dmax_steps is not None:
+    limit_dmax_steps = args.limit_dmax_steps
+else:
+    limit_dmax_steps = [500]
+if not isinstance(limit_dmax_steps, list):
+    limit_dmax_steps = [ limit_dmax_steps ]
 
 if args.steps is not None:
     steps = args.steps
@@ -175,10 +184,13 @@ logging.info('Sampling ratio: %3.3f', args.oversampling)
 logging.info('Requested real space voxel size: %3.3f', voxel)
 logging.info('Number of electrons: %3.3f', args.ne)
 logging.info('Limit Dmax: %s', args.limit_dmax)
+logging.info('Limit Dmax Steps: %s', limit_dmax_steps)
 logging.info('Recenter: %s', args.recenter)
 logging.info('Recenter Steps: %s', recenter_steps)
 logging.info('Recenter Mode: %s', args.recenter_mode)
 logging.info('Positivity: %s', args.positivity)
+logging.info('Minimum Density: %s', args.minimum_density)
+logging.info('Maximum Density: %s', args.maximum_density)
 logging.info('Extrapolate high q: %s', args.extrapolate)
 logging.info('Shrinkwrap: %s', args.shrinkwrap)
 logging.info('Shrinkwrap sigma start: %s', args.shrinkwrap_sigma_start)
@@ -198,11 +210,13 @@ qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV = saxs.denss(
     voxel=voxel,
     oversampling=args.oversampling,
     limit_dmax=args.limit_dmax,
-    dmax_start_step=args.dmax_start_step,
+    limit_dmax_steps=limit_dmax_steps,
     recenter=args.recenter,
     recenter_steps=recenter_steps,
     recenter_mode=args.recenter_mode,
     positivity=args.positivity,
+    rho_min=args.minimum_density,
+    rho_max=args.maximum_density,
     extrapolate=args.extrapolate,
     write=True,
     filename=output,
@@ -252,7 +266,7 @@ if args.plot and matplotlib_found:
     ax0.set_ylim([0.5*ymin,1.5*ymax])
     ax0.legend(handles,labels)
     ax0.semilogy()
-    ax0.set_ylabel('log I(q)')
+    ax0.set_ylabel('I(q)')
 
     ax1 = plt.subplot(gs[1])
     ax1.plot(qdata, qdata*0, 'k--')

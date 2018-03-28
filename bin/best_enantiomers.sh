@@ -1,6 +1,6 @@
 #!/bin/bash
 
-while getopts hf:j:n:g opt; do
+while getopts hf:j:n:r:g opt; do
   case $opt in
     h)
       echo ""
@@ -11,19 +11,23 @@ while getopts hf:j:n:g opt; do
       echo " -f: filenames of 3D volumes (space separated list enclosed in quotes, e.g. \"*[0-9].mrc\" )"
       echo " -j: the number of cores to use for parallel processing (default one less than system)"
       echo " -n: the number of failed attempts allowed to calculate enantiomer until skipping (default 5)"
+      echo " -r: index of map in given order to use as reference (default 0, i.e. the first map)"
       echo " -g: just generate the eight enantiomers, then exit before deleting them."
       echo " ----------------------------------------------------------------------------- "
       echo ""
       exit 0
       ;;
     f)
-      maps=$OPTARG
+      maps=($OPTARG)
       ;;
     j)
       j=$OPTARG
       ;;
     n)
       attempts=$OPTARG
+      ;;
+    r)
+      ref=$OPTARG
       ;;
     g)
       gen_only="True"
@@ -53,6 +57,8 @@ echo "Using $j processors in the best_enantiomers.sh script"
 
 if [ -z $attempts ]; then attempts=5 ; fi
 
+if [ -z $ref ]; then ref=0 ; fi
+
 if [ -z $gen_only ];
 then
     gen_only="False"
@@ -69,10 +75,18 @@ then
     #first create a reference from the given maps
     #create eman2 stack of original volumes
 
-    e2buildstacks.py --stackname stack.hdf $maps
+    e2buildstacks.py --stackname stack.hdf ${maps[*]}
     #create reference from original volumes
-    e2spt_binarytree.py --path=spt_en --input=stack.hdf --parallel=thread:${j}
-    cp spt_en_01/final_avg.hdf reference.hdf
+    #e2spt_binarytree.py --path=spt_en --input=stack.hdf --parallel=thread:${j}
+    #cp spt_en_01/final_avg.hdf reference.hdf
+
+    #actually that is too slow and unnecessary. Also bad as it will average out
+    #enantiomers, making selecting the correct enantiomer a little more ambiguous.
+    #instead, just randomly select a reference from the given maps.
+    #since the maps should be generated randomly in the first place, just select
+    #first map by default since thats just as random
+    #users can enter -r option to manually select a different reference
+    e2proc3d.py ${maps[${ref}]} reference.hdf
 
     #for each of the 20 reconstructions, determine best enantiomer
     #first generate the enantiomers, then compare them against
@@ -109,7 +123,7 @@ e.write_image(basename+'_ali2xyz.hdf')
 " > ali2xyz.py
 chmod +x ./ali2xyz.py
 
-for map in $maps;
+for map in ${maps[*]};
 do
     #align individual map to principal axes
     ./ali2xyz.py $map
@@ -139,7 +153,7 @@ do
     fi
 
     #create stack of enantiomers for alignment
-    e2buildstacks.py --stackname ${map%.*}_allali2xyz.hdf ${enants[@]}
+    e2buildstacks.py --stackname ${map%.*}_ali2xyz_all.hdf ${enants[@]}
 
     #for some reason e2spt_align.py fails with a malloc error randomly
     #simply repeating this same command until it works appears to do the trick
@@ -152,7 +166,7 @@ do
         rm -f spt_ali/particle_parms_*.json
         #align each of the enantiomers to the reference
         echo "Aligning enantiomers..."
-        e2spt_align.py --path=spt_ali --threads=${j} ${map%.*}_allali2xyz.hdf reference.hdf
+        e2spt_align.py --path=spt_ali --threads=${j} ${map%.*}_ali2xyz_all.hdf reference.hdf
         #read .json file to extract which enantiomer has the best fit (the most negative score, -1 is perfect)
         best_i=`grep "score" spt_ali/particle_parms_01.json | awk '{print NR, $2*1}' | sort -k 2 -n | head -n 1 | awk '{print $1-1}'`
         if [ "${best_i}" == "" ];
@@ -182,7 +196,7 @@ do
             rm -f $i
         fi
     done
-    rm -f ${map%.*}_allali2xyz.hdf
+    rm -f ${map%.*}_ali2xyz_all.hdf
 
 done
 
