@@ -589,7 +589,7 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, l
         sys.stdout.write("\r% 5i % 4.2e % 3.2f       % 5i          " % (j, chi[j], rg[j], supportV[j]))
         sys.stdout.flush()
 
-        if j > 101 and np.std(chi[j-100:j]) < chi_end_fraction * np.median(chi[j-100:j]):
+        if j > 101 + shrinkwrap_minstep and np.std(chi[j-100:j]) < chi_end_fraction * np.median(chi[j-100:j]):
             rho = newrho
             F = np.fft.fftn(rho)
             break
@@ -657,6 +657,6 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, l
     sigqdata /= scale_factor
     Imean /= scale_factor
 
-    return qdata, Idata/scale_factor, sigqdata, qbinsc, Imean[j+1]/scale_factor, chi, rg, supportV
+    return qdata, Idata, sigqdata, qbinsc, Imean[j+1], chi, rg, supportV
 
 
