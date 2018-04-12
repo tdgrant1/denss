@@ -132,7 +132,7 @@ elif args.mode[0].upper() == "S":
     nsamples = 64
     shrinkwrap_minstep = 5000
     enforce_connectivity_steps = [6000]
-    recenter_steps = range(1001,8002,1000)
+    recenter_steps = range(501,8002,500)
     steps = 10000
 else:
     mode = "None"
