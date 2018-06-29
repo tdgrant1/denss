@@ -590,17 +590,16 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, l
         sys.stdout.flush()
 
         if j > 101 + shrinkwrap_minstep and np.std(chi[j-100:j]) < chi_end_fraction * np.median(chi[j-100:j]):
-            rho = newrho
-            F = np.fft.fftn(rho)
             break
-        else:
-            rho = newrho
-            F = np.fft.fftn(rho)
+
+        rho = newrho
+        
     print
 
+    F = np.fft.fftn(rho)
     #calculate spherical average intensity from 3D Fs
     Imean[j+1] = ndimage.mean(np.abs(F)**2, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
-    chi[j+1] = np.sum(((Imean[j+1,qbin_args]-Idata)/sigqdata)**2)/qbin_args.size
+    #chi[j+1] = np.sum(((Imean[j+1,qbin_args]-Idata)/sigqdata)**2)/qbin_args.size
     #scale Fs to match data
     factors = np.ones((len(qbins)))
     factors[qbin_args] = np.sqrt(Idata/Imean[j+1,qbin_args])
@@ -648,7 +647,7 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, l
     write_mrc(np.ones_like(rho)*support,side,filename+"_support.mrc")
 
     logging.info('Number of steps: %i', j)
-    logging.info('Final Chi2: %.3e', chi[j+1])
+    logging.info('Final Chi2: %.3e', chi[j])
     logging.info('Final Rg: %3.3f', rg[j+1])
     logging.info('Final Support Volume: %3.3f', supportV[j+1])
 
@@ -657,6 +656,6 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, l
     sigqdata /= scale_factor
     Imean /= scale_factor
 
-    return qdata, Idata, sigqdata, qbinsc, Imean[j+1], chi, rg, supportV
+    return qdata, Idata, sigqdata, qbinsc, Imean[j], chi, rg, supportV
 
 
