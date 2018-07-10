@@ -7,12 +7,20 @@ If you use DENSS in your work, please cite:
 Grant, Thomas D. (2018). Ab initio electron density determination directly from 
 solution scattering data. Nature Methods. http://dx.doi.org/10.1038/nmeth.4581.
 
+#### New interactive GUI for fitting data
+A new script (sasrec.py) is provided with DENSS v1.3.0 for calculating smooth 
+fits to experimental data using a convenient interactive GUI.
+
+#### New script for calculating profiles from MRC files
+A new script (rho2dat.py) is provided with DENSS v1.3.0 for calculating
+scattering profiles from MRC files.
+
 #### [DENSS.org is now live! (tdgrant.com/denss)](https://www.tdgrant.com/denss)
 DENSS.org is the official home of DENSS. Packed with detailed instructions
 for installing and running DENSS on your own computer. It also contains
 useful tips and best practices.
 
-#### New DENSSWeb server! [denss.ccr.buffalo.edu](https://denss.ccr.buffalo.edu)
+#### DENSSWeb server: [denss.ccr.buffalo.edu](https://denss.ccr.buffalo.edu)
 Try out DENSS without installing the code using the DENSSWeb server to
 perform simple online calculations suitable for most cases. (N is limited
 to 32 samples for efficiency to allow many users to try it out). For more
@@ -73,11 +81,38 @@ Once the Python 2.7 environment is enabled, you can run denss.py in that termina
 shell.
 
 ## Input files
-DENSS primarily accepts [GNOM](https://www.embl-hamburg.de/biosaxs/gnom.html)
+DENSS uses smooth fits to experimental scattering profiles (rather than the noisy
+experimental data). Two file formats are currently acceptable: .dat files or .out files.
+Files with .dat extensions are expected to be the smoothed (i.e. fitted) curve. 
+
+A script called `sasrec.py` is provided which can be used to fit experimental data
+with a smooth curve based on an extended version of Peter Moore's approach (Moore 1979) 
+using a trigonometric series. The sasrec.py script includes a simple interactive
+GUI for selecting Dmax and the smoothing factor alpha and displays the experimental
+data, the smooth fit to the data, and the real space pair distribution function.
+sasrec.py will save a .dat file containing the smooth fit to the data which can
+then be used as input to denss.py (see below). Additionally, useful parameters
+calculated from the fit, such as the radius of gyration and Porod volume, are displayed.
+The manuscript describing the mathematical derivation and the algorithm of this
+new approach is currently in preparation.
+
+`sasrec.py` can be run simply from the command line as:
+```
+sasrec.py -f <experimental_data.dat>
+```
+where <experimental_data.dat> is the noisy scattering profile, given as a three-column
+ASCII text file with columns q, I, error. An interactive GUI will appear showing
+the experimental scattering profile on the left along with the fit to the data,
+and the associated pair distribution function (P(r)) on the right. Two interactive
+sliders on the bottom left can be adjusted for Dmax (the maximum particle dimension)
+and the alpha smoothing factor. See `sasrec.py -h` for more options.
+
+DENSS also accepts [GNOM](https://www.embl-hamburg.de/biosaxs/gnom.html)
 .out files created by [ATSAS](https://www.embl-hamburg.de/biosaxs/software.html)
 (credit for .out parsing - Jesse Hopkins).
+
 DENSS uses the smoothed curve fit to the experimental data and extrapolated to
-q = 0, i.e. I(0). You can also use any other smooth and  extrapolated curve,
+q = 0, i.e. I(0). You can also use any other smooth and extrapolated curve,
 such as the output from FoXS or CRYSOL, as long as it is supplied in a three
 column ASCII text file with columns q, I, error where q is given as 4 pi sin(theta)/lambda
 in angstroms, I is scattering intensity, and error is the error on the intensity.
@@ -99,10 +134,7 @@ in the file:
 ```
 denss.py -f <saxs.dat> -d <estimated maximum dimension>
 ```
-You can also use DENSS as a script:
-```
-python denss.py -f <saxs.out>
-```
+
 For example, using the supplied lysozyme.out data, DENSS can be run with:
 ```
 denss.py -f lysozyme.out
@@ -378,6 +410,10 @@ The electron density map is initially set to be random based on the random seed
 selected by the program. One can therefore exactly reproduce the results of a previous
 calculation by giving the random seed to the program with the `--seed` option and
 the same input parameters. The parameters of previous runs can all be found in the log file.
+
+The rho2dat.py file can be used for calculating scattering profiles from MRC formatted
+electron density maps. Currently the input maps must be cubic (i.e. same length
+and shape on all sides). Type `rho2dat.py -h` for more options.
 
 
 
