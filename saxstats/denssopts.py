@@ -130,7 +130,7 @@ def parse_arguments(parser):
 
     if args.dmax is not None:
         dmax = args.dmax
-    elif dmax<=0:
+    elif args.dmax<=0:
         dmax = 100
 
     if args.voxel is None and nsamples is None:
