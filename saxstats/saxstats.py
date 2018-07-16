@@ -433,13 +433,41 @@ def loadProfile(fname):
 
     return q, I, Ierr, dmax, isout
 
-def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, limit_dmax_steps=[500],
-        recenter=True, recenter_steps=None, recenter_mode="com", positivity=True, extrapolate=True,write=True,
-        filename="map", steps=None, seed=None, rho_min=None, rho_max=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
+def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False, limit_dmax_steps=[500],
+        recenter=True, recenter_steps=None, recenter_mode="com", positivity=True, extrapolate=True,
+        output="map", steps=None, seed=None,  minimum_density=None,  maximum_density=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
         shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
         shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01, write_xplor_format=False, write_freq=100,
         enforce_connectivity=True, enforce_connectivity_steps=[500],cutout=True):
     """Calculate electron density from scattering data."""
+    
+    D = dmax
+    
+    logging.info('q range of input data: %3.3f < q < %3.3f', q.min(), q.max())
+    logging.info('Maximum dimension: %3.3f', D)
+    logging.info('Sampling ratio: %3.3f', oversampling)
+    logging.info('Requested real space voxel size: %3.3f', voxel)
+    logging.info('Number of electrons: %3.3f', ne)
+    logging.info('Limit Dmax: %s', limit_dmax)
+    logging.info('Limit Dmax Steps: %s', limit_dmax_steps)
+    logging.info('Recenter: %s', recenter)
+    logging.info('Recenter Steps: %s', recenter_steps)
+    logging.info('Recenter Mode: %s', recenter_mode)
+    logging.info('Positivity: %s', positivity)
+    logging.info('Minimum Density: %s', minimum_density)
+    logging.info('Maximum Density: %s', maximum_density)
+    logging.info('Extrapolate high q: %s', extrapolate)
+    logging.info('Shrinkwrap: %s', shrinkwrap)
+    logging.info('Shrinkwrap sigma start: %s', shrinkwrap_sigma_start)
+    logging.info('Shrinkwrap sigma end: %s', shrinkwrap_sigma_end)
+    logging.info('Shrinkwrap sigma decay: %s', shrinkwrap_sigma_decay)
+    logging.info('Shrinkwrap threshold fraction: %s', shrinkwrap_threshold_fraction)
+    logging.info('Shrinkwrap iterations: %s', shrinkwrap_iter)
+    logging.info('Shrinkwrap starting step: %s', shrinkwrap_minstep)
+    logging.info('Enforce connectivity: %s', enforce_connectivity)
+    logging.info('Enforce connectivity steps: %s', enforce_connectivity_steps)
+    logging.info('Chi2 end fraction: %3.3e', chi_end_fraction)
+
     side = oversampling*D
     halfside = side/2
     n = int(side/voxel)
@@ -506,6 +534,8 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, l
     sigma = shrinkwrap_sigma_start
     #convert density values to absolute number of electrons
     #since FFT and rho given in electrons, not density, until converted at the end
+    rho_min = minimum_density
+    rho_max = maximum_density
     if rho_min is not None:
         rho_min *= dV
         #print rho_min
@@ -537,8 +567,8 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, l
         Imean[j] = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
         """
         if j==0:
-            np.savetxt(filename+'_step0_saxs.dat',np.vstack((qbinsc,Imean[j],Imean[j]*.05)).T,delimiter=" ",fmt="%.5e")
-            #write_xplor(rho,side,filename+"_original.xplor")
+            np.savetxt(output+'_step0_saxs.dat',np.vstack((qbinsc,Imean[j],Imean[j]*.05)).T,delimiter=" ",fmt="%.5e")
+            #write_xplor(rho,side,output+"_original.xplor")
         """
         #scale Fs to match data
         factors = np.ones((len(qbins)))
@@ -550,8 +580,8 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, l
         rhoprime = rhoprime.real
         if j%write_freq == 0:
             if write_xplor_format:
-                write_xplor(rhoprime,side,filename+"_current.xplor")
-            write_mrc(rhoprime,side,filename+"_current.mrc")
+                write_xplor(rhoprime,side,output+"_current.xplor")
+            write_mrc(rhoprime,side,output+"_current.mrc")
         rg[j] = rho2rg(rhoprime,r=r,support=support,dx=dx)
         newrho = np.zeros_like(rho)
         #Error Reduction
@@ -663,10 +693,10 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, l
         side = dx * (max-min)
 
     if write_xplor_format:
-        write_xplor(rho,side,filename+".xplor")
-        write_xplor(np.ones_like(rho)*support,side,filename+"_support.xplor")
-    write_mrc(rho,side,filename+".mrc")
-    write_mrc(np.ones_like(rho)*support,side,filename+"_support.mrc")
+        write_xplor(rho,side,output+".xplor")
+        write_xplor(np.ones_like(rho)*support,side,output+"_support.xplor")
+    write_mrc(rho,side,output+".mrc")
+    write_mrc(np.ones_like(rho)*support,side,output+"_support.mrc")
 
     logging.info('Number of steps: %i', j)
     logging.info('Final Chi2: %.3e', chi[j])
@@ -678,7 +708,7 @@ def denss(q, I, sigq, D, ne=None, voxel=5., oversampling=3., limit_dmax=False, l
     sigqdata /= scale_factor
     Imean /= scale_factor
 
-    return qdata, Idata, sigqdata, qbinsc, Imean[j], chi, rg, supportV
+    return qdata, Idata, sigqdata, qbinsc, Imean[j], chi, rg, supportV, rho
 
 class Sasrec(object):
     def __init__(self, Iq, D, qc=None, r=None, alpha=0.0, ne=2):

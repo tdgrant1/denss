@@ -50,38 +50,13 @@ logging.info('BEGIN')
 logging.info('DENSS Version: %s', __version__)
 logging.info('Data filename: %s', args.file)
 logging.info('Output prefix: %s', args.output)
+logging.info('Mode: %s', args.mode)
 
 q, I, sigq, dmax, isout = saxs.loadProfile(args.file)
 
-logging.info('Mode: %s', args.mode)
-logging.info('q range of input data: %3.3f < q < %3.3f', q.min(), q.max())
-logging.info('Maximum dimension: %3.3f', args.dmax)
-logging.info('Sampling ratio: %3.3f', args.oversampling)
-logging.info('Requested real space voxel size: %3.3f', args.voxel)
-logging.info('Number of electrons: %3.3f', args.ne)
-logging.info('Limit Dmax: %s', args.limit_dmax)
-logging.info('Limit Dmax Steps: %s', args.limit_dmax_steps)
-logging.info('Recenter: %s', args.recenter)
-logging.info('Recenter Steps: %s', args.recenter_steps)
-logging.info('Recenter Mode: %s', args.recenter_mode)
-logging.info('Positivity: %s', args.positivity)
-logging.info('Minimum Density: %s', args.minimum_density)
-logging.info('Maximum Density: %s', args.maximum_density)
-logging.info('Extrapolate high q: %s', args.extrapolate)
-logging.info('Shrinkwrap: %s', args.shrinkwrap)
-logging.info('Shrinkwrap sigma start: %s', args.shrinkwrap_sigma_start)
-logging.info('Shrinkwrap sigma end: %s', args.shrinkwrap_sigma_end)
-logging.info('Shrinkwrap sigma decay: %s', args.shrinkwrap_sigma_decay)
-logging.info('Shrinkwrap threshold fraction: %s', args.shrinkwrap_threshold_fraction)
-logging.info('Shrinkwrap iterations: %s', args.shrinkwrap_iter)
-logging.info('Shrinkwrap starting step: %s', args.shrinkwrap_minstep)
-logging.info('Enforce connectivity: %s', args.enforce_connectivity)
-logging.info('Enforce connectivity steps: %s', args.enforce_connectivity_steps)
-logging.info('Chi2 end fraction: %3.3e', args.chi_end_fraction)
-
-qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV = saxs.denss(
+qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV, rho = saxs.denss(
     q=q,I=I,sigq=sigq,
-    D=args.dmax,
+    dmax=args.dmax,
     ne=args.ne,
     voxel=args.voxel,
     oversampling=args.oversampling,
@@ -91,11 +66,10 @@ qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV = saxs.denss(
     recenter_steps=args.recenter_steps,
     recenter_mode=args.recenter_mode,
     positivity=args.positivity,
-    rho_min=args.minimum_density,
-    rho_max=args.maximum_density,
+    minimum_density=args.minimum_density,
+    maximum_density=args.maximum_density,
     extrapolate=args.extrapolate,
-    write=True,
-    filename=args.output,
+    output=args.output,
     steps=args.steps,
     seed=args.seed,
     shrinkwrap=args.shrinkwrap,
@@ -106,7 +80,7 @@ qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV = saxs.denss(
     shrinkwrap_iter=args.shrinkwrap_iter,
     shrinkwrap_minstep=args.shrinkwrap_minstep,
     chi_end_fraction=args.chi_end_fraction,
-    write_xplor_format=args.write_xplor,
+    write_xplor_format=args.write_xplor_format,
     write_freq=args.write_freq,
     enforce_connectivity=args.enforce_connectivity,
     enforce_connectivity_steps=args.enforce_connectivity_steps,
