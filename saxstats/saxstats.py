@@ -913,12 +913,9 @@ class Sasrec(object):
         Iq[:,0] = q
         n = len(Ish)
         N = np.arange(n)+1
-        for i in range(len(q)):
-            denominator = ((N*np.pi)**2-(q[i]*D)**2)
-            Iq[i,1] = 2 * np.sum(Ish*(N*np.pi)**2 / denominator * np.sinc(q[i]*D/np.pi) * (-1)**(N+1))
-            if np.isinf(Iq[i,1]):
-                j = find_nearest_i(D2qsh(D,qmax=q[-1]),q[i])
-                Iq[i,1] = Ish[j]
+        denominator = (N[:,None]*np.pi)**2-(q*D)**2
+        I = 2*np.einsum('k,ki->i',Ish,(N[:,None]*np.pi)**2 / denominator * np.sinc(q*D/np.pi) * (-1)**(N[:,None]+1))
+        Iq[:,1] = I
         return Iq
 
     def Ish2P(self,Ish,D,r=None,dr=None):
