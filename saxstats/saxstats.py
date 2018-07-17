@@ -32,7 +32,7 @@ import os
 import json
 import struct
 import numpy as np
-from scipy import ndimage, special
+from scipy import ndimage, special, spatial
 from collections import OrderedDict
 
 def chi2(exp, calc, sig):
@@ -1159,9 +1159,72 @@ class Sasrec(object):
         #area_Iq = np.pi/D * np.sum(Ish*(1+(-1)**(N+1)))
         return area_Iq
 
+class PDB(object):
+    """Load pdb file."""
+    def __init__(self, filename):
+        self.natoms = 0
+        with open(filename) as f:
+            for line in f:
+                if line[0:4] != "ATOM" and line[0:4] != "HETA":
+                    continue # skip other lines
+                self.natoms += 1
+        self.atomnum = np.zeros((self.natoms),dtype=int)
+        self.atomname = np.zeros((self.natoms),dtype=np.dtype((str,3)))
+        self.atomalt = np.zeros((self.natoms),dtype=np.dtype((str,1)))
+        self.resname = np.zeros((self.natoms),dtype=np.dtype((str,3)))
+        self.resnum = np.zeros((self.natoms),dtype=int)
+        self.chain = np.zeros((self.natoms),dtype=np.dtype((str,1)))
+        self.coords = np.zeros((self.natoms, 3))
+        self.occupancy = np.zeros((self.natoms))
+        self.b = np.zeros((self.natoms))
+        self.atomtype = np.zeros((self.natoms),dtype=np.dtype((str,2)))
+        self.charge = np.zeros((self.natoms),dtype=np.dtype((str,2)))
+        self.nelectrons = np.zeros((self.natoms),dtype=int)
+        with open(filename) as f:
+            atom = 0
+            for line in f:
+                if line[0:4] != "ATOM" and line[0:4] != "HETA":
+                    continue # skip other lines
+                self.atomnum[atom] = int(line[6:11])
+                self.atomname[atom] = line[13:16]
+                self.atomalt[atom] = line[16]
+                self.resname[atom] = line[17:20]
+                self.resnum[atom] = int(line[22:26])
+                self.chain[atom] = line[21]
+                self.coords[atom, 0] = float(line[30:38])
+                self.coords[atom, 1] = float(line[38:46])
+                self.coords[atom, 2] = float(line[46:54])
+                self.occupancy[atom] = float(line[54:60])
+                self.b[atom] = float(line[60:66])
+                atomtype = line[76:78].strip()
+                if len(atomtype) == 2:
+                    atomtype0 = atomtype[0].upper()
+                    atomtype1 = atomtype[1].lower()
+                    atomtype = atomtype0 + atomtype1
+                self.atomtype[atom] = atomtype
+                self.charge[atom] = line[78:80]
+                self.nelectrons[atom] = electrons.get(self.atomtype[atom].upper(),6)
+                atom += 1
+
+def pdb2map_gauss(pdb,xyz,sigma):
+    """Simple isotropic gaussian sum at coordinate locations."""
+    n = int(round(xyz.shape[0]**(1/3.)))
+    sigma /= 4.
+    #dist = spatial.distance.cdist(coords, xyz)
+    #rho = np.sum(values,axis=0).reshape(n,n,n)
+    #run cdist in a loop over atoms to avoid overloading memory
+    values = np.zeros((xyz.shape[0]))
+    for i in range(pdb.coords.shape[0]):
+        sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
+        sys.stdout.flush()
+        dist = spatial.distance.cdist(pdb.coords[None,i], xyz)
+        dist *= dist
+        values += pdb.nelectrons[i]*1./np.sqrt(2*np.pi*sigma**2) * np.exp(-dist[0]/(2*sigma**2))
+    rho = values.reshape(n,n,n)
+    return rho
 
 
-
+electrons = {'H': 1,'HE': 2,'He': 2,'LI': 3,'Li': 3,'BE': 4,'Be': 4,'B': 5,'C': 6,'N': 7,'O': 8,'F': 9,'NE': 10,'Ne': 10,'NA': 11,'Na': 11,'MG': 12,'Mg': 12,'AL': 13,'Al': 13,'SI': 14,'Si': 14,'P': 15,'S': 16,'CL': 17,'Cl': 17,'AR': 18,'Ar': 18,'K': 19,'CA': 20,'Ca': 20,'SC': 21,'Sc': 21,'TI': 22,'Ti': 22,'V': 23,'CR': 24,'Cr': 24,'MN': 25,'Mn': 25,'FE': 26,'Fe': 26,'CO': 27,'Co': 27,'NI': 28,'Ni': 28,'CU': 29,'Cu': 29,'ZN': 30,'Zn': 30,'GA': 31,'Ga': 31,'GE': 32,'Ge': 32,'AS': 33,'As': 33,'SE': 34,'Se': 34,'Se': 34,'Se': 34,'BR': 35,'Br': 35,'KR': 36,'Kr': 36,'RB': 37,'Rb': 37,'SR': 38,'Sr': 38,'Y': 39,'ZR': 40,'Zr': 40,'NB': 41,'Nb': 41,'MO': 42,'Mo': 42,'TC': 43,'Tc': 43,'RU': 44,'Ru': 44,'RH': 45,'Rh': 45,'PD': 46,'Pd': 46,'AG': 47,'Ag': 47,'CD': 48,'Cd': 48,'IN': 49,'In': 49,'SN': 50,'Sn': 50,'SB': 51,'Sb': 51,'TE': 52,'Te': 52,'I': 53,'XE': 54,'Xe': 54,'CS': 55,'Cs': 55,'BA': 56,'Ba': 56,'LA': 57,'La': 57,'CE': 58,'Ce': 58,'PR': 59,'Pr': 59,'ND': 60,'Nd': 60,'PM': 61,'Pm': 61,'SM': 62,'Sm': 62,'EU': 63,'Eu': 63,'GD': 64,'Gd': 64,'TB': 65,'Tb': 65,'DY': 66,'Dy': 66,'HO': 67,'Ho': 67,'ER': 68,'Er': 68,'TM': 69,'Tm': 69,'YB': 70,'Yb': 70,'LU': 71,'Lu': 71,'HF': 72,'Hf': 72,'TA': 73,'Ta': 73,'W': 74,'RE': 75,'Re': 75,'OS': 76,'Os': 76,'IR': 77,'Ir': 77,'PT': 78,'Pt': 78,'AU': 79,'Au': 79,'HG': 80,'Hg': 80,'TL': 81,'Tl': 81,'PB': 82,'Pb': 82,'BI': 83,'Bi': 83,'PO': 84,'Po': 84,'AT': 85,'At': 85,'RN': 86,'Rn': 86,'FR': 87,'Fr': 87,'RA': 88,'Ra': 88,'AC': 89,'Ac': 89,'TH': 90,'Th': 90,'PA': 91,'Pa': 91,'U': 92,'NP': 93,'Np': 93,'PU': 94,'Pu': 94,'AM': 95,'Am': 95,'CM': 96,'Cm': 96,'BK': 97,'Bk': 97,'CF': 98,'Cf': 98,'ES': 99,'Es': 99,'FM': 100,'Fm': 100,'MD': 101,'Md': 101,'NO': 102,'No': 102,'LR': 103,'Lr': 103,'RF': 104,'Rf': 104,'DB': 105,'Db': 105,'SG': 106,'Sg': 106,'BH': 107,'Bh': 107,'HS': 108,'Hs': 108,'MT': 109,'Mt': 109}
 
 
 
