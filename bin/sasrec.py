@@ -18,6 +18,7 @@ parser.add_argument("--version", action="version",version="%(prog)s v{version}".
 parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
 parser.add_argument("-d", "--dmax", default=100., type=float, help="Estimated maximum dimension")
 parser.add_argument("-a", "--alpha", default=0., type=float, help="Set alpha smoothing factor")
+parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional)")
 parser.add_argument("--nes", default=2, type=int, help=argparse.SUPPRESS)
 parser.add_argument("--max_dmax", default=200., type=float, help="Maximum limit for allowed Dmax values (for plotting slider)")
 parser.add_argument("--max_alpha", default=10., type=float, help="Maximum limit for allowed alpha values (for plotting slider)")
@@ -47,7 +48,13 @@ qmin = np.min(q[0])
 dq = q[1] - q[0]
 nq = int(qmin/dq)
 qc = np.concatenate(([0.0],np.arange(nq)*dq+(qmin-nq*dq),q))
-Icerr = np.concatenate((np.ones(nq+1)*Iq[0,2],Iq[:,2]))
+#Icerr = np.concatenate((np.ones(nq+1)*Iq[0,2],Iq[:,2]))
+
+if args.qfile is not None:
+    qc = np.loadtxt(args.qfile,usecols=(0,))
+
+Icerr = np.interp(qc,q,Iq[:,2])
+
 sasrec = saxs.Sasrec(Iq, D, qc=qc, r=None, alpha=alpha, ne=nes)
 
 

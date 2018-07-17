@@ -18,7 +18,7 @@ parser.add_argument("--version", action="version",version="%(prog)s v{version}".
 parser.add_argument("-f", "--file", type=str, help="Electron density filename (.mrc)")
 parser.add_argument("-dq", "--dq", default=None, type=float, help="Desired q spacing (pads map with zeros)")
 parser.add_argument("-n", "--n", default=None, type=int, help="Desired box shape (pads map with zeros)")
-parser.add_argument("-ns", "--ns", default=1, type=int, help="Sampling fraction (i.e. every ns'th element, must be integer)")
+parser.add_argument("--ns", default=1, type=int, help="Sampling fraction (i.e. every ns'th element, must be integer)")
 parser.add_argument("-t","--threshold", default=0.0, type=float, help="threshold fraction")
 parser.add_argument("--plot_on", dest="plot", action="store_true", help="Plot the profile (requires Matplotlib, default if module exists).")
 parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not plot the profile. (Default if Matplotlib does not exist)")
