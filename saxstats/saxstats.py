@@ -438,7 +438,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         output="map", steps=None, seed=None,  minimum_density=None,  maximum_density=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
         shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
         shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01, write_xplor_format=False, write_freq=100,
-        enforce_connectivity=True, enforce_connectivity_steps=[500],cutout=True):
+        enforce_connectivity=True, enforce_connectivity_steps=[500],cutout=True,quiet=False):
     """Calculate electron density from scattering data."""
     
     D = dmax
@@ -638,8 +638,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             if np.sum(support) <= 0:
                 support = np.ones(rho.shape,dtype=bool)
         supportV[j] = np.sum(support)*dV
-        sys.stdout.write("\r% 5i % 4.2e % 3.2f       % 5i          " % (j, chi[j], rg[j], supportV[j]))
-        sys.stdout.flush()
+        if not quiet:
+            sys.stdout.write("\r% 5i % 4.2e % 3.2f       % 5i          " % (j, chi[j], rg[j], supportV[j]))
+            sys.stdout.flush()
 
         if j > 101 + shrinkwrap_minstep and np.std(chi[j-100:j]) < chi_end_fraction * np.median(chi[j-100:j]):
             break
