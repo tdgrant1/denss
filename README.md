@@ -8,11 +8,11 @@ Grant, Thomas D. (2018). Ab initio electron density determination directly from
 solution scattering data. Nature Methods. http://dx.doi.org/10.1038/nmeth.4581.
 
 #### New interactive GUI for fitting data
-A new script (sasrec.py) is provided with DENSS v1.3.0 for calculating smooth 
+A new script (denss.fit_data.py) is provided with DENSS v1.3.0 for calculating smooth 
 fits to experimental data using a convenient interactive GUI.
 
 #### New script for calculating profiles from MRC files
-A new script (rho2dat.py) is provided with DENSS v1.3.0 for calculating
+A new script (denss.rho2dat.py) is provided with DENSS v1.3.0 for calculating
 scattering profiles from MRC files.
 
 #### [DENSS.org is now live! (tdgrant.com/denss)](https://www.tdgrant.com/denss)
@@ -56,9 +56,6 @@ where you downloaded DENSS:
 ```
 python setup.py install
 ```
-However, DENSS is just pure Python and can also just be run directly as
-a script, provided the `saxstats.py` file is in the same directory as
-`denss.py` that you're running from.
 
 ## Requirements
 DENSS requires that Python 2.7, NumPy (minimum v1.10.0) and SciPy are installed. These packages are
@@ -85,27 +82,27 @@ DENSS uses smooth fits to experimental scattering profiles (rather than the nois
 experimental data). Two file formats are currently acceptable: .dat files or .out files.
 Files with .dat extensions are expected to be the smoothed (i.e. fitted) curve. 
 
-A script called `sasrec.py` is provided which can be used to fit experimental data
+A script called `denss.fit_data.py` is provided which can be used to fit experimental data
 with a smooth curve based on an extended version of Peter Moore's approach (Moore 1979) 
-using a trigonometric series. The sasrec.py script includes a simple interactive
+using a trigonometric series. The denss.fit_data.py script includes a simple interactive
 GUI for selecting Dmax and the smoothing factor alpha and displays the experimental
 data, the smooth fit to the data, and the real space pair distribution function.
-sasrec.py will save a .dat file containing the smooth fit to the data which can
+denss.fit_data.py will save a .dat file containing the smooth fit to the data which can
 then be used as input to denss.py (see below). Additionally, useful parameters
 calculated from the fit, such as the radius of gyration and Porod volume, are displayed.
 The manuscript describing the mathematical derivation and the algorithm of this
 new approach is currently in preparation.
 
-`sasrec.py` can be run simply from the command line as:
+`denss.fit_data.py` can be run simply from the command line as:
 ```
-sasrec.py -f <experimental_data.dat>
+denss.fit_data.py -f <experimental_data.dat>
 ```
 where <experimental_data.dat> is the noisy scattering profile, given as a three-column
 ASCII text file with columns q, I, error. An interactive GUI will appear showing
 the experimental scattering profile on the left along with the fit to the data,
 and the associated pair distribution function (P(r)) on the right. Two interactive
 sliders on the bottom left can be adjusted for Dmax (the maximum particle dimension)
-and the alpha smoothing factor. See `sasrec.py -h` for more options.
+and the alpha smoothing factor. See `denss.fit_data.py -h` for more options.
 
 DENSS also accepts [GNOM](https://www.embl-hamburg.de/biosaxs/gnom.html)
 .out files created by [ATSAS](https://www.embl-hamburg.de/biosaxs/software.html)

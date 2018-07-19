@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 #
-#    pdb2mrc.py
+#    denss.pdb2mrc.py
 #    A tool for calculating simple electron density maps from pdb files
-
+#
 #    Part of the DENSS package
 #    DENSS: DENsity from Solution Scattering
 #    A tool for calculating an electron density map from solution scattering data
@@ -11,7 +11,7 @@
 #
 #    Author: Thomas D. Grant
 #    Email:  <tgrant@hwi.buffalo.edu>
-#    Copyright 2017 The Research Foundation for SUNY
+#    Copyright 2018 The Research Foundation for SUNY
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
