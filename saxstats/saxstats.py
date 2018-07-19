@@ -557,8 +557,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     logging.info('Width of q shells (angstroms^(-1)): %3.3f', qstep)
     logging.info('Random seed: %i', seed)
 
-    print "Step  Chi2      Rg      Support Volume"
-    print "----- --------- ------- --------------"
+    if not quiet:
+        print "Step  Chi2      Rg      Support Volume"
+        print "----- --------- ------- --------------"
     for j in range(steps):
         F = np.fft.fftn(rho)
         #APPLY RECIPROCAL SPACE RESTRAINTS
