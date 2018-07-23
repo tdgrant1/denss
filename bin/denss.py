@@ -41,8 +41,19 @@ try:
 except ImportError:
     matplotlib_found = False
 
+#have to run parser twice, first just to get filename for loadProfile
+#then have to run it after deciding what the correct dmax should be
+#so that the voxel size, box size, nsamples, etc are set correctly
+initparser = argparse.ArgumentParser()
+initargs = dopts.parse_arguments(initparser, gnomdmax=None)
+
+q, I, sigq, dmax, isout = saxs.loadProfile(initargs.file)
+
+if dmax <= 0:
+    dmax = None
+
 parser = argparse.ArgumentParser()
-args = dopts.parse_arguments(parser)
+args = dopts.parse_arguments(parser, gnomdmax=dmax)
 
 logging.basicConfig(filename=args.output+'.log',level=logging.INFO,filemode='w',
     format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
@@ -52,11 +63,9 @@ logging.info('Data filename: %s', args.file)
 logging.info('Output prefix: %s', args.output)
 logging.info('Mode: %s', args.mode)
 
-q, I, sigq, dmax, isout = saxs.loadProfile(args.file)
-
 qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV, rho = saxs.denss(
     q=q,I=I,sigq=sigq,
-    dmax=args.dmax,
+    dmax=dmax,
     ne=args.ne,
     voxel=args.voxel,
     oversampling=args.oversampling,

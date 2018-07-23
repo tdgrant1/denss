@@ -12,7 +12,7 @@ try:
 except ImportError:
     matplotlib_found = False
 
-def parse_arguments(parser):
+def parse_arguments(parser,gnomdmax=None):
     
     parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
     parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
@@ -128,10 +128,12 @@ def parse_arguments(parser):
     if args.steps is not None:
         steps = args.steps
 
-    if args.dmax is not None:
+    if args.dmax is not None and args.dmax >= 0:
         dmax = args.dmax
-    elif args.dmax<=0:
-        dmax = 100
+    elif gnomdmax is not None:
+        dmax = gnomdmax
+    else:
+        dmax = 100.0
 
     if args.voxel is None and nsamples is None:
         voxel = 5.
