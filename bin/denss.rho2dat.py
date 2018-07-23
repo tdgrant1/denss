@@ -103,7 +103,7 @@ F = np.fft.fftn(rho)
 I3D = np.abs(F)**2
 Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
 
-if args.plot: plt.plot(qbinsc, Imean)
+if args.plot: plt.plot(qbinsc, Imean, label='Default dq = %.4f' % (2*np.pi/side))
 
 if args.dq is not None or args.n is not None:
 
@@ -160,16 +160,17 @@ print "qmax to use: %f" % qmax_to_use
 qbinsc_to_use = qbinsc[qbinsc<qmax_to_use]
 Imean_to_use = Imean[qbinsc<qmax_to_use]
 
-#qbinsc = np.copy(qbinsc_to_use)
-#Imean = np.copy(Imean_to_use)
+qbinsc = np.copy(qbinsc_to_use)
+Imean = np.copy(Imean_to_use)
 
 Iq = np.vstack((qbinsc, Imean, Imean*.03)).T
 
 np.savetxt(output+'.dat', Iq, delimiter=' ', fmt='% .5e')
 
 if args.plot:
-    plt.plot(qbinsc_to_use, Imean_to_use)
+    plt.plot(qbinsc_to_use, Imean_to_use,label='Actual dq = %.4f' % (2*np.pi/side))
     plt.semilogy()
+    plt.legend()
     plt.show()
 
 

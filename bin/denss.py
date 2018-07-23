@@ -65,7 +65,7 @@ logging.info('Mode: %s', args.mode)
 
 qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV, rho = saxs.denss(
     q=q,I=I,sigq=sigq,
-    dmax=dmax,
+    dmax=args.dmax,
     ne=args.ne,
     voxel=args.voxel,
     oversampling=args.oversampling,
