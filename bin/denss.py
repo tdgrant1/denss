@@ -169,7 +169,3 @@ if args.plot and matplotlib_found:
 logging.info('END')
 
 
-
-
-
-

@@ -7,6 +7,18 @@ If you use DENSS in your work, please cite:
 Grant, Thomas D. (2018). Ab initio electron density determination directly from 
 solution scattering data. Nature Methods. http://dx.doi.org/10.1038/nmeth.4581.
 
+#### New Averaging Procedure (beta)
+A new procedure for aligning and averaging electron density maps with DENSS is
+now available with v1.4.0. The new procedure is written entirely in Python from
+the ground up and no longer requires EMAN2 to be installed. The new procedure
+can be accessed with a series of new scripts, named as denss.xxx.py where xxx
+is the name of the script. denss.all.py acts as the old superdenss, running
+twenty reconstructions, aligning and averaging all maps, including enantiomer
+generation and selection. The new scripts are still in testing, so use at your 
+own risk. Old scripts using the EMAN2 averaging procedure are still available.
+Manuals for the new scripts coming soon. Thanks to intern Nhan Nguyen for helping
+to write the new code.
+
 #### New interactive GUI for fitting data
 A new script (denss.fit_data.py) is provided with DENSS v1.3.0 for calculating smooth 
 fits to experimental data using a convenient interactive GUI.

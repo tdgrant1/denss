@@ -56,6 +56,8 @@ def parse_arguments(parser,gnomdmax=None):
     parser.add_argument("--cutout_off", dest="cutout", action="store_false", help="When writing final map, do not cut out the particle to make smaller files (default).")
     parser.add_argument("--plot_on", dest="plot", action="store_true", help="Create simple plots of results (requires Matplotlib, default if module exists).")
     parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not create simple plots of results. (Default if Matplotlib does not exist)")
+    parser.add_argument("-q", "--quiet", action = "store_true", help="Stop displaying denss processes (default False)")
+    parser.set_defaults(quiet = False)
     parser.set_defaults(limit_dmax=False)
     parser.set_defaults(shrinkwrap=True)
     parser.set_defaults(recenter=True)
@@ -153,4 +155,3 @@ def parse_arguments(parser,gnomdmax=None):
     args.voxel = voxel
 
     return args
-

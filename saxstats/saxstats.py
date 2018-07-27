@@ -8,7 +8,7 @@
 #
 #    Author: Thomas D. Grant
 #    Email:  <tgrant@hwi.buffalo.edu>
-#    Copyright 2017 The Research Foundation for SUNY
+#    Copyright 2017, 2018 The Research Foundation for SUNY
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -25,26 +25,33 @@
 #
 
 import sys
-import logging
-import datetime
 import re
 import os
 import json
 import struct
+import logging
+import argparse
+import matplotlib
 import numpy as np
-from scipy import ndimage, special, spatial
-from collections import OrderedDict
+from multiprocessing import Pool
+import datetime, time
+from scipy import ndimage
+import matplotlib.pyplot as plt
+from functools import partial
+from _version import __version__
+from scipy import stats, signal, interpolate, spatial, special, optimize, ndimage, linalg
 
 def chi2(exp, calc, sig):
     """Return the chi2 discrepancy between experimental and calculated data"""
     return np.sum(np.square(exp - calc) / np.square(sig))
 
-def center_rho(rho,centering="com"):
+def center_rho(rho, centering="com"):
     """Move electron density map so its center of mass aligns with the center of the grid
 
     centering - which part of the density to center on. By default, center on the
                 center of mass ("com"). Can also center on maximum density value ("max").
     """
+    ne_rho= np.sum((rho))
     if centering == "max":
         rhocom = np.unravel_index(rho.argmax(), rho.shape)
     else:
@@ -52,6 +59,7 @@ def center_rho(rho,centering="com"):
     gridcenter = np.array(rho.shape)/2.
     shift = gridcenter-rhocom
     rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
+    rho = rho*ne_rho/np.sum(rho)
     return rho
 
 def rho2rg(rho,side=None,r=None,support=None,dx=None):
@@ -98,7 +106,7 @@ def write_mrc(rho,side,filename="map.mrc"):
         fout.write(struct.pack('<iii', 1, 2, 3))
         # DMIN, DMAX, DMEAN
         fout.write(struct.pack('<fff', np.min(rho), np.max(rho), np.average(rho)))
-        # ISPG, NSYMBT, LSKFLG
+        # ISPG, NSYMBT, mlLSKFLG
         fout.write(struct.pack('<iii', 1, 0, 0))
         # EXTRA
         fout.write(struct.pack('<'+'f'*12, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0))
@@ -126,7 +134,7 @@ def write_mrc(rho,side,filename="map.mrc"):
                     s = struct.pack('<f', rho[i,j,k])
                     fout.write(s)
 
-def read_mrc(filename):
+def read_mrc(filename="map.mrc"):
     """
         See MRC format at http://bio3d.colorado.edu/imod/doc/mrc_format.txt for offsets
     """
@@ -138,14 +146,18 @@ def read_mrc(filename):
         nx,ny,nz = [np.array(i) for i in [nx,ny,nz]]
         rho_shape = (nx[0],ny[0],nz[0])
         
+        
         side = struct.unpack_from('<f',MRCdata,40)[0]
         
         fin.seek(1024, os.SEEK_SET)
         rho = np.fromfile(file=fin, dtype=np.dtype(np.float32)).reshape(rho_shape)
         rho = rho.T
         fin.close()
-    
+        #print rho.shape
     return rho, side
+
+#def average
+#def enantiomer
 
 def write_xplor(rho,side,filename="map.xplor"):
     """Write an XPLOR formatted electron density map."""
@@ -556,10 +568,10 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     logging.info('Number of q shells: %i', nbins)
     logging.info('Width of q shells (angstroms^(-1)): %3.3f', qstep)
     logging.info('Random seed: %i', seed)
-
     if not quiet:
-        print "Step  Chi2      Rg      Support Volume"
-        print "----- --------- ------- --------------"
+        print "\n Step     Chi2     Rg    Support Volume"
+        print " ----- --------- ------- --------------"
+
     for j in range(steps):
         F = np.fft.fftn(rho)
         #APPLY RECIPROCAL SPACE RESTRAINTS
@@ -627,7 +639,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                 struct = ndimage.generate_binary_structure(3, 3)
                 labeled_support, num_features = ndimage.label(support, structure=struct)
                 sums = np.zeros((num_features))
-                print num_features
+                
                 #find the feature with the greatest number of electrons
                 for feature in range(num_features):
                     sums[feature-1] = np.sum(newrho[labeled_support==feature])
@@ -639,7 +651,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             if np.sum(support) <= 0:
                 support = np.ones(rho.shape,dtype=bool)
         supportV[j] = np.sum(support)*dV
+
         if not quiet:
+            #sys.stdout.write("\r ----- --------- ------- --------------")
             sys.stdout.write("\r% 5i % 4.2e % 3.2f       % 5i          " % (j, chi[j], rg[j], supportV[j]))
             sys.stdout.flush()
 
@@ -647,8 +661,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             break
 
         rho = newrho
-        
-    print
+    if not quiet:
+        print
 
     F = np.fft.fftn(rho)
     #calculate spherical average intensity from 3D Fs
@@ -710,456 +724,308 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     sigqdata /= scale_factor
     Imean /= scale_factor
 
-    return qdata, Idata, sigqdata, qbinsc, Imean[j], chi, rg, supportV, rho
+    return qdata, Idata, sigqdata, qbinsc, Imean[j], chi, rg, supportV, rho, side
 
-class Sasrec(object):
-    def __init__(self, Iq, D, qc=None, r=None, alpha=0.0, ne=2):
-        self.q = Iq[:,0]
-        self.I = Iq[:,1]
-        self.Ierr = Iq[:,2]
-        self.q.clip(1e-10)
-        self.I[np.abs(self.I)<1e-10] = 1e-10
-        self.Ierr.clip(1e-10)
-        self.D = D
-        self.qmin = np.min(self.q)
-        self.qmax = np.max(self.q)
-        self.nq = len(self.q)
-        self.qi = np.arange(self.nq)
-        if qc is None:
-            self.qc = self.q
+def center_rho_roll(rho):
+    """Move electron density map so its center of mass aligns with the center of the grid"""
+    rhocom = np.array(ndimage.measurements.center_of_mass(rho))
+    #rhocom = np.unravel_index(rho.argmax(), rho.shape)
+    gridcenter = np.array(rho.shape)/2.
+    shift = gridcenter-rhocom
+    shift = shift.astype(int)
+    print rhocom
+    rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
+    print np.array(ndimage.measurements.center_of_mass(rho))
+    return rho
+
+def minimize_rho(refrho, movrho, T = np.zeros(6)):
+    """Optimize superposition of electron density maps. Move movrho to refrho."""
+    #print "initial score: ", 1/rho_overlap_score(refrho,movrho)
+    bounds = np.zeros(12).reshape(6,2)
+    bounds[:3,0] = -20*np.pi
+    bounds[:3,1] = 20*np.pi
+    bounds[3:,0] = -5
+    bounds[3:,1] = 5
+    save_movrho = np.copy(movrho)
+    save_refrho = np.copy(refrho)
+    result = optimize.fmin_l_bfgs_b(minimize_rho_score, T, factr= 0.1, maxiter=100, maxfun=200, epsilon=0.05, args=(refrho,movrho),bounds=bounds, approx_grad=True)
+    Topt = result[0]
+    newrho = transform_rho(save_movrho, Topt, order=2)
+    finalscore = 1/rho_overlap_score(save_refrho,newrho)
+    return newrho, finalscore
+
+def minimize_rho_score(T, refrho, movrho):
+    """Scoring function for superposition of electron density maps.
+        
+        refrho - fixed, reference rho
+        movrho - moving rho
+        T - 6-element list containing alpha, beta, gamma, Tx, Ty, Tz in that order
+        to move movrho by.
+        """
+    newrho=transform_rho(movrho, T)
+    score = rho_overlap_score(refrho,newrho)
+    return score
+
+def rho_overlap_score(rho1,rho2):
+    """Scoring function for superposition of electron density maps."""
+    n=2*np.sum(np.abs(rho1*rho2))
+    d=(2*np.sum(rho1**2)**0.5*np.sum(rho2**2)**0.5)
+    score = n/d
+    #1/score for least squares minimization, i.e. want to minimize, not maximize score
+    return 1/score
+
+def transform_rho(rho, T, order=1):
+    """ Rotate and translate electron density map by T vector.
+    
+        T = [alpha, beta, gamma, x, y, z], angles in radians
+        order = interpolation order (0-5)
+    """
+    ne_rho= np.sum((rho))
+    R = euler2matrix(T[0],T[1],T[2])
+    coordinates=np.array(ndimage.measurements.center_of_mass(rho))
+    offset=coordinates-np.dot(coordinates,R)
+    newrho = ndimage.interpolation.affine_transform(rho,R.T,order=order,offset=offset,output=np.float64,mode='wrap')
+    newrho = ndimage.interpolation.shift(newrho,T[3:],order=order,mode='wrap',output=np.float64)
+    newrho = newrho*ne_rho/np.sum(newrho)
+    return newrho
+
+def euler2matrix(alpha=0.0,beta=0.0,gamma=0.0):
+    """Convert Euler angles alpha, beta, gamma to a standard rotation matrix.
+        
+        alpha - yaw, counterclockwise rotation about z-axis, upper-left quadrant
+        beta - pitch, counterclockwise rotation about y-axis, four-corners
+        gamma - roll, counterclockwise rotation about x-axis, lower-right quadrant
+        all angles given in radians
+        
+        """
+    R = []
+    cosa = np.cos(alpha)
+    sina = np.sin(alpha)
+    cosb = np.cos(beta)
+    sinb = np.sin(beta)
+    cosg = np.cos(gamma)
+    sing = np.sin(gamma)
+    R.append(np.array(
+        [[cosa, -sina, 0],
+        [sina, cosa, 0],
+        [0, 0, 1]]))
+    R.append(np.array(
+        [[cosb, 0, sinb],
+        [0, 1, 0],
+        [-sinb, 0, cosb]]))
+    R.append(np.array(
+        [[1, 0, 0],
+        [0, cosg, -sing],
+        [0, sing, cosg]]))
+    return reduce(np.dot,R[::-1])
+
+def inertia_tensor(rho,side):
+    """Calculate the moment of inertia tensor for the given electron density map."""
+    halfside = side/2.
+    n = rho.shape[0]
+    x_ = np.linspace(-halfside,halfside,n)
+    x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
+    Ixx = np.sum((y**2 + z**2)*rho)
+    Iyy = np.sum((x**2 + z**2)*rho)
+    Izz = np.sum((x**2 + y**2)*rho)
+    Ixy = -np.sum(x*y*rho)
+    Iyz = -np.sum(y*z*rho)
+    Ixz = -np.sum(x*z*rho)
+    I = np.array([[Ixx, Ixy, Ixz],
+                  [Ixy, Iyy, Iyz],
+                  [Ixz, Iyz, Izz]])
+    return I
+
+def principal_axes(I):
+    """Calculate the principal inertia axes and order them Ia < Ib < Ic."""
+    w,v = np.linalg.eigh(I.T)
+    return w,v
+
+def principal_axis_alignment(refrho,movrho):
+    """ Align movrho principal axes to refrho."""
+    side = 1.0
+    ne_movrho= np.sum((movrho))
+    I1=inertia_tensor(refrho, side)
+    w1,v1=principal_axes(I1)
+    I2=inertia_tensor(movrho, side)
+    w2,v2=principal_axes(I2)
+    R1=v1
+    R2=v2
+    R=np.dot(R1,R2.T)
+    coordinates=np.array(ndimage.measurements.center_of_mass(movrho))
+    offset = coordinates - np.dot(coordinates,R)
+    newrho = ndimage.interpolation.affine_transform(movrho,R.T,order=1, output=np.float64, offset=offset, mode='wrap')
+    newrho = newrho*ne_movrho/np.sum(newrho)
+    return newrho
+
+def align2xyz(rho):
+    """ Align rho such that principal axes align with XYZ axes."""
+    side = 1.0
+    ne_rho= np.sum((rho))
+    rho = center_rho(rho)
+    I = inertia_tensor(rho, side)
+    w,v = principal_axes(I)
+    R = v.T
+    coordinates=np.array(ndimage.measurements.center_of_mass(rho))
+    offset=coordinates-np.dot(coordinates,R)
+    newrho = ndimage.interpolation.affine_transform(rho,R.T,order=1, offset=offset, mode='wrap')
+    newrho = newrho*ne_rho/np.sum(newrho)
+    return newrho
+
+def generate_enantiomers(rho):
+    """ Generate all enantiomers of given density map.
+        Output maps are flipped over x,y,z,xy,yz,zx, and xyz, respectively
+        """
+    rho = align2xyz(rho)
+    rho_xflip = rho[::-1,:,:]
+    rho_yflip = rho[:,::-1,:]
+    rho_zflip = rho[:,:,::-1]
+    rho_xyflip = rho_xflip[:,::-1,:]
+    rho_yzflip = rho_yflip[:,:,::-1]
+    rho_zxflip = rho_zflip[::-1,:,:]
+    rho_xyzflip = rho_xyflip[:,:,::-1]
+    enans = np.array([rho,rho_xflip,rho_yflip,rho_zflip,
+                      rho_xyflip,rho_yzflip,rho_zxflip,
+                      rho_xyzflip])
+    return enans
+
+def align(refrho,movrho):
+    """ Align second electron density map to the first."""
+    ne_rho= np.sum((movrho))
+    rhocom = np.array(ndimage.measurements.center_of_mass(refrho))
+    gridcenter = np.array(refrho.shape)/2.
+    shift = gridcenter-rhocom
+    newrefrho = ndimage.interpolation.shift(refrho,shift,order=3,mode='wrap')
+    movrho = principal_axis_alignment(newrefrho, movrho)
+    movrho, score = minimize_rho(newrefrho, movrho)
+    movrho = ndimage.interpolation.shift(movrho,-shift,order=3,mode='wrap')
+    movrho = movrho*ne_rho/np.sum(movrho)
+    return movrho, score
+
+def multi_align(niter, **kwargs):
+    """ Wrapper script for alignment for multiprocessing."""
+    try:
+        kwargs['refrho']=kwargs['refrho'][niter]
+        if niter >= kwargs['movrho'].shape[0]-1:
+            print "\r Finishing alignment: %i / %i" % (niter+1, kwargs['movrho'].shape[0])
         else:
-            self.qc = qc
-        if r is None:
-            self.nr = self.nq
-            self.r = np.linspace(0,self.D,self.nr)
-        else:
-            self.r = r
-            self.nr = len(self.r)
-        self.alpha = alpha
-        self.ne = ne
-        self.update()
+            sys.stdout.write( "\r Running alignment: %i / %i" % (niter+1, kwargs['movrho'].shape[0]))
+            sys.stdout.flush()
+        kwargs['movrho']=kwargs['movrho'][niter]
+        time.sleep(1)
+        return align(**kwargs)
+    except KeyboardInterrupt:
+        pass
 
-    def update(self):
-        self.ri = np.arange(self.nr)
-        self.n = self.shannon_channels(self.qmax,self.D) + self.ne
-        self.Ni = np.arange(self.n)
-        self.N = self.Ni + 1
-        self.Mi = np.copy(self.Ni)
-        self.M = np.copy(self.N)
-        self.qn = np.pi/self.D * self.N
-        self.In = np.zeros((self.nq))
-        self.Inerr = np.zeros((self.nq))
-        self.B = np.zeros((self.n, self.nq))
-        self.S = np.zeros((self.n, self.nr))
-        self.Y = np.zeros((self.n))
-        self.C = np.zeros((self.n, self.n))
-        self.B[self.Ni] = self.Bt(self.N[:, None], self.q, self.D)
-        self.S[self.Ni] = self.St(self.N[:, None], self.r, self.D)
-        self.Y[self.Mi] = self.Yt(I=self.I, Ierr=self.Ierr, Bm=self.B[self.Mi])
-        self.C[self.Mi[:, None], self.Ni] = self.Ct2(Ierr=self.Ierr, Bm=self.B[self.Mi], Bn=self.B[self.Ni], alpha=self.alpha, D=self.D)
-        self.Cinv = np.linalg.inv(self.C)
-        self.In = 0.5*np.linalg.solve(self.C,self.Y)
-        #self.In = 0.5*optimize.nnls(self.C, self.Y)[0]
-        self.Inerr = 0.5*(np.diagonal(self.Cinv))**(0.5)
-        self.Ic = self.Ish2Iq(Ish=self.In,D=self.D,q=self.qc)[:,1]
-        self.P = self.Ish2P(self.In,self.D,self.r)
-        self.Perr = self.Perrf(r=self.r, D=self.D, Sn=self.S[self.Ni[:, None], self.ri], Sm=self.S[self.Mi[:, None], self.ri], Cinv=self.Cinv)
-        self.I0 = self.Ish2I0(self.In,self.D)
-        self.I0err = self.I0errf(self.Cinv)
-        self.rg2 = self.Ish2rg2(self.In,self.D)
-        self.rg = self.Ish2rg(self.In,self.D)
-        self.rgerr = self.rgerrf(self.In,self.D,self.Cinv)
-        self.ravg = self.Ish2ravg(self.In,self.D)
-        self.ravgerr = self.ravgerrf(self.In,self.D,self.Cinv)
-        self.Q = self.Ish2Q(self.In,self.D)
-        self.Qerr = self.Qerrf(self.D,self.Cinv)
-        self.Vp = self.Ish2Vp(self.In,self.D)
-        self.Vperr = self.Vperrf(self.In,self.D,self.Cinv)
-        self.mwVp = self.Ish2mwVp(self.In,self.D)
-        self.mwVperr = self.mwVperrf(self.In,self.D,self.Cinv)
-        self.Vc = self.Ish2Vc(self.In,self.D)
-        self.Vcerr = self.Vcerrf(self.In,self.D,self.Cinv)
-        self.mwVc = self.Ish2mwVc(self.In,self.D)
-        self.mwVcerr = self.mwVcerrf(self.In,self.D,self.Cinv)
-        self.lc = self.Ish2lc(self.In,self.D)
-        self.lcerr = self.lcerrf(self.In,self.D,self.Cinv)
+def average_two(rho1, rho2):
+    """ Align and average two electron density maps and return the average."""
+    rho2, score = align(rho1, rho2)
+    average_rho = (rho1+rho2)/2
+    return average_rho
 
+def multi_average_two(niter, **kwargs):
+    """ Wrapper script for averaging two maps for multiprocessing."""
+    try:
+        kwargs['rho1']=kwargs['rho1'][niter]
+        kwargs['rho2']=kwargs['rho2'][niter]
+        time.sleep(1)
+        return average_two(**kwargs)
+    except KeyboardInterrupt:
+        pass
 
-    def shannon_channels(self, D, qmax=0.5, qmin=0.0):
-        """Return the number of Shannon channels given a q range and maximum particle dimension"""
-        width = np.pi / D
-        num_channels = int((qmax-qmin) / width)
-        return num_channels
+def average_pairs(rhos, cores = 1):
+    """ Average pairs of electron density maps, second half to first half."""
+    #create even/odd pairs, odds are the references
+    rho_args = {'rho1':rhos[::2], 'rho2':rhos[1::2]}
+    pool = Pool(cores)
+    try:
+        mapfunc = partial(multi_average_two, **rho_args)
+        average_rhos = pool.map(mapfunc, range(rhos.shape[0]/2))
+        pool.close()
+        pool.join()
+    except KeyboardInterrupt:
+        pool.terminate()
+        pool.close()
+        sys.exit(1)
+    return np.array(average_rhos)
 
-    def Bt(self,n,q,D):
-        return (n*np.pi)**2/((n*np.pi)**2-(q*D)**2) * np.sinc(q*D/np.pi) * (-1)**(n+1)
+def binary_average(rhos, cores=1):
+    """ Generate a reference electron density map using binary averaging."""
+    twos = 2**np.arange(20)
+    nmaps = np.max(twos[twos<=rhos.shape[0]])
+    levels = int(np.log2(nmaps))-1
+    rhos = rhos[:nmaps]
+    for level in range(levels):
+         rhos = average_pairs(rhos,cores)
+    refrho = center_rho(rhos[0])
+    print "\n Generating reference is complete."
+    return refrho
 
-    def St(self,n,r,D):
-        return r/D**2 * n * np.sin(n*np.pi*r/D)
+def align_multiple(refrho, rhos, cores = 1):
+    """ Align each map in the set to the reference."""
+    #need to make a duplicate of refrho nmaps times to feed as separate
+    #arguments to pool.map
+    rho_args = {'refrho':np.array([refrho for i in range(rhos.shape[0])]), 'movrho':rhos}
+    pool = Pool(cores)
+    try:
+        mapfunc = partial(multi_align, **rho_args)
+        results = pool.map(mapfunc, range(rhos.shape[0]))
+        pool.close()
+        pool.join()
+    except KeyboardInterrupt:
+        pool.terminate()
+        pool.close()
+        sys.exit(1)
+    aligned_rhos = np.array([results[i][0] for i in range(len(results))])
+    scores = np.array([results[i][1] for i in range(len(results))])
+    return aligned_rhos, scores
 
-    def Yt(self,I, Ierr, Bm):
-        """Return the values of Y, an m-length vector."""
-        return np.einsum('i, ki->k', I/Ierr**2, Bm)
+def select_best_enantiomer(refrho, rho, cores = 1):
+    """ Generate, align and select the best enantiomer. """
+    enans = generate_enantiomers(rho)
+    aligned, scores = align_multiple(refrho, enans, cores)
+    best_i = np.argmax(scores)
+    best_enan, score = aligned[best_i], scores[best_i]
+    return best_enan, score
 
-    def Ct(self,Ierr, Bm, Bn):
-        """Return the values of C, a m x n variance-covariance matrix"""
-        return np.einsum('ij,kj->ik', Bm/Ierr**2, Bn)
+def select_best_enantiomers(refrho, rhos, cores=1):
+    """ Generate, align and select the best enantiomer for each map in the set."""
+    best_enans = []
+    scores = []
+    for i in range(rhos.shape[0]):
+        best_enan, score = select_best_enantiomer(refrho, rhos[i], cores)
+        best_enans.append(best_enan)
+        scores.append(score)
+    best_enans = np.array(best_enans)
+    scores = np.array(scores)
+    return best_enans, scores
 
-    def Amn(self,m,n,D):
-        """Return the mxn matrix of coefficients for the integral of (2nd deriv of P(r))**2 used for smoothing"""
-        m = np.atleast_1d(m).astype(float)
-        n = np.atleast_1d(n).astype(float)
-        nm = len(m)
-        nn = len(n)
-        amn = np.zeros((nm,nn))
-        for i in range(nm):
-            for j in range(nn):
-                if m[i] != n[j]:
-                    amn[i,j] = np.pi**2/(2*D**5) * (m[i]*n[j])**2 * (m[i]**4+n[j]**4)/(m[i]**2+n[j]**2)**2 * (-1)**(m[i]+n[j])
-                if m[i] == n[j]:
-                    amn[i,j] = np.pi**4/(2*D**5) * n[j]**6
-        return amn
-
-    def Ct2(self,Ierr, Bm, Bn, alpha, D):
-        """Return the values of C, a m x n variance-covariance matrix while smoothing P(r)"""
-        m = Bm.shape[0]
-        n = Bn.shape[0]
-        ni = Bm.shape[1]
-        M = np.arange(m)+1
-        N = np.arange(n)+1
-        amn = self.Amn(M,N,D)
-        return ni/8. * alpha * amn + np.einsum('ij,kj->ik', Bm/Ierr**2, Bn)
-
-    def Perrt(self,r, Sn, Sm, Cinv):
-        """Return the standard errors on P(r).
-            
-            To work, Sn will generally equal something like S[N[:, None], pts] where N is
-            the array of n shannon channels, same for Sm, and pts is the array of
-            indices for the number of data points, e.g. np.arange(npts).
-            This is required for correct broadcasting.
-            Example: Perr(r=r, Sn=S[N[:, None], pts]), Sm=S[M[:, None], pts], Cinv=Cinv)
-            """
-        return r*np.einsum('ni,mi,nm->i', Sn, Sm, Cinv)**(.5)
-
-    def Iq2Ish(self,q,I,sigq,D,ne=2):
-        """Calculate Shannon intensities from experimental I(q) profile."""
-        npts = len(q)
-        qmax = np.max(q)
-        D = float(D)
-        nmax = shannon_channels(qmax, D)+ne
-        
-        sigq.clip(1e-10)
-        
-        B = np.zeros((nmax, npts))
-        C = np.zeros((nmax, nmax))
-        Y = np.zeros((nmax))
-        Ni = np.arange(nmax) #indices
-        Mi = np.arange(nmax) #indices
-        N = Ni+1 #values
-        M = Mi+1 #values
-        pts = np.arange(npts)
-        
-        qsh = N*shannon_width(D)
-        Ish = np.zeros((nmax,3))
-        
-        B[Ni] = Bt(N[:, None], q, D)
-        Y[Mi] = Yt(I=I,Ierr=sigq,Bm=B[Mi])
-        C[Mi[:, None], Ni] = Ct(Ierr=sigq, Bm=B[Mi], Bn=B[Ni])
-        
-        Cinv = np.linalg.inv(C)
-        
-        Ish[:,0] = qsh
-        Ish[:,1] = 0.5*np.linalg.solve(C,Y)
-        Ish[:,2] = 0.5*(np.diagonal(Cinv))**(0.5)
-        
-        return Ish
-
-    def Iq2Cinv(self,q,I,sigq,D,ne=2):
-        """Calculate Shannon intensities from experimental I(q) profile."""
-        npts = len(q)
-        qmax = np.max(q)
-        D = float(D)
-        nmax = shannon_channels(qmax, D)+ne
-        
-        sigq.clip(1e-10)
-        
-        B = np.zeros((nmax, npts))
-        C = np.zeros((nmax, nmax))
-        Y = np.zeros((nmax))
-        Ni = np.arange(nmax) #indices
-        Mi = np.arange(nmax) #indices
-        N = Ni+1 #values
-        M = Mi+1 #values
-        pts = np.arange(npts)
-        
-        qsh = N*shannon_width(D)
-        Ish = np.zeros((nmax,3))
-        
-        B[Ni] = Bt(N[:, None], q, D)
-        Y[Mi] = Yt(I=I,sigq=sigq,Bm=B[Mi])
-        C[Mi[:, None], Ni] = Ct(sigq=sigq, Bm=B[Mi], Bn=B[Ni])
-        
-        Cinv = np.linalg.inv(C)
-        
-        Ish[:,0] = qsh
-        Ish[:,1] = 0.5*np.linalg.solve(C,Y)
-        Ish[:,2] = 0.5*(np.diagonal(Cinv))**(0.5)
-        
-        return Cinv
-
-    def Ish2Iq(self,Ish,D,q=(np.arange(500)+1.)/1000):
-        """Calculate I(q) from intensities at Shannon points."""
-        q = np.atleast_1d(q)
-        Ish = np.atleast_1d(Ish)
-        Iq = np.zeros((len(q),2))
-        Iq[:,0] = q
-        n = len(Ish)
-        N = np.arange(n)+1
-        denominator = (N[:,None]*np.pi)**2-(q*D)**2
-        I = 2*np.einsum('k,ki->i',Ish,(N[:,None]*np.pi)**2 / denominator * np.sinc(q*D/np.pi) * (-1)**(N[:,None]+1))
-        Iq[:,1] = I
-        return Iq
-
-    def Ish2P(self,Ish,D,r=None,dr=None):
-        """Calculate P(r) from intensities at Shannon points."""
-        if r is None:
-            if dr is None:
-                dr = 0.10
-            r = np.linspace(0,D,D/dr)
-        r = np.atleast_1d(r)
-        Ish = np.atleast_1d(Ish)
-        N = np.arange(len(Ish))+1
-        P = 1./(2*D**2) * np.einsum('k,kj->k',r,N*Ish*np.sin(N*np.pi*r[:,None]/D))
-        return P
-
-    def _Ish2P(self,Ish,D,r=None,dr=None,extend=True,nstart=0):
-        """Calculate P(r) from intensities at Shannon points."""
-        if r is None:
-            if dr is None:
-                dr = 0.10
-            r = np.linspace(0,D,D/dr)
-        r = np.atleast_1d(r)
-        Ish = np.atleast_1d(Ish)
-        Ish = Ish[nstart:]
-        P = np.zeros((len(r),2))
-        P[:,0] = r
-        N = np.arange(len(Ish))+1+nstart
-        for i in range(len(r)):
-            if r[i]>D:
-                P[i,1] = 0.0
-            else:
-                P[i,1] = r[i]/(2*D**2) * np.sum(N*Ish*np.sin(N*np.pi*r[i]/D))
-                if extend:
-                    Np = np.arange(N[-1]+1,100)
-                    k = Ish[-1]/(N[-1]*np.pi/D)**(-4)
-                    P[i,1] += r[i]/(2*D**2) * k * np.sum(Np*(Np*np.pi/D)**(-4)*np.sin(Np*np.pi*r[i]/D))
-        return P
-
-    def Perrf(self,r, D, Sn, Sm, Cinv):
-        """Return the standard errors on P(r).
-            
-            To work, Sn will generally equal something like S[N[:, None], pts] where N is
-            the array of n shannon channels, same for Sm, and pts is the array of
-            indices for the number of data points, e.g. np.arange(npts).
-            This is required for correct broadcasting.
-            Example: Perr(r=r, Sn=S[N[:, None], pts]), Sm=S[M[:, None], pts], Cinv=Cinv)
-            """
-        nmax = len(Sn)
-        Ni = np.arange(nmax) #indices
-        Mi = np.arange(nmax) #indices
-        N = Ni+1 #values
-        M = Mi+1 #values
-        #THIS IS WRONG, FIX IT WITH CORRECT EQUATION
-        return r/(4*D**2)*np.einsum('ni,mi,nm->i', N[:,None]*Sn, M[:,None]*Sm, Cinv)**(.5)
-
-    def Ish2I0(self,Ish,D):
-        """Calculate I0 from Shannon intensities"""
-        n = len(Ish)
-        N = np.arange(n)+1
-        I0 = 2 * np.sum(Ish*(-1)**(N+1))
-        return I0
-
-    def I0errf(self,Cinv):
-        """Calculate error on I0 from Shannon intensities from inverse C variance-covariance matrix"""
-        nmax = len(Cinv)
-        Ni = np.arange(nmax) #indices
-        Mi = np.arange(nmax) #indices
-        N = Ni+1 #values
-        M = Mi+1 #values
-        s2 = np.einsum('n,m,nm->',(-1)**(N),(-1)**M,Cinv)
-        return s2**(0.5)
-
-    def Ish2rg(self,Ish,D):
-        """Calculate Rg from Shannon intensities"""
-        n = len(Ish)
-        N = np.arange(n)+1
-        I0 = self.Ish2I0(Ish,D)
-        summation = np.sum(Ish*(1-6/(N*np.pi)**2)*(-1)**(N+1))
-        rg = np.sqrt(D**2/I0 * summation)
-        return rg
-
-    def Ish2rg2(self,Ish,D):
-        """Calculate Rg^2 from Shannon intensities"""
-        n = len(Ish)
-        N = np.arange(n)+1
-        I0 = self.Ish2I0(Ish,D)
-        summation = np.sum(Ish*(1-6/(N*np.pi)**2)*(-1)**(N+1))
-        rg2 = D**2/I0 * summation
-        #rg = np.sqrt(rg2)
-        return rg2
-
-    def rgerrf(self,Ish,D,Cinv):
-        """Calculate error on Rg from Shannon intensities from inverse C variance-covariance matrix"""
-        rg = self.Ish2rg(Ish,D)
-        I0 = self.Ish2I0(Ish,D)
-        nmax = len(Cinv)
-        Ni = np.arange(nmax) #indices
-        Mi = np.arange(nmax) #indices
-        N = Ni+1 #values
-        M = Mi+1 #values
-        s2 = np.einsum('n,m,nm->',(1-6/(N*np.pi)**2)*(-1)**(N),(1-6/(M*np.pi)**2)*(-1)**M,Cinv)
-        return D**2/(I0*rg)*s2**(0.5)
-
-    def Ish2ravg(self,Ish,D):
-        """Calculate average vector length r from Shannon intensities"""
-        n = len(Ish)
-        N = np.arange(n)+1
-        I0 = self.Ish2I0(Ish,D)
-        summation = np.sum(Ish * ( ((-1)**N-1)/(N*np.pi)**2 - (-1)**N/2. ))
-        avgr = 4*D/I0 * summation
-        return avgr
-
-    def ravgerrf(self,Ish,D,Cinv):
-        """Calculate error on Rg from Shannon intensities from inverse C variance-covariance matrix"""
-        avgr = self.Ish2ravg(Ish,D)
-        I0 = self.Ish2I0(Ish,D)
-        nmax = len(Cinv)
-        Ni = np.arange(nmax) #indices
-        Mi = np.arange(nmax) #indices
-        N = Ni+1 #values
-        M = Mi+1 #values
-        s2 = np.einsum('n,m,nm->',((-1)**N-1)/(N*np.pi)**2 - (-1)**N/2.,((-1)**M-1)/(M*np.pi)**2 - (-1)**M/2.,Cinv)
-        return 2*D/I0 * s2**(0.5)
-
-    def Ish2Q(self,Ish,D):
-        """Calculate Porod Invariant Q from Shannon intensities"""
-        n = len(Ish)
-        N = np.arange(n)+1
-        Q = (np.pi/D)**3 * np.sum(Ish*N**2)
-        return Q
-
-    def Qerrf(self,D,Cinv):
-        """Calculate error on Q from Shannon intensities from inverse C variance-covariance matrix"""
-        nmax = len(Cinv)
-        Ni = np.arange(nmax) #indices
-        Mi = np.arange(nmax) #indices
-        N = Ni+1 #values
-        M = Mi+1 #values
-        s2 = np.einsum('n,m,nm->', N**2, M**2,Cinv)
-        return (np.pi/D)**3 * s2**(0.5)
-
-    def gamma0(self,Ish, D):
-        """Calculate gamma at r=0. gamma is P(r)/4*pi*r^2"""
-        Q = self.Ish2Q(Ish,D)
-        return 1/(8*np.pi**3) * Q
-
-    def Ish2Vp(self,Ish,D):
-        """Calculate Porod Volume from Shannon intensities"""
-        Q = self.Ish2Q(Ish,D)
-        I0 = self.Ish2I0(Ish,D)
-        Vp = 2*np.pi**2 * I0/Q
-        return Vp
-
-    def Vperrf(self,Ish, D, Cinv):
-        """Calculate error on Vp from Shannon intensities from inverse C variance-covariance matrix"""
-        I0 = self.Ish2I0(Ish,D)
-        Q = self.Ish2Q(Ish,D)
-        I0s = self.I0errf(Cinv)
-        Qs = self.Qerrf(D,Cinv)
-        s2 = (2*np.pi/Q)**2*(I0s)**2 + (2*np.pi*I0/Q**2)**2*Qs**2
-        return s2**(0.5)
-
-    def Ish2mwVp(self,Ish,D):
-        """Calculate molecular weight via Porod Volume from Shannon intensities"""
-        Vp = self.Ish2Vp(Ish,D)
-        mw = Vp/1.66
-        return mw
-
-    def mwVperrf(self,Ish,D,Cinv):
-        """Calculate error on mwVp from Shannon intensities from inverse C variance-covariance matrix"""
-        Vps = self.Vperrf(Ish,D,Cinv)
-        return Vps/1.66
-
-    def Ish2Vc(self,Ish,D):
-        """Calculate Volume of Correlation from Shannon intensities"""
-        n = len(Ish)
-        N = np.arange(n)+1
-        I0 = self.Ish2I0(Ish,D)
-        area_qIq = 2*np.pi/D**2 * np.sum(N * Ish * special.sici(N*np.pi)[0])
-        Vc = I0/area_qIq
-        return Vc
-
-    def Vcerrf(self,Ish, D, Cinv):
-        """Calculate error on Vc from Shannon intensities from inverse C variance-covariance matrix"""
-        I0 = self.Ish2I0(Ish,D)
-        Vc = self.Ish2Vc(Ish,D)
-        nmax = len(Cinv)
-        Ni = np.arange(nmax) #indices
-        Mi = np.arange(nmax) #indices
-        N = Ni+1 #values
-        M = Mi+1 #values
-        s2 = np.einsum('n,m,nm->', N*special.sici(N*np.pi)[0], M*special.sici(M*np.pi)[0],Cinv)
-        return (2*np.pi*Vc**2/(D**2*I0)) * s2**(0.5)
-
-    def Ish2Qr(self,Ish,D):
-        """Calculate Rambo Invariant Qr (Vc^2/Rg) from Shannon intensities"""
-        Vc = self.Ish2Vc(Ish,D)
-        Rg = self.Ish2rg(Ish,D)
-        Qr = Vc**2/Rg
-        return Qr
-
-    def Ish2mwVc(self,Ish,D,RNA=False):
-        """Calculate molecular weight via the Volume of Correlation from Shannon intensities"""
-        Qr = self.Ish2Qr(Ish,D)
-        if RNA:
-            mw = (Qr/0.00934)**(0.808)
-        else:
-            mw = (Qr/0.1231)**(1.00)
-        return mw
-
-    def mwVcerrf(self,Ish,D,Cinv):
-        Vc = self.Ish2Vc(Ish,D)
-        Rg = self.Ish2rg(Ish,D)
-        Vcs = self.Vcerrf(Ish,D,Cinv)
-        Rgs = self.rgerrf(Ish,D,Cinv)
-        mwVcs = Vc/(0.1231*Rg) * (4*Vcs**2 + (Vc/Rg*Rgs)**2)**(0.5)
-        return mwVcs
-
-    def Ish2lc(self,Ish,D):
-        """Calculate length of correlation from Shannon intensities"""
-        Vp = self.Ish2Vp(Ish,D)
-        Vc = self.Ish2Vc(Ish,D)
-        lc = Vp/(2*np.pi*Vc)
-        return lc
-
-    def lcerrf(self,Ish, D, Cinv):
-        """Calculate error on lc from Shannon intensities from inverse C variance-covariance matrix"""
-        Vp = self.Ish2Vp(Ish,D)
-        Vc = self.Ish2Vc(Ish,D)
-        Vps = self.Vperrf(Ish,D,Cinv)
-        Vcs = self.Vcerrf(Ish,D,Cinv)
-        s2 = Vps**2 + (Vp/Vc)**2*Vcs**2
-        return 1/(2*np.pi*Vc) * s2**(0.5)
-
-    def Ish2areaIq(self,Ish,D):
-        """Calculate area under I(q) from Shannon intensities"""
-        I0 = self.Ish2I0(Ish,D)
-        area_Iq = np.pi/D * (I0/2 + np.sum(Ish))
-        #the following also works
-        #n = len(Ish)
-        #N = np.arange(n)+1
-        #area_Iq = np.pi/D * np.sum(Ish*(1+(-1)**(N+1)))
-        return area_Iq
+def calc_fsc(rho1, rho2, side):
+    """ Calculate the Fourier Shell Correlation between two electron density maps."""
+    df = 1.0/side
+    n = rho1.shape[0]
+    qx_ = np.fft.fftfreq(n)*n*df
+    qx, qy, qz = np.meshgrid(qx_,qx_,qx_,indexing='ij')
+    qx_max = qx.max()
+    qr = np.sqrt(qx**2+qy**2+qz**2)
+    qmax = np.max(qr)
+    qstep = np.min(qr[qr>0])
+    nbins = int(qmax/qstep)
+    qbins = np.linspace(0,nbins*qstep,nbins+1)
+    #create an array labeling each voxel according to which qbin it belongs
+    qbin_labels = np.searchsorted(qbins, qr, "right")
+    qbin_labels -= 1
+    F1 = np.fft.fftn(rho1)
+    F2 = np.fft.fftn(rho2)
+    numerator = ndimage.sum(np.real(F1*np.conj(F2)), labels=qbin_labels, index = np.arange(0,qbin_labels.max()+1))
+    term1 = ndimage.sum(np.abs(F1)**2, labels=qbin_labels, index = np.arange(0,qbin_labels.max()+1))
+    term2 = ndimage.sum(np.abs(F2)**2, labels=qbin_labels, index = np.arange(0,qbin_labels.max()+1))
+    denominator = (term1*term2)**0.5
+    #print "numerator ", numerator
+    #print "denominator ", denominator
+    FSC = numerator/denominator
+    qidx = np.where(qbins<qx_max)
+    return  np.vstack((qbins[qidx],FSC[qidx])).T
 
 class PDB(object):
     """Load pdb file."""
@@ -1208,6 +1074,26 @@ class PDB(object):
                 self.nelectrons[atom] = electrons.get(self.atomtype[atom].upper(),6)
                 atom += 1
 
+    def write(self, filename):
+        """Write PDB file format using pdb object as input."""
+        records = []
+        for i in range(self.natoms):
+            atomnum = '%5i' % self.atomnum[i]
+            atomname = '%3s' % self.atomname[i]
+            atomalt = '%1s' % self.atomalt[i]
+            resnum = '%4i' % self.resnum[i]
+            resname = '%3s' % self.resname[i]
+            chain = '%1s' % self.chain[i]
+            x = '%8.3f' % self.coords[i,0]
+            y = '%8.3f' % self.coords[i,1]
+            z = '%8.3f' % self.coords[i,2]
+            o = '% 6.2f' % self.occupancy[i]
+            b = '%6.2f' % self.b[i]
+            atomtype = '%2s' % self.atomtype[i]
+            charge = '%2s' % self.charge[i]
+            records.append(['ATOM  ' + atomnum + '  ' + atomname + ' ' + resname + ' ' + chain + resnum + '    ' + x + y + z + o + b + '          ' + atomtype + charge])
+        np.savetxt(filename, records, fmt = '%80s')
+
 def pdb2map_gauss(pdb,xyz,sigma):
     """Simple isotropic gaussian sum at coordinate locations."""
     n = int(round(xyz.shape[0]**(1/3.)))
@@ -1216,18 +1102,19 @@ def pdb2map_gauss(pdb,xyz,sigma):
     #rho = np.sum(values,axis=0).reshape(n,n,n)
     #run cdist in a loop over atoms to avoid overloading memory
     values = np.zeros((xyz.shape[0]))
+    print "\n Read density map from PDB... "
     for i in range(pdb.coords.shape[0]):
         sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
         sys.stdout.flush()
         dist = spatial.distance.cdist(pdb.coords[None,i], xyz)
         dist *= dist
         values += pdb.nelectrons[i]*1./np.sqrt(2*np.pi*sigma**2) * np.exp(-dist[0]/(2*sigma**2))
+    print
     rho = values.reshape(n,n,n)
     return rho
 
 
 electrons = {'H': 1,'HE': 2,'He': 2,'LI': 3,'Li': 3,'BE': 4,'Be': 4,'B': 5,'C': 6,'N': 7,'O': 8,'F': 9,'NE': 10,'Ne': 10,'NA': 11,'Na': 11,'MG': 12,'Mg': 12,'AL': 13,'Al': 13,'SI': 14,'Si': 14,'P': 15,'S': 16,'CL': 17,'Cl': 17,'AR': 18,'Ar': 18,'K': 19,'CA': 20,'Ca': 20,'SC': 21,'Sc': 21,'TI': 22,'Ti': 22,'V': 23,'CR': 24,'Cr': 24,'MN': 25,'Mn': 25,'FE': 26,'Fe': 26,'CO': 27,'Co': 27,'NI': 28,'Ni': 28,'CU': 29,'Cu': 29,'ZN': 30,'Zn': 30,'GA': 31,'Ga': 31,'GE': 32,'Ge': 32,'AS': 33,'As': 33,'SE': 34,'Se': 34,'Se': 34,'Se': 34,'BR': 35,'Br': 35,'KR': 36,'Kr': 36,'RB': 37,'Rb': 37,'SR': 38,'Sr': 38,'Y': 39,'ZR': 40,'Zr': 40,'NB': 41,'Nb': 41,'MO': 42,'Mo': 42,'TC': 43,'Tc': 43,'RU': 44,'Ru': 44,'RH': 45,'Rh': 45,'PD': 46,'Pd': 46,'AG': 47,'Ag': 47,'CD': 48,'Cd': 48,'IN': 49,'In': 49,'SN': 50,'Sn': 50,'SB': 51,'Sb': 51,'TE': 52,'Te': 52,'I': 53,'XE': 54,'Xe': 54,'CS': 55,'Cs': 55,'BA': 56,'Ba': 56,'LA': 57,'La': 57,'CE': 58,'Ce': 58,'PR': 59,'Pr': 59,'ND': 60,'Nd': 60,'PM': 61,'Pm': 61,'SM': 62,'Sm': 62,'EU': 63,'Eu': 63,'GD': 64,'Gd': 64,'TB': 65,'Tb': 65,'DY': 66,'Dy': 66,'HO': 67,'Ho': 67,'ER': 68,'Er': 68,'TM': 69,'Tm': 69,'YB': 70,'Yb': 70,'LU': 71,'Lu': 71,'HF': 72,'Hf': 72,'TA': 73,'Ta': 73,'W': 74,'RE': 75,'Re': 75,'OS': 76,'Os': 76,'IR': 77,'Ir': 77,'PT': 78,'Pt': 78,'AU': 79,'Au': 79,'HG': 80,'Hg': 80,'TL': 81,'Tl': 81,'PB': 82,'Pb': 82,'BI': 83,'Bi': 83,'PO': 84,'Po': 84,'AT': 85,'At': 85,'RN': 86,'Rn': 86,'FR': 87,'Fr': 87,'RA': 88,'Ra': 88,'AC': 89,'Ac': 89,'TH': 90,'Th': 90,'PA': 91,'Pa': 91,'U': 92,'NP': 93,'Np': 93,'PU': 94,'Pu': 94,'AM': 95,'Am': 95,'CM': 96,'Cm': 96,'BK': 97,'Bk': 97,'CF': 98,'Cf': 98,'ES': 99,'Es': 99,'FM': 100,'Fm': 100,'MD': 101,'Md': 101,'NO': 102,'No': 102,'LR': 103,'Lr': 103,'RF': 104,'Rf': 104,'DB': 105,'Db': 105,'SG': 106,'Sg': 106,'BH': 107,'Bh': 107,'HS': 108,'Hs': 108,'MT': 109,'Mt': 109}
-
 
 
 
