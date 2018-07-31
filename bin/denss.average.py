@@ -9,7 +9,7 @@
 #
 #    Tested using Anaconda / Python 2.7
 #
-#    Authors: Thomas D. Grant, Nhan Nguyen
+#    Authors: Thomas D. Grant, Nhan D. Nguyen
 #    Email:  <tgrant@hwi.buffalo.edu>, <ndnguyen20@wabash.edu>
 #    Copyright 2018 The Research Foundation for SUNY
 #

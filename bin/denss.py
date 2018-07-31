@@ -63,7 +63,7 @@ logging.info('Data filename: %s', args.file)
 logging.info('Output prefix: %s', args.output)
 logging.info('Mode: %s', args.mode)
 
-qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV, rho = saxs.denss(
+qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV, rho, side = saxs.denss(
     q=q,I=I,sigq=sigq,
     dmax=args.dmax,
     ne=args.ne,

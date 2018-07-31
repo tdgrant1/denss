@@ -639,7 +639,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                 struct = ndimage.generate_binary_structure(3, 3)
                 labeled_support, num_features = ndimage.label(support, structure=struct)
                 sums = np.zeros((num_features))
-                
+                if not quiet: print num_features
                 #find the feature with the greatest number of electrons
                 for feature in range(num_features):
                     sums[feature-1] = np.sum(newrho[labeled_support==feature])
