@@ -838,39 +838,59 @@ def inertia_tensor(rho,side):
 
 def principal_axes(I):
     """Calculate the principal inertia axes and order them Ia < Ib < Ic."""
-    w,v = np.linalg.eigh(I.T)
+    w,v = np.linalg.eigh(I)
     return w,v
 
 def principal_axis_alignment(refrho,movrho):
     """ Align movrho principal axes to refrho."""
     side = 1.0
-    ne_movrho= np.sum((movrho))
-    I1=inertia_tensor(refrho, side)
-    w1,v1=principal_axes(I1)
-    I2=inertia_tensor(movrho, side)
-    w2,v2=principal_axes(I2)
-    R1=v1
-    R2=v2
-    R=np.dot(R1,R2.T)
-    coordinates=np.array(ndimage.measurements.center_of_mass(movrho))
-    offset = coordinates - np.dot(coordinates,R)
-    newrho = ndimage.interpolation.affine_transform(movrho,R.T,order=1, output=np.float64, offset=offset, mode='wrap')
-    newrho = newrho*ne_movrho/np.sum(newrho)
-    return newrho
+    ne_movrho = np.sum((movrho))
+    #first center refrho and movrho, save refrho shift
+    rhocom = np.array(ndimage.measurements.center_of_mass(refrho))
+    gridcenter = np.array(refrho.shape)/2.
+    shift = gridcenter-rhocom
+    refrho = ndimage.interpolation.shift(refrho,shift,order=3,mode='wrap')
+    #calculate, save and perform rotation of refrho to xyz for later
+    refI = inertia_tensor(refrho, side)
+    refw,refv = principal_axes(refI)
+    refR = refv.T
+    refrho = align2xyz(refrho)
+    #align movrho to xyz too
+    #check for best enantiomer, eigh is ambiguous in sign
+    movrho = center_rho(movrho)
+    enans = generate_enantiomers(movrho) #explicitly performs align2xyz()
+    scores = np.zeros(enans.shape[0])
+    for i in range(enans.shape[0]):
+        scores[i] = 1./rho_overlap_score(refrho,enans[i])
+    movrho = enans[np.argmax(scores)]
+    #now rotate movrho by the inverse of the refrho rotation
+    R = np.linalg.inv(refR)
+    c_in = np.array(ndimage.measurements.center_of_mass(movrho))
+    c_out = np.array(movrho.shape)/2.
+    offset=c_in-c_out.dot(R)
+    movrho = ndimage.interpolation.affine_transform(movrho,R.T,order=3,offset=offset,mode='wrap')
+    #now shift it back to where refrho was originally
+    movrho = ndimage.interpolation.shift(movrho,-shift,order=3,mode='wrap')
+    movrho *= ne_movrho/np.sum(movrho)
+    return movrho
 
 def align2xyz(rho):
     """ Align rho such that principal axes align with XYZ axes."""
     side = 1.0
-    ne_rho= np.sum((rho))
+    ne_rho = np.sum(rho)
     rho = center_rho(rho)
-    I = inertia_tensor(rho, side)
-    w,v = principal_axes(I)
-    R = v.T
-    coordinates=np.array(ndimage.measurements.center_of_mass(rho))
-    offset=coordinates-np.dot(coordinates,R)
-    newrho = ndimage.interpolation.affine_transform(rho,R.T,order=1, offset=offset, mode='wrap')
-    newrho = newrho*ne_rho/np.sum(newrho)
-    return newrho
+    #apparently need to run this a few times to get good alignment
+    #maybe due to interpolation artifacts?
+    for i in range(3):
+        I = inertia_tensor(rho, side)
+        w,v = np.linalg.eigh(I) #principal axes
+        R = v.T #rotation matrix
+        c_in = np.array(ndimage.measurements.center_of_mass(rho))
+        c_out = np.array(rho.shape)/2.
+        offset=c_in-c_out.dot(R)
+        rho = ndimage.interpolation.affine_transform(rho,R.T,order=3,offset=offset,mode='wrap')
+    rho *= ne_rho/np.sum(rho)
+    return rho
 
 def generate_enantiomers(rho):
     """ Generate all enantiomers of given density map.
@@ -892,13 +912,14 @@ def generate_enantiomers(rho):
 def align(refrho,movrho):
     """ Align second electron density map to the first."""
     ne_rho= np.sum((movrho))
+    movrho = center_rho(movrho)
     rhocom = np.array(ndimage.measurements.center_of_mass(refrho))
     gridcenter = np.array(refrho.shape)/2.
     shift = gridcenter-rhocom
-    newrefrho = ndimage.interpolation.shift(refrho,shift,order=3,mode='wrap')
-    movrho = principal_axis_alignment(newrefrho, movrho)
-    movrho, score = minimize_rho(newrefrho, movrho)
-    movrho = ndimage.interpolation.shift(movrho,-shift,order=3,mode='wrap')
+    refrho = ndimage.interpolation.shift(refrho,shift,order=1,mode='wrap')
+    movrho = principal_axis_alignment(refrho, movrho)
+    movrho = ndimage.interpolation.shift(movrho,-shift,order=1,mode='wrap')
+    movrho, score = minimize_rho(refrho, movrho)
     movrho = movrho*ne_rho/np.sum(movrho)
     return movrho, score
 

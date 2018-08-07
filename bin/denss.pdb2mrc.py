@@ -38,35 +38,40 @@ parser.add_argument("-f", "--file", type=str, help="PDB filename")
 parser.add_argument("-s", "--side", default=100., type=float, help="Desired length real space box side")
 parser.add_argument("-v", "--voxel", default=5., type=float, help="Desired voxel size")
 parser.add_argument("-r", "--resolution", default=10.0, type=float, help="Desired resolution (i.e. Gaussian width sigma)")
-parser.add_argument("-c", "--center", action="store_true", help="Center molecule before calculating map. (default False)")
+parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB reference (default).")
+parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB reference.")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
+parser.set_defaults(center = True)
 args = parser.parse_args()
 
+if __name__ == "__main__":
 
-if args.output is None:
-    basename, ext = os.path.splitext(args.file)
-    output = basename + "_pdb"
-else:
-    output = args.output
+    if args.output is None:
+        basename, ext = os.path.splitext(args.file)
+        output = basename + "_pdb"
+    else:
+        output = args.output
 
-side = args.side
-voxel = args.voxel
-halfside = side/2
-n = int(side/voxel)
-#want n to be even for speed/memory optimization with the FFT, ideally a power of 2, but wont enforce that
-if n%2==1: n += 1
-dx = side/n
-x_ = np.linspace(-halfside,halfside,n)
-x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
+    pdboutput = basename+"_centered.pdb"
 
-xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
-pdb = saxs.PDB(args.file)
-if args.center:
-    pdb.coords -= pdb.coords.mean(axis=0)
+    side = args.side
+    voxel = args.voxel
+    halfside = side/2
+    n = int(side/voxel)
+    #want n to be even for speed/memory optimization with the FFT, ideally a power of 2, but wont enforce that
+    if n%2==1: n += 1
+    dx = side/n
+    x_ = np.linspace(-halfside,halfside,n)
+    x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
 
-rho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution)
-print
-saxs.write_mrc(rho,side,output+".mrc")
+    xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
+    pdb = saxs.PDB(args.file)
+    if args.center:
+        pdb.coords -= pdb.coords.mean(axis=0)
+        pdb.write(filename=pdboutput)
+    rho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution)
+    print
+    saxs.write_mrc(rho,side,output+".mrc")
 
 
 

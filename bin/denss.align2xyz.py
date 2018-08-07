@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
-#    denss.average.py
-#    A tool for averaging multiple pre-aligned electron density maps.
+#    denss.align.py
+#    A tool for aligning electron density maps.
 #
 #    Part of DENSS
 #    DENSS: DENsity from Solution Scattering
@@ -27,41 +27,47 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import os, argparse, logging
+import os, sys, logging
 import numpy as np
 from scipy import ndimage
+import argparse
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files")
-parser.add_argument("-o", "--output", type=str, help="Output filename prefix")
+parser.add_argument("-f", "--file", type=str, help="List of MRC files for alignment to reference.")
+parser.add_argument("-o", "--output", default = None, type=str, help="output filename prefix")
 args = parser.parse_args()
 
 if __name__ == "__main__":
 
     if args.output is None:
-        basename, ext = os.path.splitext(args.files[0])
-        output = basename
+        basename, ext = os.path.splitext(args.file)
+        output = basename+"_align2xyz"
     else:
         output = args.output
 
-    logging.basicConfig(filename=output+'_avg.log',level=logging.INFO,filemode='w',
+    logging.basicConfig(filename=output+'.log',level=logging.INFO,filemode='w',
                         format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
     logging.info('BEGIN')
     logging.info('DENSS Version: %s', __version__)
+    logging.info('Map filename(s): %s', args.file)
 
-    allrhos = []
-    sides = []
-    for file in args.files:
-        rho, side = saxs.read_mrc(file)
-        allrhos.append(rho)
-        sides.append(side)
+    rho, side = saxs.read_mrc(args.file)
 
-    nmaps = len(allrhos)
-    allrhos = np.array(allrhos)
-    sides = np.array(sides)
-    average_rho = np.mean(allrhos,axis=0)
-    saxs.write_mrc(average_rho,sides[0], output+"_average.mrc")
+    aligned = saxs.align2xyz(rho)
+
+    saxs.write_mrc(aligned, side, output+'.mrc')
+    print "%s.mrc written. " % (output,)
+
     logging.info('END')
+
+
+
+
+
+
+
+
+
 

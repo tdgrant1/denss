@@ -35,23 +35,19 @@ from saxstats._version import __version__
 import saxstats.saxstats as saxs
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files for alignment to reference.")
+parser.add_argument("-f", "--file", type=str, help="MRC file for alignment to reference principal axes.")
 parser.add_argument("-ref", "--ref", default = None, type=str, help="Reference (.mrc or .pdb file (map will be calculated from PDB))")
 parser.add_argument("-o", "--output", default = None, type=str, help="output filename prefix")
-parser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
-parser.add_argument("-en_on", "--enantiomer_on", action = "store_true", dest="enan", help="Generate and select best enantiomers (default). ")
-parser.add_argument("-en_off", "--enantiomer_off", action = "store_false", dest="enan", help="Do not generate and select best enantiomers.")
 parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB reference (default).")
 parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB reference.")
 parser.add_argument("-r", "--resolution", default=15.0, type=float, help="Desired resolution (i.e. Gaussian width sigma) of map calculated from PDB file.")
-parser.set_defaults(enan = True)
 parser.set_defaults(center = True)
 args = parser.parse_args()
 
 if __name__ == "__main__":
 
     if args.output is None:
-        basename, ext = os.path.splitext(args.files[0])
+        basename, ext = os.path.splitext(args.file)
         output = basename+"_aligned"
     else:
         output = args.output
@@ -60,26 +56,11 @@ if __name__ == "__main__":
                         format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
     logging.info('BEGIN')
     logging.info('DENSS Version: %s', __version__)
-    logging.info('Map filename(s): %s', args.files)
+    logging.info('Map filename(s): %s', args.file)
     logging.info('Reference filename: %s', args.ref)
-    logging.info('Enantiomer selection: %s', args.enan)
 
-    movrhos = []
-    sides = []
-    for file in args.files:
-        movrho, side = saxs.read_mrc(file)
-        movrhos.append(movrho)
-        sides.append(side)
+    rho, side = saxs.read_mrc(args.file)
 
-    movrhos = np.array(movrhos)
-    sides = np.array(sides)
-    nmaps = len(sides)
-
-    set1 = np.random.choice(range(movrhos.shape[0]), movrhos.shape[0]/2, replace=False)
-    set2 = np.setdiff1d(np.arange(movrhos.shape[0]),set1)
-    index = np.concatenate((set1,set2))
-    movrhos = np.array([movrhos[i] for i in index])
-    sides = np.array([sides[i] for i in index])
     if args.ref is None:
         print "Need reference file (.mrc or .pdb)"
         sys.exit(1)
@@ -89,8 +70,8 @@ if __name__ == "__main__":
             logging.info('PDB reference map resolution: %.2f', args.resolution)
             refbasename, refext = os.path.splitext(args.ref)
             refoutput = refbasename+"_centered.pdb"
-            refside = sides[0]
-            voxel = (refside/movrhos[0].shape)[0]
+            refside = side
+            voxel = (refside/movrho.shape)[0]
             halfside = refside/2
             n = int(refside/voxel)
             dx = refside/n
@@ -102,26 +83,18 @@ if __name__ == "__main__":
                 pdb.coords -= pdb.coords.mean(axis=0)
                 pdb.write(filename=refoutput)
             refrho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution)
-            refrho = refrho*np.sum(movrhos[0])/np.sum(refrho)
-            saxs.write_mrc(refrho,sides[0],filename=refbasename+'_pdb.mrc')
+            refrho = refrho*np.sum(movrho)/np.sum(refrho)
+            saxs.write_mrc(refrho,side,filename=refbasename+'_pdb.mrc')
         if args.ref.endswith('.mrc'):
             refrho, refside = saxs.read_mrc(args.ref)
         if (not args.ref.endswith('.mrc')) and (not args.ref.endswith('.pdb')):
             print "Invalid reference filename given. .mrc or .pdb file required"
             sys.exit(1)
 
-    if args.enan:
-        print "Generating enantiomers..."
-        aligned, scores = saxs.select_best_enantiomers(refrho, movrhos, args.cores)
-    else:
-        aligned, scores = saxs.align_multiple(refrho, movrhos, args.cores)
+    aligned = saxs.principal_axis_alignment(refrho,rho)
 
-    for i in index:
-        basename, ext = os.path.splitext(args.files[i])
-        output = basename+"_aligned"
-        saxs.write_mrc(aligned[i], sides[0], output+'.mrc')
-        print "%s.mrc written. Score = %0.3f" % (output,scores[i])
-        logging.info('Correlation score to reference: %s.mrc %.3f', output, scores[i])
+    saxs.write_mrc(aligned, side, output+'.mrc')
+    print "%s.mrc written. " % (output,)
 
     logging.info('END')
 

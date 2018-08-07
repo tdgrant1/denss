@@ -54,43 +54,45 @@ else:
     parser.set_defaults(plot=False)
 args = parser.parse_args()
 
-if args.output is None:
-    basename, ext = os.path.splitext(args.file1)
-    output = basename + '_fsc'
-else:
-    output = args.output
+if __name__ == "__main__":
+
+    if args.output is None:
+        basename, ext = os.path.splitext(args.file1)
+        output = basename + '_fsc'
+    else:
+        output = args.output
 
 
-rho1, side1 = saxs.read_mrc(args.file1)
-rho2, side2 = saxs.read_mrc(args.file2)
-if rho1.shape[0] != rho2.shape[0]:
-    print "Shape of rho1 and rho2 are not equal."
-    sys.exit()
-if side1 != side2:
-    print "Side length of rho1 and rho2 are not equal."
-    sys.exit()
+    rho1, side1 = saxs.read_mrc(args.file1)
+    rho2, side2 = saxs.read_mrc(args.file2)
+    if rho1.shape[0] != rho2.shape[0]:
+        print "Shape of rho1 and rho2 are not equal."
+        sys.exit()
+    if side1 != side2:
+        print "Side length of rho1 and rho2 are not equal."
+        sys.exit()
 
-fsc = saxs.calc_fsc(rho1,rho2,side1)
+    fsc = saxs.calc_fsc(rho1,rho2,side1)
 
-np.savetxt(output+'.dat', fsc, delimiter=' ', fmt='% .5e')
+    np.savetxt(output+'.dat', fsc, delimiter=' ', fmt='% .5e')
 
-x = np.linspace(fsc[0,0],fsc[-1,0],100)
-y = np.interp(x, fsc[:,0], fsc[:,1])
-resi = np.argmin(y>=0.5)
-resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
-resn = round(float(1./resx),1)
-print "Resolution: %.1f" % resn, u'\u212B'.encode('utf-8')
+    x = np.linspace(fsc[0,0],fsc[-1,0],100)
+    y = np.interp(x, fsc[:,0], fsc[:,1])
+    resi = np.argmin(y>=0.5)
+    resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
+    resn = round(float(1./resx),1)
+    print "Resolution: %.1f" % resn, u'\u212B'.encode('utf-8')
 
-if args.plot:
-    plt.plot(fsc[:,0],fsc[:,0]*0+0.5,'k--')
-    plt.plot(fsc[:,0],fsc[:,1],'o')
-    plt.plot(x,y,'k-')
-    plt.plot([resx],[0.5],'ro',label='Resolution = '+str(resn)+r'$\mathrm{\AA}$')
-    plt.legend()
-    plt.xlabel('Resolution (1/$\mathrm{\AA}$)')
-    plt.ylabel('Fourier Shell Correlation')
-    plt.savefig(output,ext='png',dpi=150)
-    plt.close()
+    if args.plot:
+        plt.plot(fsc[:,0],fsc[:,0]*0+0.5,'k--')
+        plt.plot(fsc[:,0],fsc[:,1],'o')
+        plt.plot(x,y,'k-')
+        plt.plot([resx],[0.5],'ro',label='Resolution = '+str(resn)+r'$\mathrm{\AA}$')
+        plt.legend()
+        plt.xlabel('Resolution (1/$\mathrm{\AA}$)')
+        plt.ylabel('Fourier Shell Correlation')
+        plt.savefig(output,ext='png',dpi=150)
+        plt.close()
 
 
 

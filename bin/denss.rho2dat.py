@@ -57,82 +57,36 @@ else:
     parser.set_defaults(plot=False)
 args = parser.parse_args()
 
-if args.output is None:
-    basename, ext = os.path.splitext(args.file)
-    output = basename + '_rho'
-else:
-    output = args.output
+if __name__ == "__main__":
 
-
-rho, side = saxs.read_mrc(args.file)
-nstmp = rho.shape[0]/args.ns
-if nstmp%2==1: args.ns+=1
-rho = np.copy(rho[::args.ns, ::args.ns, ::args.ns])
-rho[rho<=args.threshold] = 0
-halfside = side/2
-nx, ny, nz = rho.shape[0], rho.shape[1], rho.shape[2]
-n = nx
-voxel = side/n
-#want n to be even for speed/memory optimization with the FFT, ideally a power of 2, but wont enforce that
-#if n%2==1: print "n is odd"
-#store n for later use if needed
-n_orig = n
-dx = side/n
-dV = dx**3
-V = side**3
-x_ = np.linspace(-halfside,halfside,n)
-x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
-df = 1/side
-qx_ = np.fft.fftfreq(x_.size)*n*df*2*np.pi
-qz_ = np.fft.rfftfreq(x_.size)*n*df*2*np.pi
-qx, qy, qz = np.meshgrid(qx_,qx_,qx_,indexing='ij')
-qr = np.sqrt(qx**2+qy**2+qz**2)
-qmax = np.max(qr)
-qstep = np.min(qr[qr>0])
-nbins = int(qmax/qstep)
-qbins = np.linspace(0,nbins*qstep,nbins+1)
-#create modified qbins and put qbins in center of bin rather than at left edge of bin.
-qbinsc = np.copy(qbins)
-qbinsc[1:] += qstep/2.
-#create an array labeling each voxel according to which qbin it belongs
-qbin_labels = np.searchsorted(qbins,qr,"right")
-qbin_labels -= 1
-#create list of qbin indices just in region of data for later F scaling
-qbin_args = np.copy(qbinsc)
-F = np.fft.fftn(rho)
-I3D = np.abs(F)**2
-Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
-
-if args.plot: plt.plot(qbinsc, Imean, label='Default dq = %.4f' % (2*np.pi/side))
-
-if args.dq is not None or args.n is not None:
-
-    #padded to get desired dq value (or near it)
-    if args.n is not None:
-        n = args.n
+    if args.output is None:
+        basename, ext = os.path.splitext(args.file)
+        output = basename + '_rho'
     else:
-        current_dq = 2*np.pi/side
-        desired_dq = args.dq
-        if desired_dq > current_dq:
-            print "desired dq must be smaller than dq calculated from map (which is %f)" % current_dq
-            print "Resetting desired dq to current dq..."
-            desired_dq = current_dq
-        #what side would give us desired dq?
-        desired_side = 2*np.pi/desired_dq
-        #what n, given the existing voxel size, would give us closest to desired_side
-        desired_n = desired_side/voxel
-        n = int(desired_n)
-        if n%2==1: n+=1
-    side = voxel*n
+        output = args.output
+
+
+    rho, side = saxs.read_mrc(args.file)
+    nstmp = rho.shape[0]/args.ns
+    if nstmp%2==1: args.ns+=1
+    rho = np.copy(rho[::args.ns, ::args.ns, ::args.ns])
+    rho[rho<=args.threshold] = 0
     halfside = side/2
+    nx, ny, nz = rho.shape[0], rho.shape[1], rho.shape[2]
+    n = nx
+    voxel = side/n
+    #want n to be even for speed/memory optimization with the FFT, ideally a power of 2, but wont enforce that
+    #if n%2==1: print "n is odd"
+    #store n for later use if needed
+    n_orig = n
     dx = side/n
     dV = dx**3
     V = side**3
     x_ = np.linspace(-halfside,halfside,n)
     x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
     df = 1/side
-    print n, 2*np.pi*df
     qx_ = np.fft.fftfreq(x_.size)*n*df*2*np.pi
+    qz_ = np.fft.rfftfreq(x_.size)*n*df*2*np.pi
     qx, qy, qz = np.meshgrid(qx_,qx_,qx_,indexing='ij')
     qr = np.sqrt(qx**2+qy**2+qz**2)
     qmax = np.max(qr)
@@ -147,31 +101,79 @@ if args.dq is not None or args.n is not None:
     qbin_labels -= 1
     #create list of qbin indices just in region of data for later F scaling
     qbin_args = np.copy(qbinsc)
-    rho_pad = np.zeros((n,n,n),dtype=np.float32)
-    a = n/2-n_orig/2
-    b = n/2+n_orig/2
-    rho_pad[a:b,a:b,a:b] = rho
-    F = np.fft.fftn(rho_pad)
+    F = np.fft.fftn(rho)
     I3D = np.abs(F)**2
     Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
 
-qmax_to_use = np.max(qx_)
-print "qmax to use: %f" % qmax_to_use
-qbinsc_to_use = qbinsc[qbinsc<qmax_to_use]
-Imean_to_use = Imean[qbinsc<qmax_to_use]
+    if args.plot: plt.plot(qbinsc, Imean, label='Default dq = %.4f' % (2*np.pi/side))
 
-qbinsc = np.copy(qbinsc_to_use)
-Imean = np.copy(Imean_to_use)
+    if args.dq is not None or args.n is not None:
 
-Iq = np.vstack((qbinsc, Imean, Imean*.03)).T
+        #padded to get desired dq value (or near it)
+        if args.n is not None:
+            n = args.n
+        else:
+            current_dq = 2*np.pi/side
+            desired_dq = args.dq
+            if desired_dq > current_dq:
+                print "desired dq must be smaller than dq calculated from map (which is %f)" % current_dq
+                print "Resetting desired dq to current dq..."
+                desired_dq = current_dq
+            #what side would give us desired dq?
+            desired_side = 2*np.pi/desired_dq
+            #what n, given the existing voxel size, would give us closest to desired_side
+            desired_n = desired_side/voxel
+            n = int(desired_n)
+            if n%2==1: n+=1
+        side = voxel*n
+        halfside = side/2
+        dx = side/n
+        dV = dx**3
+        V = side**3
+        x_ = np.linspace(-halfside,halfside,n)
+        x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
+        df = 1/side
+        print n, 2*np.pi*df
+        qx_ = np.fft.fftfreq(x_.size)*n*df*2*np.pi
+        qx, qy, qz = np.meshgrid(qx_,qx_,qx_,indexing='ij')
+        qr = np.sqrt(qx**2+qy**2+qz**2)
+        qmax = np.max(qr)
+        qstep = np.min(qr[qr>0])
+        nbins = int(qmax/qstep)
+        qbins = np.linspace(0,nbins*qstep,nbins+1)
+        #create modified qbins and put qbins in center of bin rather than at left edge of bin.
+        qbinsc = np.copy(qbins)
+        qbinsc[1:] += qstep/2.
+        #create an array labeling each voxel according to which qbin it belongs
+        qbin_labels = np.searchsorted(qbins,qr,"right")
+        qbin_labels -= 1
+        #create list of qbin indices just in region of data for later F scaling
+        qbin_args = np.copy(qbinsc)
+        rho_pad = np.zeros((n,n,n),dtype=np.float32)
+        a = n/2-n_orig/2
+        b = n/2+n_orig/2
+        rho_pad[a:b,a:b,a:b] = rho
+        F = np.fft.fftn(rho_pad)
+        I3D = np.abs(F)**2
+        Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
 
-np.savetxt(output+'.dat', Iq, delimiter=' ', fmt='% .5e')
+    qmax_to_use = np.max(qx_)
+    print "qmax to use: %f" % qmax_to_use
+    qbinsc_to_use = qbinsc[qbinsc<qmax_to_use]
+    Imean_to_use = Imean[qbinsc<qmax_to_use]
 
-if args.plot:
-    plt.plot(qbinsc_to_use, Imean_to_use,label='Actual dq = %.4f' % (2*np.pi/side))
-    plt.semilogy()
-    plt.legend()
-    plt.show()
+    qbinsc = np.copy(qbinsc_to_use)
+    Imean = np.copy(Imean_to_use)
+
+    Iq = np.vstack((qbinsc, Imean, Imean*.03)).T
+
+    np.savetxt(output+'.dat', Iq, delimiter=' ', fmt='% .5e')
+
+    if args.plot:
+        plt.plot(qbinsc_to_use, Imean_to_use,label='Actual dq = %.4f' % (2*np.pi/side))
+        plt.semilogy()
+        plt.legend()
+        plt.show()
 
 
 
