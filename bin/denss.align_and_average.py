@@ -27,7 +27,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import os, argparse, logging
+import sys, os, argparse, logging
 import numpy as np
 from scipy import ndimage
 from multiprocessing import Pool

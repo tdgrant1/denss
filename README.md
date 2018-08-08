@@ -250,19 +250,19 @@ for example to run on 4 cores. All options available to denss.py can also be pas
 to `denss.all.py`. Some additional options exist as well. Type `denss.all.py -h` to
 view all of the options available.
 
-Several helper scripts are also supplied for performing various tasks:
-`denss.align.py` - aligns electron density maps to a reference (MRC or PDB file)
-`denss.align2xyz.py` - aligns electron density maps to the XYZ axes
-`denss.align_by_principal_axes.py` - aligns electron density maps to a reference
-       (MRC or PDB), but performs no minimization.
-`denss.align_and_average.py` - aligns and averages a set of electron density maps
-`denss.average.py` - averages a set of pre-aligned electron density maps
+Several helper scripts are also supplied for performing various tasks:  
+`denss.align.py` - aligns electron density maps to a reference (MRC or PDB file)  
+`denss.align2xyz.py` - aligns electron density maps to the XYZ axes  
+`denss.align_by_principal_axes.py` - aligns electron density maps to a reference 
+(MRC or PDB), but performs no minimization.  
+`denss.align_and_average.py` - aligns and averages a set of electron density maps  
+`denss.average.py` - averages a set of pre-aligned electron density maps  
 `denss.calcfsc.py` - calculates the Fourier Shell Correlation curve between two
-       pre-aligned electron density maps, and estimates resolution.
-`denss.pdb2mrc.py` - calculates an electron density map from a PDB file.
+pre-aligned electron density maps, and estimates resolution.  
+`denss.pdb2mrc.py` - calculates an electron density map from a PDB file.  
 `denss.get_info.py` - prints basic information about an MRC file, to be used 
-       with denss.pdb2mrc.py, for example, to set box sizes, voxels, etc.
-`denss.rho2dat.py` - calculates a solution scattering profile from an electron density map
+with denss.pdb2mrc.py, for example, to set box sizes, voxels, etc.  
+`denss.rho2dat.py` - calculates a solution scattering profile from an electron density map  
 
 ### EMAN2 Method:
 The older option for alignment and averaging requires installation of EMAN2.
