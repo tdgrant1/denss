@@ -10,6 +10,11 @@
 #    Email:  <tgrant@hwi.buffalo.edu>
 #    Copyright 2017, 2018 The Research Foundation for SUNY
 #
+#    Additional authors:
+#    Nhan D. Nguyen
+#    Jesse Hopkins
+#    Andrew Bruno
+#
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
 #    the Free Software Foundation, either version 3 of the License, or
@@ -146,14 +151,15 @@ def read_mrc(filename="map.mrc"):
         nx,ny,nz = [np.array(i) for i in [nx,ny,nz]]
         rho_shape = (nx[0],ny[0],nz[0])
         
-        
-        side = struct.unpack_from('<f',MRCdata,40)[0]
+        #side = struct.unpack_from('<f',MRCdata,40)[0]
+        a, b, c = struct.unpack_from('<fff',MRCdata,40)
+        side = a
         
         fin.seek(1024, os.SEEK_SET)
         rho = np.fromfile(file=fin, dtype=np.dtype(np.float32)).reshape(rho_shape)
         rho = rho.T
         fin.close()
-        #print rho.shape
+    
     return rho, side
 
 #def average
@@ -653,7 +659,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         supportV[j] = np.sum(support)*dV
 
         if not quiet:
-            #sys.stdout.write("\r ----- --------- ------- --------------")
             sys.stdout.write("\r% 5i % 4.2e % 3.2f       % 5i          " % (j, chi[j], rg[j], supportV[j]))
             sys.stdout.flush()
 
@@ -661,6 +666,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             break
 
         rho = newrho
+
     if not quiet:
         print
 

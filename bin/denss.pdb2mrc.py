@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 #    denss.pdb2mrc.py
-#    A tool for calculating simple electron density maps from pdb files
+#    A tool for calculating simple electron density maps from pdb files.
 #
 #    Part of the DENSS package
 #    DENSS: DENsity from Solution Scattering
@@ -32,7 +32,7 @@ import saxstats.saxstats as saxs
 import numpy as np
 import sys, argparse, os
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description="A tool for calculating simple electron density maps from pdb files.", formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
 parser.add_argument("-f", "--file", type=str, help="PDB filename")
 parser.add_argument("-s", "--side", default=100., type=float, help="Desired length real space box side")

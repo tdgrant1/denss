@@ -2,7 +2,7 @@
 #
 #    denss.calcfsc.py
 #    A tool for calculating the Fourier Shell Correlation
-#    between two MRC formatted electron density maps
+#    between two pre-aligned MRC formatted electron density maps
 #
 #    Part of the DENSS package
 #    DENSS: DENsity from Solution Scattering
@@ -41,7 +41,7 @@ try:
 except ImportError:
     matplotlib_found = False
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description="A tool for calculating the Fourier Shell Correlation between two pre-aligned MRC formatted electron density maps", formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
 parser.add_argument("-f1", "--file1", type=str, help="Electron density filename (.mrc)")
 parser.add_argument("-f2", "--file2", type=str, help="Electron density filename (.mrc)")

@@ -41,7 +41,7 @@ try:
 except ImportError:
     matplotlib_found = False
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description="A tool for fitting solution scattering data with smooth function based on Moore's algorithm for fitting a trigonometric series.", formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
 parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
 parser.add_argument("-d", "--dmax", default=100., type=float, help="Estimated maximum dimension")

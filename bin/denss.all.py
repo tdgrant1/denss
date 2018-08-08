@@ -39,7 +39,7 @@ import saxstats.denssopts as dopts
 #have to run parser twice, first just to get filename for loadProfile
 #then have to run it after deciding what the correct dmax should be
 #so that the voxel size, box size, nsamples, etc are set correctly
-initparser = argparse.ArgumentParser()
+initparser = argparse.ArgumentParser(description="Generate, align, and average many electron density maps from solution scattering data.", formatter_class=argparse.RawTextHelpFormatter)
 initparser.add_argument("-nm", "--nmaps",default = 20,type =int, help="Number of maps to be generated (default 20)")
 initparser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
 initparser.add_argument("-en_on", "--enantiomer_on", action = "store_true", dest="enan", help="Generate and select best enantiomers (default). ")

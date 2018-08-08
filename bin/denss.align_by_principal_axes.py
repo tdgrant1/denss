@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 #
-#    denss.align.py
-#    A tool for aligning electron density maps.
+#    denss.align_by_principal_axes.py
+#    A tool for aligning an electron density map to another electron density
+#    map based only on alignment of principal axes (no minimization).
 #
 #    Part of DENSS
 #    DENSS: DENsity from Solution Scattering
@@ -34,7 +35,8 @@ import argparse
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description="A tool for aligning an electron density map to another electron density map based only on alignment of principal axes (no minimization).", formatter_class=argparse.RawTextHelpFormatter)
+parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
 parser.add_argument("-f", "--file", type=str, help="MRC file for alignment to reference principal axes.")
 parser.add_argument("-ref", "--ref", default = None, type=str, help="Reference (.mrc or .pdb file (map will be calculated from PDB))")
 parser.add_argument("-o", "--output", default = None, type=str, help="output filename prefix")

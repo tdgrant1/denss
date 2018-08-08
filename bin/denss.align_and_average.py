@@ -34,7 +34,8 @@ from multiprocessing import Pool
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description="A tool for aligning and averaging multiple electron density maps.", formatter_class=argparse.RawTextHelpFormatter)
+parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
 parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files")
 parser.add_argument("-ref", "--ref",default = None, type=str, help="Reference filename (.mrc or .pdb file, optional)")
 parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB (default).")

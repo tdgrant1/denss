@@ -9,7 +9,7 @@ solution scattering data. Nature Methods. http://dx.doi.org/10.1038/nmeth.4581.
 
 #### New Averaging Procedure (beta)
 A new procedure for aligning and averaging electron density maps with DENSS is
-now available with v1.4.0. The new procedure is written entirely in Python from
+now available with v1.4.1. The new procedure is written entirely in Python from
 the ground up and no longer requires EMAN2 to be installed. The new procedure
 can be accessed with a series of new scripts, named as denss.xxx.py where xxx
 is the name of the script. denss.all.py acts as the old superdenss, running
@@ -152,6 +152,11 @@ While using the 6lyz.dat data it can be run as:
 ```
 denss.py -f 6lyz.dat -d 50.0
 ```
+On Windows, depending on your setup you may need to type:
+```
+python C:\path\to\denss.py -f 6lyz.out
+```
+
 Options you may want to set are:
 ```
   -h, --help            show this help message and exit
@@ -178,76 +183,7 @@ By default DENSS runs in SLOW mode, which is generally suitable for the vast
 majority of particles, including those with complex shapes. You can override all
 the default parameters set by the SLOW mode by explicitly setting any of the options.
 
-Additional advanced options are:
-```
-  --seed SEED           Random seed to initialize the map
-  --limit_dmax_on       Limit electron density to sphere of radius 0.6*Dmax
-                        from center of object.
-  --limit_dmax_off      Do not limit electron density to sphere of radius
-                        0.6*Dmax from center of object. (default)
-  --dmax_start_step DMAX_START_STEP
-                        Starting step for limiting density to sphere of Dmax
-                        (default=500)
-  --recenter_on         Recenter electron density when updating support.
-                        (default)
-  --recenter_off        Do not recenter electron density when updating
-                        support.
-  --recenter_steps RECENTER_STEPS [RECENTER_STEPS ...]
-                        List of steps to recenter electron density.
-  -p_on, --positivity_on
-                        Enforce positivity restraint inside support. (default)
-  -p_off, --positivity_off
-                        Do not enforce positivity restraint inside support.
-  -e_on, --extrapolate_on
-                        Extrapolate data by Porod law to high resolution limit
-                        of voxels. (default)
-  -e_off, --extrapolate_off
-                        Do not extrapolate data by Porod law to high
-                        resolution limit of voxels.
-  -sw_on, --shrinkwrap_on
-                        Turn shrinkwrap on (default)
-  -sw_off, --shrinkwrap_off
-                        Turn shrinkwrap off
-  -sw_start SHRINKWRAP_SIGMA_START, --shrinkwrap_sigma_start SHRINKWRAP_SIGMA_START
-                        Starting sigma for Gaussian blurring, in voxels
-  -sw_end SHRINKWRAP_SIGMA_END, --shrinkwrap_sigma_end SHRINKWRAP_SIGMA_END
-                        Ending sigma for Gaussian blurring, in voxels
-  -sw_decay SHRINKWRAP_SIGMA_DECAY, --shrinkwrap_sigma_decay SHRINKWRAP_SIGMA_DECAY
-                        Rate of decay of sigma, fraction
-  -sw_threshold SHRINKWRAP_THRESHOLD_FRACTION, --shrinkwrap_threshold_fraction SHRINKWRAP_THRESHOLD_FRACTION
-                        Minimum threshold defining support, in fraction of
-                        maximum density
-  -sw_iter SHRINKWRAP_ITER, --shrinkwrap_iter SHRINKWRAP_ITER
-                        Number of iterations between updating support with
-                        shrinkwrap
-  -sw_minstep SHRINKWRAP_MINSTEP, --shrinkwrap_minstep SHRINKWRAP_MINSTEP
-                        First step to begin shrinkwrap
-  -ec_on, --enforce_connectivity_on
-                        Enforce connectivity of support, i.e. remove extra
-                        blobs (default)
-  -ec_off, --enforce_connectivity_off
-                        Do not enforce connectivity of support
-  -ec_steps ENFORCE_CONNECTIVITY_STEPS [ENFORCE_CONNECTIVITY_STEPS ...], 
-  --enforce_connectivity_steps ENFORCE_CONNECTIVITY_STEPS [ENFORCE_CONNECTIVITY_STEPS ...]
-                        List of steps to enforce connectivity
-  --chi_end_fraction CHI_END_FRACTION
-                        Convergence criterion. Minimum threshold of chi2 std
-                        dev, as a fraction of the median chi2 of last 100
-                        steps.
-  --write_xplor         Write out XPLOR map format (default only write MRC
-                        format).
-  --write_freq WRITE_FREQ
-                        How often to write out current density map (in steps,
-                        default 100).
-  --cutout_on           When writing final map, cut out the particle to make
-                        smaller files.
-  --cutout_off          When writing final map, do not cut out the particle to
-                        make smaller files (default).
-  --plot_on             Create simple plots of results (requires Matplotlib,
-                        default if module exists).
-  --plot_off            Do not create simple plots of results. (Default if
-                        Matplotlib does not exist)
-```
+Additional advanced options are can be seen by typing `denss.py -h`.
 
 ## Results
 As the program runs, the current status will be printed to the screen like so:
@@ -290,12 +226,50 @@ The solutions are non-unique, meaning many different electron density maps will 
 the same scattering profile. Different random starting points will return different
 results. Therefore, running the algorithm many times (>20) is strongly advised.
 
-For fully unsupervised (i.e. unbiased) alignment and averaging, and subsequent
-estimation of resolution, the [EMAN2](http://blake.bcm.edu/emanwiki/EMAN2) single particle tomography tool
-e2spt_classaverage.py is well suited for this task. Though, this takes
-some patience. To use this tool, you must first install EMAN2. Recent updates
-to EMAN2 have made this process quite easy. To begin, download the appropriate
-EMAN2 binary from [this page](http://ncmi.bcm.tmc.edu/ncmi/software/software_details?selected_software=counter_222) 
+There now exists two options for performing alignment and averaging. The older option
+uses EMAN2, the newer option is now built into the latest versions of DENSS (v1.4.1).
+
+### New Built-in Method
+The new built-in option should run on Mac, Linux and Windows systems (please email me with bugs),
+and requires no additional programs or modules to be installed (just the already
+required NumPy and SciPy modules). The built-in method is fully parallelized
+for taking advantage of multicore machines.
+
+`denss.all.py` is the primary script for running the full pipeline of DENSS, 
+including running multiple runs of DENSS (default = 20), aligning, selecting 
+enantiomers, averaging, and estimating resolution. To run the defaults, which
+should be suitable for most applications, simply type:
+```
+$ denss.all.py -f 6lyz.out
+```
+If you would like to use multiple cores for parallel processing, simply add the -j option:
+```
+$ denss.all.py -f 6lyz.out -j 4
+```
+for example to run on 4 cores. All options available to denss.py can also be passed
+to `denss.all.py`. Some additional options exist as well. Type `denss.all.py -h` to
+view all of the options available.
+
+Several helper scripts are also supplied for performing various tasks:
+`denss.align.py` - aligns electron density maps to a reference (MRC or PDB file)
+`denss.align2xyz.py` - aligns electron density maps to the XYZ axes
+`denss.align_by_principal_axes.py` - aligns electron density maps to a reference
+       (MRC or PDB), but performs no minimization.
+`denss.align_and_average.py` - aligns and averages a set of electron density maps
+`denss.average.py` - averages a set of pre-aligned electron density maps
+`denss.calcfsc.py` - calculates the Fourier Shell Correlation curve between two
+       pre-aligned electron density maps, and estimates resolution.
+`denss.pdb2mrc.py` - calculates an electron density map from a PDB file.
+`denss.get_info.py` - prints basic information about an MRC file, to be used 
+       with denss.pdb2mrc.py, for example, to set box sizes, voxels, etc.
+`denss.rho2dat.py` - calculates a solution scattering profile from an electron density map
+
+### EMAN2 Method:
+The older option for alignment and averaging requires installation of EMAN2.
+Installing is pretty straightforward on Unix systems. Some users have noted difficulty 
+with installation of EMAN2 on Windows systems.
+
+To install EMAN2, download the appropriate EMAN2 binary from [this page](http://ncmi.bcm.tmc.edu/ncmi/software/software_details?selected_software=counter_222) 
 Then, change to the folder where you would like to install EMAN2 (such as your home folder)
 and move the eman2 script you downloaded to that directory. Then execute the script.
 For example:
@@ -307,65 +281,12 @@ $ bash eman2.21.MacOS.sh
 But, obviously, use the correct filenames and paths for your platform. 
 If you have issues getting EMAN2 installed, see their [installation page](http://blake.bcm.edu/emanwiki/EMAN2/Install).
 
-Here I will describe the explicit sequence of commands used for averaging with EMAN2.
-However, there is now a much more convenient and useful script called superdenss
-included in the DENSS download that will run this process for you automatically.
-This script also has some added utilities, most importantly the ability to
-generate and select the best enantiomers for each reconstruction to use in the averaging.
-Using the superdenss script is advised. The specific commands used in superdenss are
-as follows:
-
-To calculate multiple reconstructions easily, you can use a for loop. E.g. in bash:
-```
-for i in {0..19}; do denss.py -f 6lyz.dat -d 50.0 -o lysozyme_${i} ; done
-```
-This will calculate 20 reconstructions with the output files numbered.
-
-The following step is only necessary if you choose to work with XPLOR maps.
-EMAN2 is supposed to work with .xplor files, but I haven't had success.
-So first convert the .xplor files to .mrc files (MRC/CCP4 formats are similar).
-This can be done by opening the maps in Chimera, and clicking Save Map As... in
-the Volume Viewer. If you install Situs, this can be done on the command line in
-one step using the map2map tool:
-```
-for i in lysozyme_*[0-9].xplor ; do map2map $i ${i%.*}.mrc <<< '2' ; done
-```
-
-Now we can combine the 20 maps into one 3D "stack" in EMAN2 format (.hdf).
-```
-e2buildstacks.py --stackname lysozyme_stack.hdf lysozyme_*[0-9].mrc
-```
-Now that we have our correctly formatted stack, we can run the alignment
-and averaging. The e2spt_classaverage.py script does this all quite well
-using default parameters. It will even output a gold standard Fourier
-Shell Correlation curve, from which we can estimate resolution. Typing:
-```
-e2spt_classaverage.py --input lysozyme_stack.hdf
-```
-will run everything for you. If you have multiple cores on your computer,
-you can speed things up with:
-```
-e2spt_classaverage.py --input lysozyme_stack.hdf --parallel=thread:n
-```
-where n is the number of cores to use. Additionally, one can add the --keep and
---keepsig flags to filter out outlier volumes based on standard deviations of the
-correlations.  The output will be in a folder named something like spt_01.
-The averaged density will be named something like final_avg.hdf.
-Fortunately, Chimera can open .hdf files by default. Then, if you would like to
-view it in PyMOL you can save it as an MRC formatted map in Chimera or convert
-it to MRC using the Situs map2map tool or using the EMAN2 e2proc3d.py program.
-
-Resolution can be estimated from the FSC curve also written to the spt_01
-directory as fsc_0.txt. Plot this in your favorite plotting program to
-view. Take the reciprocal of the x axis position where FSC falls below 0.5,
-and that is your estimated resolution.
-
-### superdenss
-A bash script is provided called `superdenss` that runs this pipeline automatically
+#### superdenss
+A bash script is provided called `superdenss` that runs the EMAN2 pipeline automatically
 in parallel assuming EMAN2 and gnu parallel are all installed. To run superdenss
 with the default parameters for denss.py, type:
 ```
-superdenss -f 6lyz.dat
+superdenss -f 6lyz.out
 ```
 superdenss also takes its own options, as well as all of the options accepted by
 denss.py. The following options are available for superdenss (accessible with the -h option):
@@ -420,9 +341,9 @@ selected by the program. One can therefore exactly reproduce the results of a pr
 calculation by giving the random seed to the program with the `--seed` option and
 the same input parameters. The parameters of previous runs can all be found in the log file.
 
-The rho2dat.py file can be used for calculating scattering profiles from MRC formatted
+The `denss.rho2dat.py` file can be used for calculating scattering profiles from MRC formatted
 electron density maps. Currently the input maps must be cubic (i.e. same length
-and shape on all sides). Type `rho2dat.py -h` for more options.
+and shape on all sides). Type `denss.rho2dat.py -h` for more options.
 
 
 

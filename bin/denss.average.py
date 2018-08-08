@@ -33,7 +33,8 @@ from scipy import ndimage
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description="A tool for averaging multiple pre-aligned electron density maps.", formatter_class=argparse.RawTextHelpFormatter)
+parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
 parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files")
 parser.add_argument("-o", "--output", type=str, help="Output filename prefix")
 args = parser.parse_args()
