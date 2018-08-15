@@ -57,7 +57,7 @@ def parse_arguments(parser,gnomdmax=None):
     parser.add_argument("--plot_on", dest="plot", action="store_true", help="Create simple plots of results (requires Matplotlib, default if module exists).")
     parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not create simple plots of results. (Default if Matplotlib does not exist)")
     parser.add_argument("-q", "--quiet", action="store_true", help="Do not display running statistics. (default False)")
-    parser.add_argument("--force_run", action="store_true", help="Do not display running statistics. (default False)")
+    parser.add_argument("--force_run", action="store_true", help="Force denss to run even if q=0 does not exist. (default False)")
     parser.set_defaults(limit_dmax=False)
     parser.set_defaults(shrinkwrap=True)
     parser.set_defaults(recenter=True)
