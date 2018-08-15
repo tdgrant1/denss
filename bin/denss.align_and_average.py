@@ -60,10 +60,13 @@ if __name__ == "__main__":
     logging.basicConfig(filename=output+'_final.log',level=logging.INFO,filemode='w',
                         format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
     logging.info('BEGIN')
+    logging.info('Script name: %s', sys.argv[0])
     logging.info('DENSS Version: %s', __version__)
     logging.info('Map filename(s): %s', args.files)
     logging.info('Reference filename: %s', args.ref)
     logging.info('Enantiomer selection: %s', args.enan)
+
+    nmaps = len(args.files)
 
     allrhos = []
     sides = []
@@ -73,14 +76,8 @@ if __name__ == "__main__":
         sides.append(side)
     allrhos = np.array(allrhos)
     sides = np.array(sides)
-    #mixing allrhos
-    save_allrhos = np.copy(allrhos)
-    set1 = np.random.choice(range(allrhos.shape[0]), allrhos.shape[0]/2, replace=False)
-    set2 = np.setdiff1d(np.arange(allrhos.shape[0]),set1)
-    index = np.concatenate((set1,set2))
-    allrhos = np.array([save_allrhos[i] for i in index])
 
-    if allrhos.shape[0]<2:
+    if nmaps<2:
         print "Not enough maps to align. Please input more maps again..."
         sys.exit(1)
 
@@ -113,32 +110,17 @@ if __name__ == "__main__":
             sys.exit(1)
 
     if args.enan:
-        if args.ref is None:
-            #we need to use a single map to select enantiomers
-            #however, a single map doesn't result in the best alignments to generate
-            #the reference for the final averaging. So, lets first get a slightly
-            #better initial reference by averaging a few (a third) of the maps
-            #that have already been roughly aligned through enantiomer selection,
-            #then use that average as the initial reference for binary averaging,
-            #which then produces the actual reference for the final alignment step.
-            #irefrho = initial refrho
-            irefrhos, scores = saxs.align_multiple(allrhos[0], allrhos, args.cores)
-            order = np.argsort(-scores)
-            irefrhos = irefrhos[order]
-            if allrhos.shape[0]<=3:
-                irefrho = np.mean(irefrhos, axis =0)
-            else:
-                irefrho = np.mean(irefrhos[:int(allrhos.shape[0]/3)], axis=0)
+        print " Selecting best enantiomers..."
+        if args.ref:
+            allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
         else:
-            irefrho = refrho
-
-    if args.enan:
-        print "Generating enantiomers..."
-        all_rhos, scores = saxs.select_best_enantiomers(irefrho, allrhos, args.cores)
+            allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=allrhos[0], cores=args.cores)
 
     if args.ref is None:
+        print " Generating reference..."
         refrho = saxs.binary_average(allrhos, args.cores)
 
+    print " Aligning all maps to reference..."
     aligned, scores = saxs.align_multiple(refrho, allrhos, args.cores)
 
     #filter rhos with scores below the mean - 2*standard deviation.
@@ -146,18 +128,19 @@ if __name__ == "__main__":
     std = np.std(scores)
     threshold = mean - 2*std
     filtered = np.empty(len(scores),dtype=str)
+    print
     print "Mean of correlation scores: %.3f" % mean
     print "Standard deviation of scores: %.3f" % std
-    for i in index:
+    for i in range(nmaps):
         if scores[i] < threshold:
             filtered[i] = 'Filtered'
         else:
             filtered[i] = ' '
         basename, ext = os.path.splitext(args.files[i])
-        output = basename+"_aligned"
-        saxs.write_mrc(aligned[i], sides[0], output+'.mrc')
-        print "%s.mrc written. Score = %0.3f %s " % (output,scores[i],filtered[i])
-        logging.info('Correlation score to reference: %s.mrc %.3f %s', output, scores[i], filtered[i])
+        ioutput = basename+"_aligned"
+        saxs.write_mrc(aligned[i], sides[0], ioutput+'.mrc')
+        print "%s.mrc written. Score = %0.3f %s " % (ioutput,scores[i],filtered[i])
+        logging.info('Correlation score to reference: %s.mrc %.3f %s', ioutput, scores[i], filtered[i])
 
     aligned = aligned[scores>threshold]
     average_rho = np.mean(aligned,axis=0)

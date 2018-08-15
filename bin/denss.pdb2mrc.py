@@ -46,13 +46,12 @@ args = parser.parse_args()
 
 if __name__ == "__main__":
 
+    basename, ext = os.path.splitext(args.file)
+
     if args.output is None:
-        basename, ext = os.path.splitext(args.file)
         output = basename + "_pdb"
     else:
         output = args.output
-
-    pdboutput = basename+"_centered.pdb"
 
     side = args.side
     voxel = args.voxel
@@ -67,6 +66,7 @@ if __name__ == "__main__":
     xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
     pdb = saxs.PDB(args.file)
     if args.center:
+        pdboutput = basename+"_centered.pdb"
         pdb.coords -= pdb.coords.mean(axis=0)
         pdb.write(filename=pdboutput)
     rho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution)

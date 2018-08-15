@@ -49,6 +49,20 @@ initargs = dopts.parse_arguments(initparser, gnomdmax=None)
 
 q, I, sigq, dmax, isout = saxs.loadProfile(initargs.file)
 
+if not initargs.force_run:
+    if min(q) != 0.0:
+        print "CAUTION: Minimum q value = %f " % min(q)
+        print "is not 0.0. It is STRONGLY recommended to include"
+        print "I(q=0) in your given scattering profile. You can use"
+        print "denss.fit_data.py to calculate a scattering profile fit"
+        print "which will include I(q=0), or you can also use the GNOM"
+        print "program from ATSAS to create a .out file."
+        print
+        print "If you are positive you would like to continue, "
+        print "rerun with the --force_run option."
+        sys.exit()
+
+
 if dmax <= 0:
     dmax = None
 
@@ -60,6 +74,7 @@ if __name__ == "__main__":
     logging.basicConfig(filename=args.output+'.log',level=logging.INFO,filemode='w',
         format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
     logging.info('BEGIN')
+    logging.info('Script name: %s', sys.argv[0])
     logging.info('DENSS Version: %s', __version__)
     logging.info('Data filename: %s', args.file)
     logging.info('Output prefix: %s', args.output)

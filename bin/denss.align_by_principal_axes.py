@@ -50,13 +50,14 @@ if __name__ == "__main__":
 
     if args.output is None:
         basename, ext = os.path.splitext(args.file)
-        output = basename+"_aligned"
+        output = basename+"_alignedbyPA"
     else:
         output = args.output
 
     logging.basicConfig(filename=output+'.log',level=logging.INFO,filemode='w',
                         format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
     logging.info('BEGIN')
+    logging.info('Script name: %s', sys.argv[0])
     logging.info('DENSS Version: %s', __version__)
     logging.info('Map filename(s): %s', args.file)
     logging.info('Reference filename: %s', args.ref)

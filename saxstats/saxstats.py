@@ -50,7 +50,7 @@ def chi2(exp, calc, sig):
     """Return the chi2 discrepancy between experimental and calculated data"""
     return np.sum(np.square(exp - calc) / np.square(sig))
 
-def center_rho(rho, centering="com"):
+def center_rho(rho, centering="com", return_shift=False):
     """Move electron density map so its center of mass aligns with the center of the grid
 
     centering - which part of the density to center on. By default, center on the
@@ -65,7 +65,10 @@ def center_rho(rho, centering="com"):
     shift = gridcenter-rhocom
     rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
     rho = rho*ne_rho/np.sum(rho)
-    return rho
+    if return_shift:
+        return rho, shift
+    else:
+        return rho
 
 def rho2rg(rho,side=None,r=None,support=None,dx=None):
     """Calculate radius of gyration from an electron density map."""
@@ -744,9 +747,48 @@ def center_rho_roll(rho):
     print np.array(ndimage.measurements.center_of_mass(rho))
     return rho
 
+def euler_grid_search(refrho, movrho, topn=1):
+    """Simple grid search on uniformly sampled sphere to optimize alignment.
+        Return the topn candidate maps (default=1, i.e. the best candidate)."""
+    #taken from https://stackoverflow.com/a/44164075/2836338
+    num_pts = 18 #~20 degrees between points
+    indices = np.arange(0, num_pts, dtype=float) + 0.5
+    phi = np.arccos(1 - 2*indices/num_pts)
+    theta = np.pi * (1 + 5**0.5) * indices
+    scores = np.zeros((len(phi),len(theta)))
+    for p in range(len(phi)):
+        for t in range(len(theta)):
+            scores[p,t] = 1/minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],refrho=refrho,movrho=movrho)
+    #best_pt = np.unravel_index(scores.argmin(), scores.shape)
+    best_pt = largest_indices(scores, topn)
+    best_scores = scores[best_pt]
+    movrhos = np.zeros((topn,movrho.shape[0],movrho.shape[1],movrho.shape[2]))
+    for i in range(topn):
+        movrhos[i] = transform_rho(movrho, T=[phi[best_pt[0][i]],theta[best_pt[1][i]],0,0,0,0])
+    return movrhos, best_scores
+
+def largest_indices(a, n):
+    """Returns the n largest indices from a numpy array."""
+    flat = a.flatten()
+    indices = np.argpartition(flat, -n)[-n:]
+    indices = indices[np.argsort(-flat[indices])]
+    return np.unravel_index(indices, a.shape)
+
+def coarse_then_fine_alignment(refrho,movrho,topn=1):
+    """Course alignment followed by fine alignment.
+        Select the topn candidates from the grid search
+        and minimize each, selecting the best fine alignment.
+        """
+    movrhos, scores = euler_grid_search(refrho, movrho, topn=topn)
+    for i in range(movrhos.shape[0]):
+        movrhos[i], scores[i] = minimize_rho(refrho, movrhos[i])
+    best_i = np.argmax(scores)
+    movrho = movrhos[best_i]
+    score = scores[best_i]
+    return movrho, score
+
 def minimize_rho(refrho, movrho, T = np.zeros(6)):
     """Optimize superposition of electron density maps. Move movrho to refrho."""
-    #print "initial score: ", 1/rho_overlap_score(refrho,movrho)
     bounds = np.zeros(12).reshape(6,2)
     bounds[:3,0] = -20*np.pi
     bounds[:3,1] = 20*np.pi
@@ -754,9 +796,9 @@ def minimize_rho(refrho, movrho, T = np.zeros(6)):
     bounds[3:,1] = 5
     save_movrho = np.copy(movrho)
     save_refrho = np.copy(refrho)
-    result = optimize.fmin_l_bfgs_b(minimize_rho_score, T, factr= 0.1, maxiter=100, maxfun=200, epsilon=0.05, args=(refrho,movrho),bounds=bounds, approx_grad=True)
+    result = optimize.fmin_l_bfgs_b(minimize_rho_score, T, factr= 0.1, maxiter=100, maxfun=200, epsilon=0.05, args=(refrho,movrho), approx_grad=True)
     Topt = result[0]
-    newrho = transform_rho(save_movrho, Topt, order=2)
+    newrho = transform_rho(save_movrho, Topt)
     finalscore = 1/rho_overlap_score(save_refrho,newrho)
     return newrho, finalscore
 
@@ -768,7 +810,7 @@ def minimize_rho_score(T, refrho, movrho):
         T - 6-element list containing alpha, beta, gamma, Tx, Ty, Tz in that order
         to move movrho by.
         """
-    newrho=transform_rho(movrho, T)
+    newrho = transform_rho(movrho, T)
     score = rho_overlap_score(refrho,newrho)
     return score
 
@@ -788,12 +830,13 @@ def transform_rho(rho, T, order=1):
     """
     ne_rho= np.sum((rho))
     R = euler2matrix(T[0],T[1],T[2])
-    coordinates=np.array(ndimage.measurements.center_of_mass(rho))
-    offset=coordinates-np.dot(coordinates,R)
-    newrho = ndimage.interpolation.affine_transform(rho,R.T,order=order,offset=offset,output=np.float64,mode='wrap')
-    newrho = ndimage.interpolation.shift(newrho,T[3:],order=order,mode='wrap',output=np.float64)
-    newrho = newrho*ne_rho/np.sum(newrho)
-    return newrho
+    c_in = np.array(ndimage.measurements.center_of_mass(rho))
+    c_out = np.array(rho.shape)/2.
+    offset = c_in-c_out.dot(R)
+    rho = ndimage.interpolation.affine_transform(rho,R.T,order=order,offset=offset,output=np.float64,mode='wrap')
+    rho = ndimage.interpolation.shift(rho,T[3:],order=order,mode='wrap',output=np.float64)
+    rho *= ne_rho/np.sum(rho)
+    return rho
 
 def euler2matrix(alpha=0.0,beta=0.0,gamma=0.0):
     """Convert Euler angles alpha, beta, gamma to a standard rotation matrix.
@@ -863,7 +906,7 @@ def principal_axis_alignment(refrho,movrho):
     refrho = align2xyz(refrho)
     #align movrho to xyz too
     #check for best enantiomer, eigh is ambiguous in sign
-    movrho = center_rho(movrho)
+    movrho = align2xyz(movrho)
     enans = generate_enantiomers(movrho) #explicitly performs align2xyz()
     scores = np.zeros(enans.shape[0])
     for i in range(enans.shape[0]):
@@ -880,11 +923,21 @@ def principal_axis_alignment(refrho,movrho):
     movrho *= ne_movrho/np.sum(movrho)
     return movrho
 
-def align2xyz(rho):
+def align2xyz(rho, return_transform=False):
     """ Align rho such that principal axes align with XYZ axes."""
     side = 1.0
     ne_rho = np.sum(rho)
-    rho = center_rho(rho)
+    #shift refrho to the center
+    rhocom = np.array(ndimage.measurements.center_of_mass(rho))
+    gridcenter = np.array(rho.shape)/2.
+    shift = gridcenter-rhocom
+    rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
+    #calculate, save and perform rotation of refrho to xyz for later
+    I = inertia_tensor(rho, side)
+    w,v = principal_axes(I)
+    R = v.T
+    refR = np.copy(R)
+    refshift = np.copy(shift)
     #apparently need to run this a few times to get good alignment
     #maybe due to interpolation artifacts?
     for i in range(3):
@@ -896,13 +949,16 @@ def align2xyz(rho):
         offset=c_in-c_out.dot(R)
         rho = ndimage.interpolation.affine_transform(rho,R.T,order=3,offset=offset,mode='wrap')
     rho *= ne_rho/np.sum(rho)
-    return rho
+    if return_transform:
+        return rho, refR, refshift
+    else:
+        return rho
 
 def generate_enantiomers(rho):
     """ Generate all enantiomers of given density map.
-        Output maps are flipped over x,y,z,xy,yz,zx, and xyz, respectively
+        Output maps are flipped over x,y,z,xy,yz,zx, and xyz, respectively.
+        Assumes rho is prealigned to xyz.
         """
-    rho = align2xyz(rho)
     rho_xflip = rho[::-1,:,:]
     rho_yflip = rho[:,::-1,:]
     rho_zflip = rho[:,:,::-1]
@@ -915,37 +971,97 @@ def generate_enantiomers(rho):
                       rho_xyzflip])
     return enans
 
-def align(refrho,movrho):
+def align(refrho, movrho):
     """ Align second electron density map to the first."""
-    ne_rho= np.sum((movrho))
-    movrho = center_rho(movrho)
-    rhocom = np.array(ndimage.measurements.center_of_mass(refrho))
-    gridcenter = np.array(refrho.shape)/2.
-    shift = gridcenter-rhocom
-    refrho = ndimage.interpolation.shift(refrho,shift,order=1,mode='wrap')
-    movrho = principal_axis_alignment(refrho, movrho)
-    movrho = ndimage.interpolation.shift(movrho,-shift,order=1,mode='wrap')
-    movrho, score = minimize_rho(refrho, movrho)
-    movrho = movrho*ne_rho/np.sum(movrho)
+    ne_rho = np.sum((movrho))
+    #movrho, score = minimize_rho(refrho, movrho)
+    movrho, score = coarse_then_fine_alignment(refrho, movrho, topn=5)
+    movrho *= ne_rho/np.sum(movrho)
     return movrho, score
 
-def multi_align(niter, **kwargs):
-    """ Wrapper script for alignment for multiprocessing."""
+def select_best_enantiomers(rhos, refrho=None, cores=1):
+    """ Select the best enantiomer from each map in the set (or a single map).
+        refrho should not be binary averaged from the original
+        denss maps, since that would likely lose handedness.
+        By default, refrho will be set to the first map."""
+    if rhos.ndim == 3:
+        rhos = rhos[np.newaxis,...]
+    #can't have nested parallel jobs, so run enantiomer selection
+    #in parallel, but run each map in a loop
+    if refrho is None:
+        refrho = rhos[0]
+    xyz_refrho, refR, refshift = align2xyz(refrho, return_transform=True)
+    scores = np.zeros(rhos.shape[0])
+    for i in range(rhos.shape[0]):
+        #align rho to xyz and generate the enantiomers, then shift/rotate each enan
+        #by inverse of refrho, then perform minimization around the original refrho location,
+        #and select the best enantiomer from that set,
+        #rather than doing the minimization around the xyz_refrho location
+        #and then shifting the final best enan back.
+        #this way the final rotation is defined by the optimized score, not
+        #by the inverse refrho xyz alignment, which appears to suffer from
+        #interpolation artifacts
+        xyz_rho = align2xyz(rhos[i])
+        enans = generate_enantiomers(xyz_rho)
+        #now rotate rho by the inverse of the refrho rotation for each enantiomer
+        R = np.linalg.inv(refR)
+        c_in = np.array(ndimage.measurements.center_of_mass(rhos[i]))
+        c_out = np.array(rhos[i].shape)/2.
+        offset = c_in-c_out.dot(R)
+        for j in range(len(enans)):
+            ne_rho = np.sum(enans[j])
+            enans[j] = ndimage.interpolation.affine_transform(enans[j],R.T,order=3,offset=offset,mode='wrap')
+            enans[j] = ndimage.interpolation.shift(enans[j],-refshift,order=3,mode='wrap')
+        #now minimize each enan around the original refrho location
+        pool = Pool(cores)
+        try:
+            mapfunc = partial(align, refrho)
+            results = pool.map(mapfunc, enans)
+            pool.close()
+            pool.join()
+        except KeyboardInterrupt:
+            pool.terminate()
+            pool.close()
+            sys.exit(1)
+        
+        #now select the best enantiomer and set it as the new rhos[i]
+        enans = np.array([results[k][0] for k in range(len(results))])
+        enans_scores = np.array([results[k][1] for k in range(len(results))])
+        best_i = np.argmax(scores)
+        rhos[i], scores[i] = enans[best_i], enans_scores[best_i]
+
+    return rhos, scores
+
+def align_multiple(refrho, rhos, cores=1):
+    """ Align multiple (or a single) maps to the reference."""
+    if rhos.ndim == 3:
+        rhos = rhos[np.newaxis,...]
+    #first, center all the rhos, then shift them to where refrho is
+    cen_refrho, refshift = center_rho(refrho, return_shift=True)
+    for i in range(rhos.shape[0]):
+        rhos[i] = center_rho(rhos[i])
+        ne_rho = np.sum(rhos[i])
+        #now shift each rho back to where refrho was originally
+        rhos[i] = ndimage.interpolation.shift(rhos[i],-refshift,order=3,mode='wrap')
+        rhos[i] *= ne_rho/np.sum(rhos[i])
+    pool = Pool(cores)
     try:
-        kwargs['refrho']=kwargs['refrho'][niter]
-        if niter >= kwargs['movrho'].shape[0]-1:
-            print "\r Finishing alignment: %i / %i" % (niter+1, kwargs['movrho'].shape[0])
-        else:
-            sys.stdout.write( "\r Running alignment: %i / %i" % (niter+1, kwargs['movrho'].shape[0]))
-            sys.stdout.flush()
-        kwargs['movrho']=kwargs['movrho'][niter]
-        time.sleep(1)
-        return align(**kwargs)
+        mapfunc = partial(align, refrho)
+        results = pool.map(mapfunc, rhos)
+        pool.close()
+        pool.join()
     except KeyboardInterrupt:
-        pass
+        pool.terminate()
+        pool.close()
+        sys.exit(1)
+
+    rhos = np.array([results[i][0] for i in range(len(results))])
+    scores = np.array([results[i][1] for i in range(len(results))])
+
+    return rhos, scores
 
 def average_two(rho1, rho2):
-    """ Align and average two electron density maps and return the average."""
+    """ Align two electron density maps and return the average."""
     rho2, score = align(rho1, rho2)
     average_rho = (rho1+rho2)/2
     return average_rho
@@ -985,47 +1101,7 @@ def binary_average(rhos, cores=1):
     for level in range(levels):
          rhos = average_pairs(rhos,cores)
     refrho = center_rho(rhos[0])
-    print "\n Generating reference is complete."
     return refrho
-
-def align_multiple(refrho, rhos, cores = 1):
-    """ Align each map in the set to the reference."""
-    #need to make a duplicate of refrho nmaps times to feed as separate
-    #arguments to pool.map
-    rho_args = {'refrho':np.array([refrho for i in range(rhos.shape[0])]), 'movrho':rhos}
-    pool = Pool(cores)
-    try:
-        mapfunc = partial(multi_align, **rho_args)
-        results = pool.map(mapfunc, range(rhos.shape[0]))
-        pool.close()
-        pool.join()
-    except KeyboardInterrupt:
-        pool.terminate()
-        pool.close()
-        sys.exit(1)
-    aligned_rhos = np.array([results[i][0] for i in range(len(results))])
-    scores = np.array([results[i][1] for i in range(len(results))])
-    return aligned_rhos, scores
-
-def select_best_enantiomer(refrho, rho, cores = 1):
-    """ Generate, align and select the best enantiomer. """
-    enans = generate_enantiomers(rho)
-    aligned, scores = align_multiple(refrho, enans, cores)
-    best_i = np.argmax(scores)
-    best_enan, score = aligned[best_i], scores[best_i]
-    return best_enan, score
-
-def select_best_enantiomers(refrho, rhos, cores=1):
-    """ Generate, align and select the best enantiomer for each map in the set."""
-    best_enans = []
-    scores = []
-    for i in range(rhos.shape[0]):
-        best_enan, score = select_best_enantiomer(refrho, rhos[i], cores)
-        best_enans.append(best_enan)
-        scores.append(score)
-    best_enans = np.array(best_enans)
-    scores = np.array(scores)
-    return best_enans, scores
 
 def calc_fsc(rho1, rho2, side):
     """ Calculate the Fourier Shell Correlation between two electron density maps."""
@@ -1048,8 +1124,6 @@ def calc_fsc(rho1, rho2, side):
     term1 = ndimage.sum(np.abs(F1)**2, labels=qbin_labels, index = np.arange(0,qbin_labels.max()+1))
     term2 = ndimage.sum(np.abs(F2)**2, labels=qbin_labels, index = np.arange(0,qbin_labels.max()+1))
     denominator = (term1*term2)**0.5
-    #print "numerator ", numerator
-    #print "denominator ", denominator
     FSC = numerator/denominator
     qidx = np.where(qbins<qx_max)
     return  np.vstack((qbins[qidx],FSC[qidx])).T

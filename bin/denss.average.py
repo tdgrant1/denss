@@ -50,6 +50,7 @@ if __name__ == "__main__":
     logging.basicConfig(filename=output+'_avg.log',level=logging.INFO,filemode='w',
                         format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
     logging.info('BEGIN')
+    logging.info('Script name: %s', sys.argv[0])
     logging.info('DENSS Version: %s', __version__)
 
     allrhos = []

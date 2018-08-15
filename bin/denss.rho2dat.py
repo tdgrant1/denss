@@ -66,8 +66,9 @@ if __name__ == "__main__":
         output = args.output
 
     rho, side = saxs.read_mrc(args.file)
-    nstmp = rho.shape[0]/args.ns
-    if nstmp%2==1: args.ns+=1
+    if rho.shape[0]%2==1:
+        rho = rho[:-1,:-1,:-1]
+    #if nstmp%2==1: args.ns+=1
     rho = np.copy(rho[::args.ns, ::args.ns, ::args.ns])
     rho[rho<=args.threshold] = 0
     halfside = side/2

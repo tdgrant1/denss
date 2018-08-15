@@ -54,6 +54,19 @@ initargs = dopts.parse_arguments(initparser, gnomdmax=None)
 
 q, I, sigq, dmax, isout = saxs.loadProfile(initargs.file)
 
+if not initargs.force_run:
+    if min(q) != 0.0:
+        print "CAUTION: Minimum q value = %f " % min(q)
+        print "is not 0.0. It is STRONGLY recommended to include"
+        print "I(q=0) in your given scattering profile. You can use"
+        print "denss.fit_data.py to calculate a scattering profile fit"
+        print "which will include I(q=0), or you can also use the GNOM"
+        print "program from ATSAS to create a .out file."
+        print
+        print "If you are positive you would like to continue, "
+        print "rerun with the --force_run option."
+        sys.exit()
+
 if dmax <= 0:
     dmax = None
 
@@ -81,6 +94,7 @@ del args.nsamples
 del args.mode
 del args.resolution
 del args.center
+del args.force_run
 
 def multi_denss(niter, **kwargs):
     try:
@@ -101,6 +115,7 @@ def multi_denss(niter, **kwargs):
         logger.addHandler(fh)
         
         logging.info('BEGIN')
+        logging.info('Script name: %s', sys.argv[0])
         logging.info('DENSS Version: %s', __version__)
         logging.info('Data filename: %s', superargs.file)
         logging.info('Output prefix: %s', kwargs['output'])
@@ -146,6 +161,7 @@ if __name__ == "__main__":
     superlogger.addHandler(fh)
 
     logging.info('BEGIN')
+    logging.info('Script name: %s', sys.argv[0])
     logging.info('DENSS Version: %s', __version__)
     logging.info('Data filename: %s', superargs.file)
     logging.info('Enantiomer selection: %r', superargs.enan)
@@ -197,20 +213,6 @@ if __name__ == "__main__":
     allrhos = np.array([denss_outputs[i][8] for i in np.arange(superargs.nmaps)])
     sides = np.array([denss_outputs[i][9] for i in np.arange(superargs.nmaps)])
 
-    #split rhos into two halves randomly
-    #reason: allrhos[0] is used as the initial reference for aligning and selecting
-    #enantiomers. This allows one to run it again if desired to use a different
-    #initial reference. The enantiomers are then used to determine a new reference
-    #using the binary average procedure. We can't use the binary average procedure
-    #prior to enantiomer selection, because the resulting average will likely
-    #average out any handedness.
-
-    set1 = np.random.choice(range(allrhos.shape[0]), allrhos.shape[0]/2, replace=False)
-    set2 = np.setdiff1d(np.arange(allrhos.shape[0]), set1)
-    index = np.concatenate((set1,set2))
-    allrhos = np.array([allrhos[i] for i in index])
-    sides = np.array([sides[i] for i in index])
-
     if superargs.ref is not None:
         #allow input of reference structure
         if superargs.ref.endswith('.pdb'):
@@ -227,37 +229,21 @@ if __name__ == "__main__":
                 pdb.coords -= pdb.coords.mean(axis=0)
             refrho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=superargs.resolution)
             refrho = refrho*np.sum(allrhos[0])/np.sum(refrho)
-        
         if superargs.ref.endswith('.mrc'):
             refrho, refside = saxs.read_mrc(superargs.ref)
 
     if superargs.enan:
-        if superargs.ref is None:
-            #we need to use a single map to select enantiomers
-            #however, a single map doesn't result in the best alignments to generate
-            #the reference for the final averaging. So, lets first get a slightly
-            #better initial reference by averaging a few (a third) of the maps
-            #that have already been roughly aligned through enantiomer selection,
-            #then use that average as the initial reference for binary averaging,
-            #which then produces the actual reference for the final alignment step.
-            #irefrho = initial refrho
-            irefrhos, scores = saxs.align_multiple(allrhos[0], allrhos, superargs.cores)
-            order = np.argsort(-scores)
-            irefrhos = irefrhos[order]
-            if superargs.nmaps<=3:
-                irefrho = np.mean(irefrhos, axis =0)
-            else:
-                irefrho = np.mean(irefrhos[:int(allrhos.shape[0]/3)], axis=0)
-        else:
-            irefrho = refrho
-
-    if superargs.enan:
-        print "Generating enantiomers..."
-        allrhos, scores = saxs.select_best_enantiomers(irefrho, allrhos, superargs.cores)
+        print
+        print " Selecting best enantiomers..."
+        allrhos, scores = saxs.select_best_enantiomers(allrhos, cores=superargs.cores)
 
     if superargs.ref is None:
+        print
+        print " Generating reference..."
         refrho = saxs.binary_average(allrhos, superargs.cores)
 
+    print
+    print " Aligning all maps to reference..."
     aligned, scores = saxs.align_multiple(refrho, allrhos, superargs.cores)
 
     #filter rhos with scores below the mean - 2*standard deviation.
@@ -267,7 +253,7 @@ if __name__ == "__main__":
     filtered = np.empty(len(scores),dtype=str)
     print "Mean of correlation scores: %.3f" % mean
     print "Standard deviation of scores: %.3f" % std
-    for i in index:
+    for i in range(nmaps):
         if scores[i] < threshold:
             filtered[i] = 'Filtered'
         else:
