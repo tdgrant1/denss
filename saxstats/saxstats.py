@@ -1027,7 +1027,7 @@ def select_best_enantiomers(rhos, refrho=None, cores=1):
         #now select the best enantiomer and set it as the new rhos[i]
         enans = np.array([results[k][0] for k in range(len(results))])
         enans_scores = np.array([results[k][1] for k in range(len(results))])
-        best_i = np.argmax(scores)
+        best_i = np.argmax(enans_scores)
         rhos[i], scores[i] = enans[best_i], enans_scores[best_i]
 
     return rhos, scores
