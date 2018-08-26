@@ -43,8 +43,8 @@ except ImportError:
 
 parser = argparse.ArgumentParser(description="A tool for calculating the Fourier Shell Correlation between two pre-aligned MRC formatted electron density maps", formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
-parser.add_argument("-f1", "--file1", type=str, help="Electron density filename (.mrc)")
-parser.add_argument("-f2", "--file2", type=str, help="Electron density filename (.mrc)")
+parser.add_argument("-f", "--file", type=str, help="Electron density filename (.mrc)")
+parser.add_argument("-ref", "--ref", type=str, help="Reference electron density filename (.mrc)")
 parser.add_argument("--plot_on", dest="plot", action="store_true", help="Plot the profile (requires Matplotlib, default if module exists).")
 parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not plot the profile. (Default if Matplotlib does not exist)")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
@@ -57,22 +57,22 @@ args = parser.parse_args()
 if __name__ == "__main__":
 
     if args.output is None:
-        basename, ext = os.path.splitext(args.file1)
+        basename, ext = os.path.splitext(args.file)
         output = basename + '_fsc'
     else:
         output = args.output
 
 
-    rho1, side1 = saxs.read_mrc(args.file1)
-    rho2, side2 = saxs.read_mrc(args.file2)
-    if rho1.shape[0] != rho2.shape[0]:
-        print "Shape of rho1 and rho2 are not equal."
+    rho, side = saxs.read_mrc(args.file)
+    refrho, refside = saxs.read_mrc(args.ref)
+    if rho.shape[0] != refrho.shape[0]:
+        print "Shape of rho and ref are not equal."
         sys.exit()
-    if side1 != side2:
-        print "Side length of rho1 and rho2 are not equal."
+    if side != refside:
+        print "Side length of rho and ref are not equal."
         sys.exit()
 
-    fsc = saxs.calc_fsc(rho1,rho2,side1)
+    fsc = saxs.calc_fsc(rho,refrho,side)
 
     np.savetxt(output+'.dat', fsc, delimiter=' ', fmt='% .5e')
 
