@@ -7,9 +7,19 @@ If you use DENSS in your work, please cite:
 Grant, Thomas D. (2018). Ab initio electron density determination directly from 
 solution scattering data. Nature Methods. http://dx.doi.org/10.1038/nmeth.4581.
 
+#### New refinement script
+A new script called `denss.refine.py` is available for refining an averaged 
+electron density map. Final averaged maps from denss.all.py or superdenss are 
+unlikely to have scattering profiles matching the data (since they are an average
+from many different maps). To potentially improve the results, one can input
+the averaged map to denss.refine.py using the --rho_start option. `denss.refine.py`
+works similarly to denss.py, and will take the same .out or .dat file used
+in the original runs of denss.py. This script is still in testing, so use at your
+own risk and let me know if you run into bugs or issues.
+
 #### New Averaging Procedure (beta)
 A new procedure for aligning and averaging electron density maps with DENSS is
-now available with v1.4.1. The new procedure is written entirely in Python from
+now available with v1.4.3. The new procedure is written entirely in Python from
 the ground up and no longer requires EMAN2 to be installed. The new procedure
 can be accessed with a series of new scripts, named as denss.xxx.py where xxx
 is the name of the script. denss.all.py acts as the old superdenss, running
