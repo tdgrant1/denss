@@ -36,6 +36,7 @@ def parse_arguments(parser,gnomdmax=None):
     parser.add_argument("-p_off","--positivity_off", dest="positivity", action="store_false", help="Do not enforce positivity restraint inside support.")
     parser.add_argument("-min","--minimum_density", default=None, type=float, help="Minimum density value in e-/angstrom^3 (must also set --ne to be meaningful)")
     parser.add_argument("-max","--maximum_density", default=None, type=float, help="Maximum density value in e-/angstrom^3 (must also set --ne to be meaningful)")
+    parser.add_argument("-rho", "--rho_start", default=None, type=str, help="Starting electron density map filename (for use in denss.refine.py only)")
     parser.add_argument("-e_on","--extrapolate_on", dest="extrapolate", action="store_true", help="Extrapolate data by Porod law to high resolution limit of voxels. (default)")
     parser.add_argument("-e_off","--extrapolate_off", dest="extrapolate", action="store_false", help="Do not extrapolate data by Porod law to high resolution limit of voxels.")
     parser.add_argument("-sw_on","--shrinkwrap_on", dest="shrinkwrap", action="store_true", help="Turn shrinkwrap on (default)")

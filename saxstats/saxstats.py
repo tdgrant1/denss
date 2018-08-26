@@ -456,7 +456,8 @@ def loadProfile(fname):
 
 def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False, limit_dmax_steps=[500],
         recenter=True, recenter_steps=None, recenter_mode="com", positivity=True, extrapolate=True,
-        output="map", steps=None, seed=None,  minimum_density=None,  maximum_density=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
+        output="map", steps=None, seed=None,  minimum_density=None,  maximum_density=None,
+        rho_start=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
         shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
         shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01, write_xplor_format=False, write_freq=100,
         enforce_connectivity=True, enforce_connectivity_steps=[500],cutout=True,quiet=False):
@@ -551,6 +552,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         seed = int(seed)
     prng = np.random.RandomState(seed)
     rho = prng.random_sample(size=x.shape)
+    if rho_start is not None:
+        rho = rho_start
     update_support = True
     sigma = shrinkwrap_sigma_start
     #convert density values to absolute number of electrons
