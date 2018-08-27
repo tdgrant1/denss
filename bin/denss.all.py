@@ -253,7 +253,7 @@ if __name__ == "__main__":
     filtered = np.empty(len(scores),dtype=str)
     print "Mean of correlation scores: %.3f" % mean
     print "Standard deviation of scores: %.3f" % std
-    for i in range(nmaps):
+    for i in range(superargs.nmaps):
         if scores[i] < threshold:
             filtered[i] = 'Filtered'
         else:
