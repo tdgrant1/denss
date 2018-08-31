@@ -593,7 +593,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         """
         if j==0:
             np.savetxt(output+'_step0_saxs.dat',np.vstack((qbinsc,Imean[j],Imean[j]*.05)).T,delimiter=" ",fmt="%.5e")
-            #write_xplor(rho,side,output+"_original.xplor")
+            write_mrc(rho,side,output+"_step"+str(j)+".mrc")
         """
         #scale Fs to match data
         factors = np.ones((len(qbins)))

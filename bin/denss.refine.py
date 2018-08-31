@@ -80,11 +80,23 @@ if args.rho_start is None:
 basename, ext = os.path.splitext(args.rho_start)
 args.output = basename + '_refine'
 
-args.rho_start, side = saxs.read_mrc(args.rho_start)
-if not np.isclose(side, args.dmax*args.oversampling):
-    args.voxel = side/args.nsamples
+args.rho_start, rho_side = saxs.read_mrc(args.rho_start)
+
+rho_nsamples = args.rho_start.shape[0]
+rho_voxel = rho_side/rho_nsamples
+
+args.side = args.dmax*args.oversampling
+
+if (not np.isclose(rho_side, args.side) or
+    not np.isclose(rho_voxel, args.voxel) or
+    not np.isclose(rho_nsamples, args.nsamples)):
     print "rho_start density dimensions do not match given options."
-    print "voxel size adjusted to match rho_start dimensions."
+    print "Oversampling and voxel size adjusted to match rho_start dimensions."
+
+args.voxel = rho_voxel
+args.oversampling = rho_side/args.dmax
+args.nsamples = rho_nsamples
+
 
 if __name__ == "__main__":
 
