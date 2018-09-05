@@ -1651,7 +1651,9 @@ def pdb2map_gauss(pdb,xyz,sigma):
     """Simple isotropic gaussian sum at coordinate locations."""
     n = int(round(xyz.shape[0]**(1/3.)))
     sigma /= 4.
-    #dist = spatial.distance.cdist(coords, xyz)
+    dx = xyz[1,2] - xyz[0,2]
+    shift = np.ones(3)*dx/2.
+    #dist = spatial.distance.cdist(pdb.coords, xyz)
     #rho = np.sum(values,axis=0).reshape(n,n,n)
     #run cdist in a loop over atoms to avoid overloading memory
     values = np.zeros((xyz.shape[0]))
@@ -1659,7 +1661,7 @@ def pdb2map_gauss(pdb,xyz,sigma):
     for i in range(pdb.coords.shape[0]):
         sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
         sys.stdout.flush()
-        dist = spatial.distance.cdist(pdb.coords[None,i], xyz)
+        dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
         dist *= dist
         values += pdb.nelectrons[i]*1./np.sqrt(2*np.pi*sigma**2) * np.exp(-dist[0]/(2*sigma**2))
     print
