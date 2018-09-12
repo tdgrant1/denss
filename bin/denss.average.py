@@ -27,7 +27,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import os, argparse, logging
+import sys, os, argparse, logging
 import numpy as np
 from scipy import ndimage
 from saxstats._version import __version__
@@ -53,17 +53,21 @@ if __name__ == "__main__":
     logging.info('Script name: %s', sys.argv[0])
     logging.info('DENSS Version: %s', __version__)
 
-    allrhos = []
-    sides = []
+    rhosum = None
+    n=1
+    nmaps = len(args.files)
     for file in args.files:
+        sys.stdout.write("\r% 5i / % 5i" % (n, nmaps))
+        sys.stdout.flush()
+        n+=1
         rho, side = saxs.read_mrc(file)
-        allrhos.append(rho)
-        sides.append(side)
-
-    nmaps = len(allrhos)
-    allrhos = np.array(allrhos)
-    sides = np.array(sides)
-    average_rho = np.mean(allrhos,axis=0)
-    saxs.write_mrc(average_rho,sides[0], output+"_average.mrc")
+        if rhosum is None:
+            rhosum = rho
+        else:
+            rhosum += rho
+    print
+    average_rho = rhosum / nmaps
+    saxs.write_mrc(average_rho,side, output+"_average.mrc")
+    print "%s_average.mrc written." % output
     logging.info('END')
 
