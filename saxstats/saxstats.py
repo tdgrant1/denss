@@ -99,6 +99,13 @@ def write_mrc(rho,side,filename="map.mrc"):
     nxstart = -xs/2+1
     nystart = -ys/2+1
     nzstart = -zs/2+1
+    side = np.atleast_1d(side)
+    if len(side) == 1:
+        a,b,c = side, side, side
+    elif len(side) == 3:
+        a,b,c = side
+    else:
+        print "Error. Argument 'side' must be float or 3-tuple"
     with open(filename, "wb") as fout:
         # NC, NR, NS, MODE = 2 (image : 32-bit reals)
         fout.write(struct.pack('<iiii', xs, ys, zs, 2))
@@ -107,7 +114,7 @@ def write_mrc(rho,side,filename="map.mrc"):
         # MX, MY, MZ
         fout.write(struct.pack('<iii', xs, ys, zs))
         # X length, Y, length, Z length
-        fout.write(struct.pack('<fff', side, side, side))
+        fout.write(struct.pack('<fff', a, b, c))
         # Alpha, Beta, Gamma
         fout.write(struct.pack('<fff', 90.0, 90.0, 90.0))
         # MAPC, MAPR, MAPS
@@ -122,7 +129,7 @@ def write_mrc(rho,side,filename="map.mrc"):
             fout.write(struct.pack('<f', 0.0))
 
         # XORIGIN, YORIGIN, ZORIGIN
-        fout.write(struct.pack('<fff', nxstart*(side/xs), nystart*(side/ys), nzstart*(side/zs)))
+        fout.write(struct.pack('<fff', nxstart*(a/xs), nystart*(b/ys), nzstart*(c/zs)))
         # MAP
         fout.write('MAP ')
         # MACHST (little endian)
@@ -142,31 +149,27 @@ def write_mrc(rho,side,filename="map.mrc"):
                     s = struct.pack('<f', rho[i,j,k])
                     fout.write(s)
 
-def read_mrc(filename="map.mrc"):
+def read_mrc(filename="map.mrc",returnABC=False):
     """
         See MRC format at http://bio3d.colorado.edu/imod/doc/mrc_format.txt for offsets
     """
     with open(filename, 'rb') as fin:
         MRCdata=fin.read()
-        nx = struct.unpack_from('<i',MRCdata, 0)
-        ny = struct.unpack_from('<i',MRCdata, 4)
-        nz = struct.unpack_from('<i',MRCdata, 8)
-        nx,ny,nz = [np.array(i) for i in [nx,ny,nz]]
-        rho_shape = (nx[0],ny[0],nz[0])
-        
+        nx = struct.unpack_from('<i',MRCdata, 0)[0]
+        ny = struct.unpack_from('<i',MRCdata, 4)[0]
+        nz = struct.unpack_from('<i',MRCdata, 8)[0]
+
         #side = struct.unpack_from('<f',MRCdata,40)[0]
         a, b, c = struct.unpack_from('<fff',MRCdata,40)
         side = a
         
         fin.seek(1024, os.SEEK_SET)
-        rho = np.fromfile(file=fin, dtype=np.dtype(np.float32)).reshape(rho_shape)
-        rho = rho.T
+        rho = np.fromfile(file=fin, dtype=np.dtype(np.float32)).reshape((nx,ny,nz),order='F')
         fin.close()
-    
-    return rho, side
-
-#def average
-#def enantiomer
+    if returnABC:
+        return rho, (a,b,c)
+    else:
+        return rho, side
 
 def write_xplor(rho,side,filename="map.xplor"):
     """Write an XPLOR formatted electron density map."""
@@ -192,6 +195,63 @@ def write_xplor(rho,side,filename="map.xplor"):
             f.write("\n")
         f.write("    -9999\n")
         f.write("  %.4E  %.4E" % (np.average(rho), np.std(rho)))
+
+def pad_rho(rho,newshape):
+    """Pad rho with zeros to achieve new shape"""
+    a = rho
+    a_nx,a_ny,a_nz = a.shape
+    b_nx,b_ny,b_nz = newshape
+    padx1 = (b_nx-a_nx)/2
+    padx2 = (b_nx-a_nx) - padx1
+    pady1 = (b_ny-a_ny)/2
+    pady2 = (b_ny-a_ny) - pady1
+    padz1 = (b_nz-a_nz)/2
+    padz2 = (b_nz-a_nz) - padz1
+    #np.pad cannot take negative values, i.e. where the array will be cropped
+    #however, can instead just use slicing to do the equivalent
+    #but first need to identify which pad values are negative
+    slcx1, slcx2, slcy1, slcy2, slcz1, slcz2 = None, None, None, None, None, None
+    if padx1 < 0:
+        slcx1 = -padx1
+        padx1 = 0
+    if padx2 < 0:
+        slcx2 = padx2
+        padx2 = 0
+    if pady1 < 0:
+        slcy1 = -pady1
+        pady1 = 0
+    if pady2 < 0:
+        slcy2 = pady2
+        pady2 = 0
+    if padz1 < 0:
+        slcz1 = -padz1
+        padz1 = 0
+    if padz2 < 0:
+        slcz2 = padz2
+        padz2 = 0
+    a = np.pad(a,((padx1,padx2),(pady1,pady2),(padz1,padz2)),'constant')[
+        slcx1:slcx2, slcy1:slcy2, slcz1:slcz2]
+    return a
+
+def zoom_rho(rho,vx,dx):
+    """Resample rho to have new voxel size.
+    
+    rho - map to resample (3D array)
+    vx - length of voxel of rho, float or tuple of three sides (a,b,c)
+    dx - desired voxel size (only float allowed, assumes cubic grid desired)
+    """
+    vx = np.atleast_1d(vx)
+    if len(vx) == 1:
+        vx, vy, vz = vx, vx, vx
+    elif len(vx) == 3:
+        vx, vy, vz = vx
+    else:
+        print "Error. Argument 'side' must be float or 3-tuple"
+    #zoom factors
+    zx, zy, zz = vx/dx, vy/dx, vz/dx
+    newrho = ndimage.zoom(rho,(zx, zy, zz),order=1,mode="wrap")
+
+    return newrho
 
 def loadOutFile(filename):
     """Loads a GNOM .out file and returns q, Ireg, sqrt(Ireg), and a
