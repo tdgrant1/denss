@@ -111,14 +111,27 @@ else
     done
 fi
 
+e2version=`e2version.py | awk 'NR==1 {print $2}'`
+e2new=`echo $e2version'>'2.21 | bc -l`
+
 if [ "$enantiomers" == "True" ];
 then
     maps=`ls ${id}*[0-9].mrc`
     best_enantiomers.sh -f "$maps" -j $j
     #Now run averaging using just the best enantiomers
-    e2buildstacks.py --stackname ${id}.hdf ${id}*enant.hdf
+    if [ $e2new -eq 1 ];
+    then
+      e2buildstacks.py --output ${id}.hdf ${id}*enant.hdf
+    else
+      e2buildstacks.py --stackname ${id}.hdf ${id}*enant.hdf
+    fi
 else
-    e2buildstacks.py --stackname ${id}.hdf ${id}*[0-9].mrc
+    if [ $e2new -eq 1 ];
+    then
+      e2buildstacks.py --output ${id}.hdf ${id}*[0-9].mrc
+    else
+      e2buildstacks.py --stackname ${id}.hdf ${id}*[0-9].mrc
+    fi
 fi
 
 e2spt_binarytree.py --path=spt_bt_ref --input=${id}.hdf

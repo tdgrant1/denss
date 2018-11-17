@@ -67,6 +67,9 @@ else
     gen_only="True"
 fi
 
+e2version=`e2version.py | awk 'NR==1 {print $2}'`
+e2new=`echo $e2version'>'2.21 | bc -l`
+
 #only create the reference and associated files/directories if the -g option
 #has NOT been given
 if [ $gen_only == "False" ];
@@ -75,7 +78,13 @@ then
     #first create a reference from the given maps
     #create eman2 stack of original volumes
 
-    e2buildstacks.py --stackname stack.hdf ${maps[*]}
+    if [ $e2new -eq 1 ];
+    then
+      e2buildstacks.py --output stack.hdf ${maps[*]}
+    else
+      e2buildstacks.py --stackname stack.hdf ${maps[*]}
+    fi
+
     #create reference from original volumes
     #e2spt_binarytree.py --path=spt_en --input=stack.hdf --parallel=thread:${j}
     #cp spt_en_01/final_avg.hdf reference.hdf
@@ -153,7 +162,12 @@ do
     fi
 
     #create stack of enantiomers for alignment
-    e2buildstacks.py --stackname ${map%.*}_ali2xyz_all.hdf ${enants[@]}
+    if [ $e2new -eq 1 ];
+    then
+      e2buildstacks.py --output ${map%.*}_ali2xyz_all.hdf ${enants[@]}
+    else
+      e2buildstacks.py --stackname ${map%.*}_ali2xyz_all.hdf ${enants[@]}
+    fi
 
     #for some reason e2spt_align.py fails with a malloc error randomly
     #simply repeating this same command until it works appears to do the trick

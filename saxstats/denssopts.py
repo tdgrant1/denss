@@ -22,6 +22,9 @@ def parse_arguments(parser,gnomdmax=None):
     parser.add_argument("-n", "--nsamples", default=None, type=int, help="Number of samples, i.e. grid points, along a single dimension. (Sets voxel size, overridden by --voxel. Best optimization with n=power of 2)")
     parser.add_argument("--ne", default=10000, type=float, help="Number of electrons in object")
     parser.add_argument("-s", "--steps", default=None, help="Maximum number of steps (iterations)")
+    parser.add_argument("-ncs", "--ncs", default=0, type=int, help="Rotational symmetry")
+    parser.add_argument("-ncs_steps","--ncs_steps", default=[3000], type=int, nargs='+', help="List of steps for applying NCS averaging (default=500)")
+    parser.add_argument("-ncs_axis", "--ncs_axis", default=1, type=int, help="Rotational symmetry axis (options: 1, 2, or 3 corresponding to xyz principal axes)")
     parser.add_argument("-o", "--output", default=None, help="Output map filename")
     parser.add_argument("-m", "--mode", default="SLOW", type=str, help="Mode. F(AST) sets default options to run quickly for simple particle shapes. S(LOW) useful for more complex molecules. (default SLOW)")
     parser.add_argument("--seed", default=None, help="Random seed to initialize the map")
@@ -126,7 +129,7 @@ def parse_arguments(parser,gnomdmax=None):
     if args.limit_dmax_steps is not None:
         limit_dmax_steps = args.limit_dmax_steps
     else:
-        limit_dmax_steps = [500]
+        limit_dmax_steps = [502]
     if not isinstance(limit_dmax_steps, list):
         limit_dmax_steps = [ limit_dmax_steps ]
 

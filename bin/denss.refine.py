@@ -128,6 +128,9 @@ if __name__ == "__main__":
         extrapolate=args.extrapolate,
         output=args.output,
         steps=args.steps,
+        ncs=args.ncs,
+        ncs_steps=args.ncs_steps,
+        ncs_axis=args.ncs_axis,
         seed=args.seed,
         shrinkwrap=args.shrinkwrap,
         shrinkwrap_sigma_start=args.shrinkwrap_sigma_start,
@@ -188,7 +191,7 @@ if __name__ == "__main__":
         ax1.set_xlabel(r'q ($\mathrm{\AA^{-1}}$)')
         #plt.setp(ax0.get_xticklabels(), visible=False)
         plt.tight_layout()
-        plt.savefig(args.output+'_fit',ext='png',dpi=150)
+        plt.savefig(args.output+'_fit.png',dpi=150)
         plt.close()
 
         plt.plot(chis[chis>0])
@@ -196,14 +199,14 @@ if __name__ == "__main__":
         plt.ylabel('$\chi^2$')
         plt.semilogy()
         plt.tight_layout()
-        plt.savefig(args.output+'_chis',ext='png',dpi=150)
+        plt.savefig(args.output+'_chis.png',dpi=150)
         plt.close()
 
         plt.plot(rg[rg!=0])
         plt.xlabel('Step')
         plt.ylabel('Rg')
         plt.tight_layout()
-        plt.savefig(args.output+'_rgs',ext='png',dpi=150)
+        plt.savefig(args.output+'_rgs.png',dpi=150)
         plt.close()
 
         plt.plot(supportV[supportV>0])
@@ -211,7 +214,7 @@ if __name__ == "__main__":
         plt.ylabel('Support Volume ($\mathrm{\AA^{3}}$)')
         plt.semilogy()
         plt.tight_layout()
-        plt.savefig(args.output+'_supportV',ext='png',dpi=150)
+        plt.savefig(args.output+'_supportV.png',dpi=150)
         plt.close()
 
     logging.info('END')

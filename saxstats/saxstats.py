@@ -520,7 +520,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         rho_start=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
         shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
         shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01, write_xplor_format=False, write_freq=100,
-        enforce_connectivity=True, enforce_connectivity_steps=[500],cutout=True,quiet=False):
+        enforce_connectivity=True, enforce_connectivity_steps=[500],cutout=True,quiet=False,ncs=0,ncs_steps=[500],ncs_axis=1):
     """Calculate electron density from scattering data."""
     
     D = dmax
@@ -535,6 +535,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     logging.info('Recenter: %s', recenter)
     logging.info('Recenter Steps: %s', recenter_steps)
     logging.info('Recenter Mode: %s', recenter_mode)
+    logging.info('NCS: %s', ncs)
+    logging.info('NCS Steps: %s', ncs_steps)
+    logging.info('NCS Axis: %s', ncs_axis)
     logging.info('Positivity: %s', positivity)
     logging.info('Minimum Density: %s', minimum_density)
     logging.info('Maximum Density: %s', maximum_density)
@@ -689,6 +692,17 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             newrho[newrho>rho_max] = rho_max
             if np.sum(newrho) != 0:
                 newrho *= netmp / np.sum(newrho)
+        #apply non-crystallographic symmetry averaging
+        if ncs != 0 and j in ncs_steps:
+            newrho = align2xyz(newrho)
+            degrees = 360./ncs
+            if ncs_axis == 1: axes=(1,2)
+            if ncs_axis == 2: axes=(0,2)
+            if ncs_axis == 3: axes=(0,1)
+            newrhosym = np.zeros_like(newrho)
+            for nrot in range(0,ncs+1):
+                newrhosym += ndimage.rotate(newrho,degrees*nrot,axes=axes,reshape=False)
+            newrho = newrhosym/ncs
         #update support using shrinkwrap method
         if recenter and j in recenter_steps:
             if recenter_mode == "max":
@@ -719,9 +733,15 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                 #remove features from the support that are not the primary feature
                 support[labeled_support != big_feature] = False
         if limit_dmax and j in limit_dmax_steps:
-            support[r>0.6*D] = False
-            if np.sum(support) <= 0:
-                support = np.ones(rho.shape,dtype=bool)
+            #support[r>0.6*D] = False
+            #if np.sum(support) <= 0:
+            #    support = np.ones(rho.shape,dtype=bool)
+            #gradually (smooth like a gaussian maybe) decrease density from center
+            #set width of gradual decrease window to be +20 percent of dmax
+            #the equation of that line works out to be (where rho goes from 1 down to 0):
+            #rho = -1/(0.2*D)*r + 6
+            newrho[(r>D)&(r<1.2*D)] *= (-1.0/(0.2*D)*r[(r>D)&(r<1.2*D)] + 6)
+            newrho[r>=1.2*D] = 0
         supportV[j] = np.sum(support)*dV
 
         if not quiet:
