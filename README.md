@@ -12,7 +12,7 @@ A new feature in denss v1.4.6 allows for the use of symmetry if known. The
 options for imposing symmetry are --ncs, --ncs_axis, and --ncs_steps. Currently
 only symmetry along a single axis is supported, though multiple axes will be
 supported in the future. Symmetry is imposed by first aligning the principal
-axes of inertia with the XYZ axes (largest to smallest). Then symmetry averaging is performed along the selected axis at the given step(s). More frequent steps makes for stronger restraint, but more consequently more bias. Can select a different axis (in case the largest principal axis is not the
+axes of inertia with the XYZ axes (largest to smallest). Then symmetry averaging is performed along the selected axis at the given step(s). More frequent steps makes for stronger restraint, but consequently more bias. Can select a different axis (in case the largest principal axis is not the
 symmetry axis). Note that the averaging procedure is still symmetry agnostic.
 Also, you may need to manually filter sets of maps in case the wrong
 symmetry axis was chosen in some cases, then perform averaging separately
