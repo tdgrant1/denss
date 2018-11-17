@@ -7,6 +7,21 @@ If you use DENSS in your work, please cite:
 Grant, Thomas D. (2018). Ab initio electron density determination directly from 
 solution scattering data. Nature Methods. http://dx.doi.org/10.1038/nmeth.4581.
 
+#### New symmetry averaging feature
+A new feature in denss v1.4.6 allows for the use of symmetry if known. The 
+options for imposing symmetry are --ncs, --ncs_axis, and --ncs_steps. Currently
+only symmetry along a single axis is supported, though multiple axes will be
+supported in the future. Symmetry is imposed by first aligning the principal
+axes of inertia with the XYZ axes (largest to smallest). Then symmetry averaging is performed along the selected axis at the given step(s). More frequent steps makes for stronger restraint, but more consequently more bias. Can select a different axis (in case the largest principal axis is not the
+symmetry axis). Note that the averaging procedure is still symmetry agnostic.
+Also, you may need to manually filter sets of maps in case the wrong
+symmetry axis was chosen in some cases, then perform averaging separately
+with the denss.align_and_average.py script.
+
+#### New script for performing simple operations on MRC files
+A new script, `denss.mrcops.py`, is included in v1.4.5 that includes handy
+tools for resampling or reshaping an MRC formatted electron density map. 
+
 #### New refinement script
 A new script called `denss.refine.py` is available for refining an averaged 
 electron density map. Final averaged maps from denss.all.py or superdenss are 
@@ -171,16 +186,21 @@ Options you may want to set are:
 ```
   -h, --help            show this help message and exit
   -f FILE, --file FILE  SAXS data file for input (either .dat or .out)
-  -d DMAX, --dmax DMAX  Estimated maximum dimension
+  -d DMAX, --dmax DMAX  Estimated maximum dimension (Default=100)
   -v VOXEL, --voxel VOXEL
                         Set desired voxel size, setting resolution of map
   -os OVERSAMPLING, --oversampling OVERSAMPLING
-                        Sampling ratio
+                        Sampling ratio (Default=3)
   -n NSAMPLES, --nsamples NSAMPLES
                         Number of samples, i.e. grid points, along a single
                         dimension. (Sets voxel size, overridden by --voxel.
-                        Best optimization with n=power of 2)
-  --ne NE               Number of electrons in object
+                        Best optimization with n=power of 2. Default=64)
+  --ne NE               Number of electrons in object (Default=10,000)
+  -ncs NCS, --ncs NCS   Rotational symmetry
+  -ncs_steps NCS_STEPS [NCS_STEPS ...], --ncs_steps NCS_STEPS [NCS_STEPS ...]
+                        List of steps for applying NCS averaging (default=3000)
+  -ncs_axis NCS_AXIS, --ncs_axis NCS_AXIS
+                        Rotational symmetry axis (options: 1, 2, or 3 corresponding to xyz principal axes)
   -s STEPS, --steps STEPS
                         Maximum number of steps (iterations)
   -o OUTPUT, --output OUTPUT
@@ -272,7 +292,9 @@ pre-aligned electron density maps, and estimates resolution.
 `denss.pdb2mrc.py` - calculates an electron density map from a PDB file.  
 `denss.get_info.py` - prints basic information about an MRC file, to be used 
 with denss.pdb2mrc.py, for example, to set box sizes, voxels, etc.  
-`denss.rho2dat.py` - calculates a solution scattering profile from an electron density map  
+`denss.rho2dat.py` - calculates a solution scattering profile from an electron density map
+`denss.mrcops.py` - performs basic operations on MRC file, such as resampling
+an electron density map to have a new size or shape.  
 
 ### EMAN2 Method:
 The older option for alignment and averaging requires installation of EMAN2.
