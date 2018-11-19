@@ -301,7 +301,7 @@ The older option for alignment and averaging requires installation of EMAN2.
 Installing is pretty straightforward on Unix systems. Some users have noted difficulty 
 with installation of EMAN2 on Windows systems.
 
-To install EMAN2, download the appropriate EMAN2 binary from [this page](http://ncmi.bcm.tmc.edu/ncmi/software/software_details?selected_software=counter_222) 
+To install EMAN2, download the appropriate EMAN2 binary from [this page](https://cryoem.bcm.edu/cryoem/downloads/view_eman2_versions) 
 Then, change to the folder where you would like to install EMAN2 (such as your home folder)
 and move the eman2 script you downloaded to that directory. Then execute the script.
 For example:
