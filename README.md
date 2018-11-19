@@ -292,7 +292,7 @@ pre-aligned electron density maps, and estimates resolution.
 `denss.pdb2mrc.py` - calculates an electron density map from a PDB file.  
 `denss.get_info.py` - prints basic information about an MRC file, to be used 
 with denss.pdb2mrc.py, for example, to set box sizes, voxels, etc.  
-`denss.rho2dat.py` - calculates a solution scattering profile from an electron density map
+`denss.rho2dat.py` - calculates a solution scattering profile from an electron density map.  
 `denss.mrcops.py` - performs basic operations on MRC file, such as resampling
 an electron density map to have a new size or shape.  
 
