@@ -597,7 +597,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     scale_factor = realne**2 / Idata[0]
     Idata *= scale_factor
     sigqdata *= scale_factor
-    if steps is None:
+    if steps == 'None' or steps is None or steps < 1:
         steps = int(shrinkwrap_iter * (np.log(shrinkwrap_sigma_end/shrinkwrap_sigma_start)/np.log(shrinkwrap_sigma_decay)) + shrinkwrap_minstep)
         steps += 3000
     else:
