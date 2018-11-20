@@ -143,11 +143,15 @@ def write_mrc(rho,side,filename="map.mrc"):
             fout.write(struct.pack('<B', 0x00))
 
         # Write out data
+        """
         for k in range(zs):
             for j in range(ys):
                 for i in range(xs):
                     s = struct.pack('<f', rho[i,j,k])
                     fout.write(s)
+        """
+        s = struct.pack('=%sf' % rho.size, *rho.flatten('F'))
+        fout.write(s)
 
 def read_mrc(filename="map.mrc",returnABC=False):
     """
