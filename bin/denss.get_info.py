@@ -41,11 +41,12 @@ args = parser.parse_args()
 if __name__ == "__main__":
 
 
-    rho, side = saxs.read_mrc(args.file)
+    rho, (a,b,c) = saxs.read_mrc(args.file, returnABC=True)
+    vx, vy, vz = np.array((a,b,c))/np.array(rho.shape)
     
     print " Grid size:   %i x %i x %i" % (rho.shape[0],rho.shape[1],rho.shape[2])
-    print " Side length: %f" % side
-    print " Voxel size:  %f" % (side/rho.shape[0])
+    print " Side length: %f x %f x %f" % (a,b,c)
+    print " Voxel size:  %f x %f x %f" % (vx, vy, vz)
 
 
 
