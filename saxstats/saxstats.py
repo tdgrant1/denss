@@ -1724,7 +1724,7 @@ class PDB(object):
             records.append(['ATOM  ' + atomnum + '  ' + atomname + ' ' + resname + ' ' + chain + resnum + '    ' + x + y + z + o + b + '          ' + atomtype + charge])
         np.savetxt(filename, records, fmt = '%80s')
 
-def pdb2map_gauss(pdb,xyz,sigma,mode="fast",eps=1e-6):
+def pdb2map_gauss(pdb,xyz,sigma,mode="slow",eps=1e-6):
     """Simple isotropic gaussian sum at coordinate locations.
 
     Fast mode uses KDTree to only calculate density at grid points with
@@ -1739,14 +1739,6 @@ def pdb2map_gauss(pdb,xyz,sigma,mode="fast",eps=1e-6):
     #run cdist in a loop over atoms to avoid overloading memory
     print "\n Read density map from PDB... "
     if mode == "fast":
-        values = np.zeros((xyz.shape[0]))
-        for i in range(pdb.coords.shape[0]):
-            sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
-            sys.stdout.flush()
-            dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
-            dist *= dist
-            values += pdb.nelectrons[i]*1./np.sqrt(2*np.pi*sigma**2) * np.exp(-dist[0]/(2*sigma**2))
-    else:
         if eps is None:
             eps = np.finfo('float64').eps
         thr = -np.log(eps) * 2 * sigma**2
@@ -1754,13 +1746,21 @@ def pdb2map_gauss(pdb,xyz,sigma,mode="fast",eps=1e-6):
         discr = 1000 # you can tweak this to get best results on your system
         values = np.empty(n**3)
         for i in range(n**3//discr + 1):
-            sys.stdout.write("\r%i / %i" % (i, n**3//discr + 1))
+            sys.stdout.write("\r%i / %i chunks" % (i+1, n**3//discr + 1))
             sys.stdout.flush()
             slc = slice(i * discr, i * discr + discr)
             grid_tree = spatial.cKDTree(xyz[slc])
             dists = grid_tree.sparse_distance_matrix(data_tree, thr, output_type = 'coo_matrix')
             dists.data = 1./np.sqrt(2*np.pi*sigma**2) * np.exp(-dists.data/(2*sigma**2))
             values[slc] = dists.sum(1).squeeze()
+    else:
+        values = np.zeros((xyz.shape[0]))
+        for i in range(pdb.coords.shape[0]):
+            sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
+            sys.stdout.flush()
+            dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
+            dist *= dist
+            values += pdb.nelectrons[i]*1./np.sqrt(2*np.pi*sigma**2) * np.exp(-dist[0]/(2*sigma**2))
     print
     return values.reshape(n,n,n)
 

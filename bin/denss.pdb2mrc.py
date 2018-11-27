@@ -35,12 +35,14 @@ import sys, argparse, os
 parser = argparse.ArgumentParser(description="A tool for calculating simple electron density maps from pdb files.", formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
 parser.add_argument("-f", "--file", type=str, help="PDB filename")
-parser.add_argument("-s", "--side", default=100., type=float, help="Desired length real space box side")
-parser.add_argument("-v", "--voxel", default=5., type=float, help="Desired voxel size")
-parser.add_argument("-r", "--resolution", default=10.0, type=float, help="Desired resolution (i.e. Gaussian width sigma)")
+parser.add_argument("-s", "--side", default=300., type=float, help="Desired length real space box side (default=300 angstroms)")
+parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired voxel size (default=None)")
+parser.add_argument("-n", "--nsamples", default=64, type=float, help="Desired number of samples per axis (default=64)")
+parser.add_argument("-m", "--mode", default="slow", type=str, help="Mode. Either fast or slow (more accurate) (default=slow).")
+parser.add_argument("-r", "--resolution", default=10.0, type=float, help="Desired resolution (i.e. Gaussian width sigma) (default=15 angstroms)")
 parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB reference (default).")
 parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB reference.")
-parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
+parser.add_argument("-o", "--output", default=None, help="Output filename prefix (default=basename_pdb)")
 parser.set_defaults(center = True)
 args = parser.parse_args()
 
@@ -54,7 +56,11 @@ if __name__ == "__main__":
         output = args.output
 
     side = args.side
-    voxel = args.voxel
+    if args.voxel is None:
+        voxel = side / args.nsamples
+    else:
+        voxel = args.voxel
+
     halfside = side/2
     n = int(side/voxel)
     #want n to be even for speed/memory optimization with the FFT, ideally a power of 2, but wont enforce that
@@ -69,7 +75,16 @@ if __name__ == "__main__":
         pdboutput = basename+"_centered.pdb"
         pdb.coords -= pdb.coords.mean(axis=0)
         pdb.write(filename=pdboutput)
-    rho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution)
+
+    if n <= 20:
+        #n must be greater than 20 with current implementation of fast
+        #mode using KDTrees. So switch to slow mode, since its a small grid anyways
+        args.mode = "slow"
+
+    if args.mode[0].upper() == "F":
+        rho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution,mode="fast",eps=1e-6)
+    else:
+        rho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution,mode="slow")
     print
     saxs.write_mrc(rho,side,output+".mrc")
 
