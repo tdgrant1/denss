@@ -41,8 +41,8 @@ parser.add_argument("-f", "--file", type=str, help="Electron density filename (.
 parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired length of voxel of map (resamples map, before any padding)")
 parser.add_argument("-n", "--n", default=None, type=int, help="Desired number of samples (creates cubic map by padding with zeros or clipping, after any resampling)")
 parser.add_argument("-s", "--side", default=None, type=float, help="Desired length of side of map (creates cubic map by padding with zeros or clipping, after any resampling)")
-parser.add_argument("-t","--threshold", default=None, type=float, help="Minimum density threshold (sets lesser values to zero).")
-parser.add_argument("-ne","--ne", default=0.0, type=float, help="Desired number of electrons in map.")
+parser.add_argument("-t","--threshold", default=None, type=float, help="Minimum density threshold (given as e-/A^3; sets lesser values to zero).")
+parser.add_argument("-ne","--ne", default=None, type=float, help="Desired number of electrons in map.")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
 args = parser.parse_args()
 
@@ -96,10 +96,21 @@ if __name__ == "__main__":
     print "Sides:  ", a, b, c
     print "Voxels: ", vx, vy, vz
 
+    #rescale map after interpolation
+    if args.ne is not None:
+        ne = args.ne
+    rho *= ne/np.sum(rho)
+
+    #convert to density in e-/A^3 for thresholding
+    rho /= vx*vy*vz
+
     if args.threshold is not None:
         rho[rho < args.threshold] = 0
 
-    rho *= ne/np.sum(rho)
+    rho *= ne/np.sum(rho) #rescale to the total number of electrons
+    rho /= vx*vy*vz #now divide by total volume to convert to electron density
+
+    print rho.sum()*vx*vy*vz
 
     saxs.write_mrc(rho,(a,b,c),filename=output+'.mrc')
 
