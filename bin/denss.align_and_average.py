@@ -150,7 +150,7 @@ if __name__ == "__main__":
     logging.info('Total number of input maps for alignment: %i',allrhos.shape[0])
     logging.info('Number of aligned maps accepted: %i', aligned.shape[0])
     logging.info('Correlation score between average and reference: %.3f', 1/saxs.rho_overlap_score(average_rho, refrho))
-    saxs.write_mrc(average_rho, sides[0], output+'_average.mrc')
+    saxs.write_mrc(average_rho, sides[0], output+'_avg.mrc')
     logging.info('END')
 
     #split maps into 2 halves--> calculate FSC of even vs. odd

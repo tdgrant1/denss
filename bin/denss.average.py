@@ -67,7 +67,7 @@ if __name__ == "__main__":
             rhosum += rho
     print
     average_rho = rhosum / nmaps
-    saxs.write_mrc(average_rho,side, output+"_average.mrc")
-    print "%s_average.mrc written." % output
+    saxs.write_mrc(average_rho,side, output+"_avg.mrc")
+    print "%s_avg.mrc written." % output
     logging.info('END')
 

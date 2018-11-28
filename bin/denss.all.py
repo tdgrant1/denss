@@ -271,7 +271,7 @@ if __name__ == "__main__":
     logging.info('Total number of input maps for alignment: %i',allrhos.shape[0])
     logging.info('Number of aligned maps accepted: %i', aligned.shape[0])
     logging.info('Correlation score between average and reference: %.3f', 1/saxs.rho_overlap_score(average_rho, refrho))
-    saxs.write_mrc(average_rho, sides[0], output+'_average.mrc')
+    saxs.write_mrc(average_rho, sides[0], output+'_avg.mrc')
 
     #split maps into 2 halves--> enan, align, average independently with same refrho
     avg_rho1 = np.mean(aligned[::2],axis=0)
