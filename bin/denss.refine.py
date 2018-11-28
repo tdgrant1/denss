@@ -165,7 +165,7 @@ if __name__ == "__main__":
         #handle sigq values whose error bounds would go negative and be missing on the log scale
         sigq2 = np.copy(sigq)
         sigq2[sigq>I] = I[sigq>I]*.999
-        ax0.errorbar(q[q<=qdata[-1]], I[q<=qdata[-1]], fmt='k-', yerr=[sigq2[q<=qdata[-1]],sigq[q<=qdata[-1]]], capsize=0, elinewidth=0.1, ecolor=cc.to_rgba('0',alpha=0.5),label='Raw Data')
+        ax0.errorbar(q[q<=qdata[-1]], I[q<=qdata[-1]], fmt='k-', yerr=[sigq2[q<=qdata[-1]],sigq[q<=qdata[-1]]], capsize=0, elinewidth=0.1, ecolor=cc.to_rgba('0',alpha=0.5),label='Supplied Data')
         ax0.plot(qdata, Idata, 'bo',alpha=0.5,label='Interpolated Data')
         ax0.plot(qbinsc,Imean,'r.',label='Scattering from Density')
         handles,labels = ax0.get_legend_handles_labels()
