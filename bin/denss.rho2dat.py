@@ -105,6 +105,7 @@ if __name__ == "__main__":
     Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
 
     if args.plot: plt.plot(qbinsc, Imean, label='Default dq = %.4f' % (2*np.pi/side))
+    print 'Default dq = %.4f' % (2*np.pi/side)
 
     if args.dq is not None or args.n is not None:
 
@@ -169,6 +170,7 @@ if __name__ == "__main__":
     np.savetxt(output+'.dat', Iq, delimiter=' ', fmt='% .5e')
 
     if args.plot:
+        print 'Actual dq = %.4f' % (2*np.pi/side)
         plt.plot(qbinsc_to_use, Imean_to_use,label='Actual dq = %.4f' % (2*np.pi/side))
         plt.semilogy()
         plt.legend()
