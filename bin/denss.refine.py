@@ -180,9 +180,12 @@ if __name__ == "__main__":
 
         ax1 = plt.subplot(gs[1])
         ax1.plot(qdata, qdata*0, 'k--')
-        ax1.plot(qdata, np.log10(Imean[np.in1d(qbinsc,qdata)])-np.log10(Idata), 'ro-')
+        residuals = np.log10(Imean[np.in1d(qbinsc,qdata)])-np.log10(Idata)
+        ax1.plot(qdata, residuals, 'ro-')
         ylim = ax1.get_ylim()
         ymax = np.max(np.abs(ylim))
+        n = int(.9*len(residuals))
+        ymax = np.max(np.abs(residuals[:-n]))
         ax1.set_ylim([-ymax,ymax])
         ax1.yaxis.major.locator.set_params(nbins=5)
         xlim = ax0.get_xlim()
