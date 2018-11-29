@@ -7,13 +7,28 @@ If you use DENSS in your work, please cite:
 Grant, Thomas D. (2018). Ab initio electron density determination directly from 
 solution scattering data. Nature Methods. http://dx.doi.org/10.1038/nmeth.4581.
 
+#### [DENSS.org (tdgrant.com/denss)](https://www.tdgrant.com/denss)
+DENSS.org is the official home of DENSS. Packed with detailed instructions
+for installing and running DENSS on your own computer. It also contains
+useful tips and best practices.
+
+#### DENSSWeb server: [denss.ccr.buffalo.edu](https://denss.ccr.buffalo.edu)
+Try out DENSS without installing the code using the DENSSWeb server to
+perform simple online calculations suitable for most cases. (N is limited
+to 32 samples for efficiency to allow many users to try it out). For more
+complex particle shapes, install DENSS and EMAN2 (see below). Thanks to 
+Andrew Bruno and the CCR for DENSSWeb!
+
 #### New symmetry averaging feature
 A new feature in denss v1.4.6 allows for the use of symmetry if known. The 
 options for imposing symmetry are --ncs, --ncs_axis, and --ncs_steps. Currently
 only symmetry along a single axis is supported, though multiple axes will be
 supported in the future. Symmetry is imposed by first aligning the principal
-axes of inertia with the XYZ axes (largest to smallest). Then symmetry averaging is performed along the selected axis at the given step(s). More frequent steps makes for stronger restraint, but consequently more bias. Can select a different axis (in case the largest principal axis is not the
-symmetry axis). Note that the averaging procedure is still symmetry agnostic.
+axes of inertia with the XYZ axes (largest to smallest). Then symmetry averaging
+is performed along the selected axis at the given step(s). More frequent steps 
+makes for stronger restraint, but consequently more bias. Can select a different
+axis (in case the largest principal axis is not the symmetry axis). 
+Note that the averaging procedure is still symmetry agnostic.
 Also, you may need to manually filter sets of maps in case the wrong
 symmetry axis was chosen in some cases, then perform averaging separately
 with the denss.align_and_average.py script.
@@ -52,18 +67,6 @@ fits to experimental data using a convenient interactive GUI.
 A new script (denss.rho2dat.py) is provided with DENSS v1.3.0 for calculating
 scattering profiles from MRC files.
 
-#### [DENSS.org is now live! (tdgrant.com/denss)](https://www.tdgrant.com/denss)
-DENSS.org is the official home of DENSS. Packed with detailed instructions
-for installing and running DENSS on your own computer. It also contains
-useful tips and best practices.
-
-#### DENSSWeb server: [denss.ccr.buffalo.edu](https://denss.ccr.buffalo.edu)
-Try out DENSS without installing the code using the DENSSWeb server to
-perform simple online calculations suitable for most cases. (N is limited
-to 32 samples for efficiency to allow many users to try it out). For more
-complex particle shapes, install DENSS and EMAN2 (see below). Thanks to 
-Andrew Bruno and the CCR for DENSSWeb! (If the link doesn't work and you 
-are using Safari, try it out in another browser)
 
 ### About DENSS
 DENSS is an algorithm used for calculating ab initio electron density maps
