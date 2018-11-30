@@ -38,7 +38,7 @@ parser.add_argument("-f", "--file", type=str, help="PDB filename")
 parser.add_argument("-s", "--side", default=300., type=float, help="Desired length real space box side (default=300 angstroms)")
 parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired voxel size (default=None)")
 parser.add_argument("-n", "--nsamples", default=64, type=float, help="Desired number of samples per axis (default=64)")
-parser.add_argument("-m", "--mode", default="slow", type=str, help="Mode. Either fast or slow (more accurate) (default=slow).")
+parser.add_argument("-m", "--mode", default="slow", type=str, help="Mode. Either fast, slow, or FFT (default=slow).")
 parser.add_argument("-r", "--resolution", default=10.0, type=float, help="Desired resolution (i.e. Gaussian width sigma) (default=15 angstroms)")
 parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB reference (default).")
 parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB reference.")
@@ -81,10 +81,15 @@ if __name__ == "__main__":
         #mode using KDTrees. So switch to slow mode, since its a small grid anyways
         args.mode = "slow"
 
-    if args.mode[0].upper() == "F":
+    if args.mode == "fast":
         rho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution,mode="fast",eps=1e-6)
-    else:
+    elif args.mode == "slow":
         rho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution,mode="slow")
+    else:
+        print "Note: Using FFT method results in severe truncation ripples in map."
+        print "This will also run a quick refinement of phases to attempt to clean this up."
+        rho = saxs.pdb2map_FFT(pdb,x=x,y=y,z=z,radii=None)
+        rho = saxs.denss_3DFs(rho_start=rho,dmax=side,voxel=dx,oversampling=1.)
     print
     saxs.write_mrc(rho,side,output+".mrc")
 

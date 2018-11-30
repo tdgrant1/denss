@@ -167,7 +167,7 @@ if __name__ == "__main__":
 
     Iq = np.vstack((qbinsc, Imean, Imean*.03)).T
 
-    np.savetxt(output+'.dat', Iq, delimiter=' ', fmt='% .5e')
+    np.savetxt(output+'.dat', Iq, delimiter=' ', fmt='% .16e')
 
     if args.plot:
         print 'Actual dq = %.4f' % (2*np.pi/side)
