@@ -1764,7 +1764,7 @@ def pdb2map_gauss(pdb,xyz,sigma,mode="slow",eps=1e-6):
     print
     return values.reshape(n,n,n)
 
-def pdb2map_FFT(pdb,x,y,z,radii=None):
+def pdb2map_FFT(pdb,x,y,z,radii=None,restrict=True):
     """Calculate electron density from pdb coordinates by FFT of Fs.
 
     pdb - instance of PDB class (required)
@@ -1820,7 +1820,30 @@ def pdb2map_FFT(pdb,x,y,z,radii=None):
     #need to shift rho to center of grid, since FFT is offset by half a grid length
     shift = np.array(rho.shape)/2
     rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
-    return rho
+    write_mrc(rho,side,'rho.mrc')
+    if restrict:
+        x_ = np.linspace(-halfside,halfside,n)
+        x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
+        xyz = np.column_stack([x.flat,y.flat,z.flat])
+        pdb.coords += np.ones(3)*dx/2
+        pdbidx = pdb2support(pdb, xyz=xyz,probe=0.5)
+        write_mrc(pdbidx,side,'pdbidx.mrc')
+        rho[~pdbidx] = 0.0
+    return rho, pdbidx
+
+def pdb2support(pdb,xyz,probe=0.0):
+    """Calculate support from pdb coordinates."""
+    n = int(round(xyz.shape[0]**(1/3.)))
+    support = np.zeros((n,n,n),dtype=bool)
+    xyz_nearby = []
+    xyz_nearby_i = []
+    for i in range(pdb.natoms):
+        sys.stdout.write("\r% 5i / % 5i" % (i+1,pdb.natoms))
+        sys.stdout.flush()
+        xyz_nearby_i.append(np.where(spatial.distance.cdist(pdb.coords[i,None],xyz) < 1.7+probe)[1])
+    xyz_nearby_i = np.unique(np.concatenate(xyz_nearby_i))
+    support[np.unravel_index(xyz_nearby_i,support.shape)] = True
+    return support
 
 def formfactor(element, q=(np.arange(500)+1)/1000.):
     """Calculate atomic form factors"""
@@ -1834,7 +1857,7 @@ def formfactor(element, q=(np.arange(500)+1)/1000.):
 def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=True, 
         output="map", steps=2001, seed=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
         shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
-        shrinkwrap_iter=20, shrinkwrap_minstep=50, write_freq=100,
+        shrinkwrap_iter=20, shrinkwrap_minstep=50, write_freq=100,support=None,
         enforce_connectivity=True, enforce_connectivity_steps=[6000],quiet=False):
     """Calculate electron density from starting map by refining phases only."""
     D = dmax
@@ -1877,7 +1900,10 @@ def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=T
     supportV = np.zeros((steps+1))
     chibest = np.inf
     usesupport = True
-    support = np.ones(x.shape,dtype=bool)
+    if support is None:
+        support = np.ones(x.shape,dtype=bool)
+    else:
+        support = support.astype(bool)
     update_support = True
     sigma = shrinkwrap_sigma_start
 
@@ -1964,6 +1990,8 @@ def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=T
     rho /= dV
 
     return rho
+
+
 
 electrons = {'H': 1,'HE': 2,'He': 2,'LI': 3,'Li': 3,'BE': 4,'Be': 4,'B': 5,'C': 6,'N': 7,'O': 8,'F': 9,'NE': 10,'Ne': 10,'NA': 11,'Na': 11,'MG': 12,'Mg': 12,'AL': 13,'Al': 13,'SI': 14,'Si': 14,'P': 15,'S': 16,'CL': 17,'Cl': 17,'AR': 18,'Ar': 18,'K': 19,'CA': 20,'Ca': 20,'SC': 21,'Sc': 21,'TI': 22,'Ti': 22,'V': 23,'CR': 24,'Cr': 24,'MN': 25,'Mn': 25,'FE': 26,'Fe': 26,'CO': 27,'Co': 27,'NI': 28,'Ni': 28,'CU': 29,'Cu': 29,'ZN': 30,'Zn': 30,'GA': 31,'Ga': 31,'GE': 32,'Ge': 32,'AS': 33,'As': 33,'SE': 34,'Se': 34,'Se': 34,'Se': 34,'BR': 35,'Br': 35,'KR': 36,'Kr': 36,'RB': 37,'Rb': 37,'SR': 38,'Sr': 38,'Y': 39,'ZR': 40,'Zr': 40,'NB': 41,'Nb': 41,'MO': 42,'Mo': 42,'TC': 43,'Tc': 43,'RU': 44,'Ru': 44,'RH': 45,'Rh': 45,'PD': 46,'Pd': 46,'AG': 47,'Ag': 47,'CD': 48,'Cd': 48,'IN': 49,'In': 49,'SN': 50,'Sn': 50,'SB': 51,'Sb': 51,'TE': 52,'Te': 52,'I': 53,'XE': 54,'Xe': 54,'CS': 55,'Cs': 55,'BA': 56,'Ba': 56,'LA': 57,'La': 57,'CE': 58,'Ce': 58,'PR': 59,'Pr': 59,'ND': 60,'Nd': 60,'PM': 61,'Pm': 61,'SM': 62,'Sm': 62,'EU': 63,'Eu': 63,'GD': 64,'Gd': 64,'TB': 65,'Tb': 65,'DY': 66,'Dy': 66,'HO': 67,'Ho': 67,'ER': 68,'Er': 68,'TM': 69,'Tm': 69,'YB': 70,'Yb': 70,'LU': 71,'Lu': 71,'HF': 72,'Hf': 72,'TA': 73,'Ta': 73,'W': 74,'RE': 75,'Re': 75,'OS': 76,'Os': 76,'IR': 77,'Ir': 77,'PT': 78,'Pt': 78,'AU': 79,'Au': 79,'HG': 80,'Hg': 80,'TL': 81,'Tl': 81,'PB': 82,'Pb': 82,'BI': 83,'Bi': 83,'PO': 84,'Po': 84,'AT': 85,'At': 85,'RN': 86,'Rn': 86,'FR': 87,'Fr': 87,'RA': 88,'Ra': 88,'AC': 89,'Ac': 89,'TH': 90,'Th': 90,'PA': 91,'Pa': 91,'U': 92,'NP': 93,'Np': 93,'PU': 94,'Pu': 94,'AM': 95,'Am': 95,'CM': 96,'Cm': 96,'BK': 97,'Bk': 97,'CF': 98,'Cf': 98,'ES': 99,'Es': 99,'FM': 100,'Fm': 100,'MD': 101,'Md': 101,'NO': 102,'No': 102,'LR': 103,'Lr': 103,'RF': 104,'Rf': 104,'DB': 105,'Db': 105,'SG': 106,'Sg': 106,'BH': 107,'Bh': 107,'HS': 108,'Hs': 108,'MT': 109,'Mt': 109}
 

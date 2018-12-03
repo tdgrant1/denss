@@ -88,8 +88,8 @@ if __name__ == "__main__":
     else:
         print "Note: Using FFT method results in severe truncation ripples in map."
         print "This will also run a quick refinement of phases to attempt to clean this up."
-        rho = saxs.pdb2map_FFT(pdb,x=x,y=y,z=z,radii=None)
-        rho = saxs.denss_3DFs(rho_start=rho,dmax=side,voxel=dx,oversampling=1.)
+        rho, pdbidx = saxs.pdb2map_FFT(pdb,x=x,y=y,z=z,radii=None)
+        rho = saxs.denss_3DFs(rho_start=rho,dmax=side,voxel=dx,oversampling=1.,shrinkwrap=False,support=pdbidx)
     print
     saxs.write_mrc(rho,side,output+".mrc")
 
