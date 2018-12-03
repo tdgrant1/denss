@@ -1820,14 +1820,12 @@ def pdb2map_FFT(pdb,x,y,z,radii=None,restrict=True):
     #need to shift rho to center of grid, since FFT is offset by half a grid length
     shift = np.array(rho.shape)/2
     rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
-    write_mrc(rho,side,'rho.mrc')
     if restrict:
         x_ = np.linspace(-halfside,halfside,n)
         x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
         xyz = np.column_stack([x.flat,y.flat,z.flat])
         pdb.coords += np.ones(3)*dx/2
         pdbidx = pdb2support(pdb, xyz=xyz,probe=0.5)
-        write_mrc(pdbidx,side,'pdbidx.mrc')
         rho[~pdbidx] = 0.0
     return rho, pdbidx
 
