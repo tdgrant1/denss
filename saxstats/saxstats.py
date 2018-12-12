@@ -1822,7 +1822,6 @@ def pdb2map_FFT(pdb,x,y,z,radii=None,restrict=True):
     rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
     if restrict:
         x_ = np.linspace(-halfside,halfside,n)
-        x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
         xyz = np.column_stack([x.flat,y.flat,z.flat])
         pdb.coords += np.ones(3)*dx/2
         pdbidx = pdb2support(pdb, xyz=xyz,probe=0.5)
@@ -1842,6 +1841,17 @@ def pdb2support(pdb,xyz,probe=0.0):
     xyz_nearby_i = np.unique(np.concatenate(xyz_nearby_i))
     support[np.unravel_index(xyz_nearby_i,support.shape)] = True
     return support
+
+def sphere(R, q=np.linspace(0,0.5,501), I0=1.,amp=False):
+    """Calculate the scattering of a uniform sphere."""
+    q = np.atleast_1d(q)
+    a = np.where(q==0.0,1.0,(3 * (np.sin(q*R)-q*R*np.cos(q*R))/(q*R)**3))
+    if np.isnan(a).any():
+        a[np.where(np.isnan(a))] = 1.
+    if amp:
+        return I0 * a
+    else:
+        return I0 * a**2
 
 def formfactor(element, q=(np.arange(500)+1)/1000.):
     """Calculate atomic form factors"""
@@ -1926,7 +1936,7 @@ def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=T
         rhoprime = np.fft.ifftn(F,rho.shape)
         rhoprime = rhoprime.real
         if j%write_freq == 0:
-            write_mrc(rhoprime,side,output+"_current.mrc")
+            write_mrc(rhoprime/dV,side,output+"_current.mrc")
         rg[j] = rho2rg(rhoprime,r=r,support=support,dx=dx)
         newrho = np.zeros_like(rho)
         #Error Reduction
