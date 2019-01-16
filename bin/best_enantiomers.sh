@@ -67,7 +67,7 @@ else
     gen_only="True"
 fi
 
-e2version=`e2version.py | awk 'NR==1 {print $2}'`
+e2version=`e2version.py | awk 'NR==1 {print $2}' | sed 's/[A-Za-z]*//g'`
 e2new=`echo $e2version'>'2.21 | bc -l`
 
 #only create the reference and associated files/directories if the -g option
@@ -162,7 +162,7 @@ do
     fi
 
     #create stack of enantiomers for alignment
-    if [ $e2new -eq 1 ];
+    if [ "$e2new" -eq 1 ];
     then
       e2buildstacks.py --output ${map%.*}_ali2xyz_all.hdf ${enants[@]}
     else

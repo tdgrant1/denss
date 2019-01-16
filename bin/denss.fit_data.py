@@ -38,6 +38,7 @@ print saxs.__file__
 try:
     imp.find_module('matplotlib')
     matplotlib_found = True
+    from matplotlib.gridspec import GridSpec
 except ImportError:
     matplotlib_found = False
 
@@ -48,8 +49,8 @@ parser.add_argument("-d", "--dmax", default=100., type=float, help="Estimated ma
 parser.add_argument("-a", "--alpha", default=0., type=float, help="Set alpha smoothing factor")
 parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional)")
 parser.add_argument("--nes", default=2, type=int, help=argparse.SUPPRESS)
-parser.add_argument("--max_dmax", default=200., type=float, help="Maximum limit for allowed Dmax values (for plotting slider)")
-parser.add_argument("--max_alpha", default=10., type=float, help="Maximum limit for allowed alpha values (for plotting slider)")
+parser.add_argument("--max_dmax", default=None, type=float, help="Maximum limit for allowed Dmax values (for plotting slider)")
+parser.add_argument("--max_alpha", default=None, type=float, help="Maximum limit for allowed alpha values (for plotting slider)")
 parser.add_argument("--max_nes", default=10, type=int, help=argparse.SUPPRESS)
 parser.add_argument("--no_gui", dest="plot", action="store_false", help="Do not run the interactive GUI mode.")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
@@ -73,6 +74,11 @@ if __name__ == "__main__":
     D = args.dmax
     nes = args.nes
 
+    if args.max_dmax is None:
+        args.max_dmax = 2.*D
+    if args.max_alpha is None:
+        args.max_alpha = 10.
+
     q = Iq[:,0]
     qmin = np.min(q[0])
     dq = q[1] - q[0]
@@ -92,8 +98,12 @@ if __name__ == "__main__":
         import matplotlib.pyplot as plt
         from matplotlib.widgets import Slider, Button, RadioButtons
         
-        fig, (axI, axP) = plt.subplots(1, 2, figsize=(12,6))
-        plt.subplots_adjust(left=0.065, bottom=0.25, right=0.98, top=0.95)
+        #fig, (axI, axP) = plt.subplots(1, 2, figsize=(12,6))
+        fig = plt.figure(0, figsize=(12,6))
+        axI = plt.subplot2grid((3,2), (0,0),rowspan=2)
+        axR = plt.subplot2grid((3,2), (2,0))
+        axP = plt.subplot2grid((3,2), (0,1),rowspan=3)
+        plt.subplots_adjust(left=0.068, bottom=0.25, right=0.98, top=0.95)
 
         I_l1, = axI.plot(sasrec.q, sasrec.I, 'k.')
         I_l2, = axI.plot(sasrec.qc, sasrec.Ic, 'r-', lw=2)
@@ -101,12 +111,20 @@ if __name__ == "__main__":
         axI.set_ylabel('I(q)')
         axI.set_xlabel('q')
 
+        #residuals
+        res = np.log10(np.abs(sasrec.I)) - np.log10(np.interp(sasrec.q, sasrec.qc, np.abs(sasrec.Ic)))
+        Ires_l0, = axR.plot(sasrec.q, sasrec.q*0, 'k--')
+        Ires_l1, = axR.plot(sasrec.q, res, 'r-')
+        axR.set_ylabel('Residuals')
+        axR.set_xlabel('q')
+
         P_l1, = axP.plot(sasrec.r*100, sasrec.r*0, 'k--')
         P_l2, = axP.plot(sasrec.r, sasrec.P, 'b-', lw=2)
         axP.set_ylabel('P(r)')
         axP.set_xlabel('r')
 
         axI.set_xlim([0,1.1*np.max(sasrec.q)])
+        axR.set_xlim([0,1.1*np.max(sasrec.q)])
         axP.set_xlim([0,1.1*np.max(sasrec.r)])
 
         axcolor = 'lightgoldenrodyellow'
@@ -132,6 +150,8 @@ if __name__ == "__main__":
             global sasrec
             sasrec = saxs.Sasrec(Iq, dmax, qc=qc, r=None, alpha=alpha, ne=nes)
             I_l2.set_data(sasrec.qc, sasrec.Ic)
+            res = np.log10(np.abs(sasrec.I)) - np.log10(np.interp(sasrec.q, sasrec.qc, np.abs(sasrec.Ic)))
+            Ires_l1.set_data(sasrec.q, res)
             P_l2.set_data(sasrec.r, sasrec.P)
             axrg.set_text("Rg = " + str(round(sasrec.rg,2)) + " +- " + str(round(sasrec.rgerr,2)))
             axI0.set_text("I(0) = " + str(round(sasrec.I0,2)) + " +- " + str(round(sasrec.I0err,2)))
