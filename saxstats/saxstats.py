@@ -594,6 +594,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     scale_factor = realne**2 / Idata[0]
     Idata *= scale_factor
     sigqdata *= scale_factor
+    I *= scale_factor
+    sigq *= scale_factor
     if steps == 'None' or steps is None or steps < 1:
         steps = int(shrinkwrap_iter * (np.log(shrinkwrap_sigma_end/shrinkwrap_sigma_start)/np.log(shrinkwrap_sigma_decay)) + shrinkwrap_minstep)
         steps += 3000
@@ -660,6 +662,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         factors[qbin_args] = np.sqrt(Idata/Imean[j,qbin_args])
         F *= factors[qbin_labels]
         chi[j] = np.sum(((Imean[j,qbin_args]-Idata)/sigqdata)**2)/qbin_args.size
+        interp = interpolate.interp1d(qbinsc, Imean[j], kind='cubic')
+        I4chi = interp(q)
+        chi[j] = np.sum(((I4chi-I)/sigq)**2)/len(q)
         #APPLY REAL SPACE RESTRAINTS
         rhoprime = np.fft.ifftn(F,rho.shape)
         rhoprime = rhoprime.real
@@ -812,6 +817,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     Idata /= scale_factor
     sigqdata /= scale_factor
     Imean /= scale_factor
+    I /= scale_factor
+    sigq /= scale_factor
 
     return qdata, Idata, sigqdata, qbinsc, Imean[j], chi, rg, supportV, rho, side
 
