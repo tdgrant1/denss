@@ -139,8 +139,8 @@ if __name__ == "__main__":
         axVcmw = plt.figtext(.55, .025, "Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2)))
         axlc = plt.figtext(.75, .025, "Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2)))
 
-        sdmax = Slider(axdmax, 'Dmax', 0.0, args.max_dmax, valinit=D, valstep=D/1000.)
-        salpha = Slider(axalpha, 'Alpha', 0.0, args.max_alpha, valinit=alpha, valstep=alpha/100.)
+        sdmax = Slider(axdmax, 'Dmax', 0.0, args.max_dmax, valinit=D) #, valstep=D/1000.)
+        salpha = Slider(axalpha, 'Alpha', 0.0, args.max_alpha, valinit=alpha) #, valstep=alpha/100.)
         #snes = Slider(axnes, 'NES', 0, args.max_nes, valinit=args.nes, valstep=1)
 
         def update(val):
