@@ -662,7 +662,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         factors[qbin_args] = np.sqrt(Idata/Imean[j,qbin_args])
         F *= factors[qbin_labels]
         chi[j] = np.sum(((Imean[j,qbin_args]-Idata)/sigqdata)**2)/qbin_args.size
-        interp = interpolate.interp1d(qbinsc, Imean[j], kind='cubic')
+        interp = interpolate.interp1d(qbinsc, Imean[j], kind='cubic',fill_value="extrapolate")
         I4chi = interp(q)
         chi[j] = np.sum(((I4chi-I)/sigq)**2)/len(q)
         #APPLY REAL SPACE RESTRAINTS
@@ -717,23 +717,42 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             newrho = np.roll(np.roll(np.roll(newrho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
             support = np.roll(np.roll(np.roll(support, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
         if shrinkwrap and j >= shrinkwrap_minstep and j%shrinkwrap_iter==0:
-            rho_blurred = ndimage.filters.gaussian_filter(newrho,sigma=sigma,mode='wrap')
+            tmp = newrho
+            if j>500:
+                tmp = np.abs(newrho)
+            rho_blurred = ndimage.filters.gaussian_filter(tmp,sigma=sigma,mode='wrap')
             support = np.zeros(rho.shape,dtype=bool)
             support[rho_blurred >= shrinkwrap_threshold_fraction*rho_blurred.max()] = True
             if sigma > shrinkwrap_sigma_end:
                 sigma = shrinkwrap_sigma_decay*sigma
-            if enforce_connectivity and j in enforce_connectivity_steps:
-                #label the support into separate segments based on a 3x3x3 grid
-                struct = ndimage.generate_binary_structure(3, 3)
-                labeled_support, num_features = ndimage.label(support, structure=struct)
-                sums = np.zeros((num_features))
-                if not quiet: print num_features
-                #find the feature with the greatest number of electrons
-                for feature in range(num_features):
-                    sums[feature-1] = np.sum(newrho[labeled_support==feature])
-                big_feature = np.argmax(sums)+1
-                #remove features from the support that are not the primary feature
-                support[labeled_support != big_feature] = False
+        if enforce_connectivity and j in enforce_connectivity_steps:
+            if recenter_mode == "max":
+                rhocom = np.unravel_index(newrho.argmax(), newrho.shape)
+            else:
+                rhocom = np.array(ndimage.measurements.center_of_mass(newrho))
+            gridcenter = np.array(rho.shape)/2.
+            shift = gridcenter-rhocom
+            shift = shift.astype(int)
+            newrho = np.roll(np.roll(np.roll(newrho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
+            #first run shrinkwrap to define the features
+            tmp = np.abs(newrho)
+            rho_blurred = ndimage.filters.gaussian_filter(tmp,sigma=sigma,mode='wrap')
+            support = np.zeros(rho.shape,dtype=bool)
+            support[rho_blurred >= shrinkwrap_threshold_fraction*rho_blurred.max()] = True
+            #label the support into separate segments based on a 3x3x3 grid
+            struct = ndimage.generate_binary_structure(3, 3)
+            labeled_support, num_features = ndimage.label(support, structure=struct)
+            sums = np.zeros((num_features))
+            if not quiet: print num_features
+            #find the feature with the greatest number of electrons
+            for feature in range(num_features):
+                sums[feature-1] = np.sum(newrho[labeled_support==feature])
+            big_feature = np.argmax(sums)+1
+            #remove features from the support that are not the primary feature
+            support[labeled_support != big_feature] = False
+            newrho[~support] = 0
+            #reset the support to be the entire grid again
+            support = np.ones(rho.shape,dtype=bool)
         if limit_dmax and j in limit_dmax_steps:
             #support[r>0.6*D] = False
             #if np.sum(support) <= 0:
@@ -845,7 +864,7 @@ def euler_grid_search(refrho, movrho, topn=1):
     scores = np.zeros((len(phi),len(theta)))
     for p in range(len(phi)):
         for t in range(len(theta)):
-            scores[p,t] = 1/minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],refrho=refrho,movrho=movrho)
+            scores[p,t] = 1/minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],refrho=np.abs(refrho),movrho=np.abs(movrho))
     #best_pt = np.unravel_index(scores.argmin(), scores.shape)
     best_pt = largest_indices(scores, topn)
     best_scores = scores[best_pt]
@@ -883,7 +902,7 @@ def minimize_rho(refrho, movrho, T = np.zeros(6)):
     bounds[3:,1] = 5
     save_movrho = np.copy(movrho)
     save_refrho = np.copy(refrho)
-    result = optimize.fmin_l_bfgs_b(minimize_rho_score, T, factr= 0.1, maxiter=100, maxfun=200, epsilon=0.05, args=(refrho,movrho), approx_grad=True)
+    result = optimize.fmin_l_bfgs_b(minimize_rho_score, T, factr= 0.1, maxiter=100, maxfun=200, epsilon=0.05, args=(np.abs(refrho),np.abs(movrho)), approx_grad=True)
     Topt = result[0]
     newrho = transform_rho(save_movrho, Topt)
     finalscore = 1/rho_overlap_score(save_refrho,newrho)
