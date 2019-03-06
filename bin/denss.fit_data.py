@@ -70,7 +70,8 @@ if __name__ == "__main__":
     else:
         output = args.output
 
-    Iq = np.loadtxt(args.file)
+    Iq = np.genfromtxt(args.file, invalid_raise = False)
+    Iq = Iq[~np.isnan(Iq).any(axis = 1)]
     D = args.dmax
     nes = args.nes
 
@@ -97,7 +98,7 @@ if __name__ == "__main__":
     if args.plot:
         import matplotlib.pyplot as plt
         from matplotlib.widgets import Slider, Button, RadioButtons
-        
+
         #fig, (axI, axP) = plt.subplots(1, 2, figsize=(12,6))
         fig = plt.figure(0, figsize=(12,6))
         axI = plt.subplot2grid((3,2), (0,0),rowspan=2)
@@ -139,8 +140,8 @@ if __name__ == "__main__":
         axVcmw = plt.figtext(.55, .025, "Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2)))
         axlc = plt.figtext(.75, .025, "Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2)))
 
-        sdmax = Slider(axdmax, 'Dmax', 0.0, args.max_dmax, valinit=D, valstep=D/1000.)
-        salpha = Slider(axalpha, 'Alpha', 0.0, args.max_alpha, valinit=alpha, valstep=alpha/100.)
+        sdmax = Slider(axdmax, 'Dmax', 0.0, args.max_dmax, valinit=D) #, valstep=D/1000.)
+        salpha = Slider(axalpha, 'Alpha', 0.0, args.max_alpha, valinit=alpha) #, valstep=alpha/100.)
         #snes = Slider(axnes, 'NES', 0, args.max_nes, valinit=args.nes, valstep=1)
 
         def update(val):
@@ -220,15 +221,3 @@ if __name__ == "__main__":
 
     np.savetxt(output+'.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr)).T,delimiter=' ',fmt='%.5e')
     print "%s file saved" % (output+".dat")
-
-
-
-
-
-
-
-
-
-
-
-
