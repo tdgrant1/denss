@@ -273,11 +273,20 @@ if __name__ == "__main__":
     logging.info('Correlation score between average and reference: %.3f', 1/saxs.rho_overlap_score(average_rho, refrho))
     saxs.write_mrc(average_rho, sides[0], output+'_avg.mrc')
 
+    """
     #split maps into 2 halves--> enan, align, average independently with same refrho
     avg_rho1 = np.mean(aligned[::2],axis=0)
     avg_rho2 = np.mean(aligned[1::2],axis=0)
     fsc = saxs.calc_fsc(avg_rho1,avg_rho2,sides[0])
-    np.savetxt(args.output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="qbins, FSC")
+    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="qbins, FSC")
+    """
+    #rather than compare two halves, average all fsc's to the reference
+    fscs = []
+    for map in range(len(aligned)):
+        fscs.append(saxs.calc_fsc(aligned[map],refrho,sides[0]))
+    fscs = np.array(fscs)
+    fsc = np.mean(fscs,axis=0)
+    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC")
     x = np.linspace(fsc[0,0],fsc[-1,0],100)
     y = np.interp(x, fsc[:,0], fsc[:,1])
     resi = np.argmin(y>=0.5)

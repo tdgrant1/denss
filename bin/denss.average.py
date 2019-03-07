@@ -56,18 +56,46 @@ if __name__ == "__main__":
     rhosum = None
     n=1
     nmaps = len(args.files)
+    rhos = []
     for file in args.files:
         sys.stdout.write("\r% 5i / % 5i" % (n, nmaps))
         sys.stdout.flush()
         n+=1
         rho, side = saxs.read_mrc(file)
+        rhos.append(rho)
         if rhosum is None:
             rhosum = rho
         else:
             rhosum += rho
     print
+    rhos = np.array(rhos)
     average_rho = rhosum / nmaps
     saxs.write_mrc(average_rho,side, output+"_avg.mrc")
     print "%s_avg.mrc written." % output
+
+    """
+    #split maps into 2 halves--> enan, align, average independently with same refrho
+    avg_rho1 = np.mean(aligned[::2],axis=0)
+    avg_rho2 = np.mean(aligned[1::2],axis=0)
+    fsc = saxs.calc_fsc(avg_rho1,avg_rho2,sides[0])
+    np.savetxt(args.output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="qbins, FSC")
+    """
+    #rather than compare two halves, average all fsc's to the reference
+    fscs = []
+    for map in range(nmaps):
+        fscs.append(saxs.calc_fsc(rhos[map],average_rho,side))
+    fscs = np.array(fscs)
+    fsc = np.mean(fscs,axis=0)
+    np.savetxt(args.output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC")
+    x = np.linspace(fsc[0,0],fsc[-1,0],100)
+    y = np.interp(x, fsc[:,0], fsc[:,1])
+    resi = np.argmin(y>=0.5)
+    resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
+    resn = round(float(1./resx),1)
+    print "Resolution: %.1f" % resn, u'\u212B'.encode('utf-8')
+
+    logging.info('Resolution: %.1f '+ u'\u212B'.encode('utf-8'), resn )
+    logging.info('END')
+
     logging.info('END')
 

@@ -1066,6 +1066,7 @@ def generate_enantiomers(rho):
         Assumes rho is prealigned to xyz.
         """
     rho_xflip = rho[::-1,:,:]
+    """
     rho_yflip = rho[:,::-1,:]
     rho_zflip = rho[:,:,::-1]
     rho_xyflip = rho_xflip[:,::-1,:]
@@ -1075,6 +1076,8 @@ def generate_enantiomers(rho):
     enans = np.array([rho,rho_xflip,rho_yflip,rho_zflip,
                       rho_xyflip,rho_yzflip,rho_zxflip,
                       rho_xyzflip])
+    """
+    enans = np.array([rho,rho_xflip])
     return enans
 
 def align(refrho, movrho):

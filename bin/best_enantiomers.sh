@@ -138,22 +138,22 @@ do
     ./ali2xyz.py $map
     ali2xyz=${map%.*}_ali2xyz.hdf
     enants=(${ali2xyz} \
-            ${ali2xyz%.*}_x.hdf \
-            ${ali2xyz%.*}_y.hdf \
-            ${ali2xyz%.*}_z.hdf \
-            ${ali2xyz%.*}_xy.hdf \
-            ${ali2xyz%.*}_xz.hdf \
-            ${ali2xyz%.*}_yz.hdf \
-            ${ali2xyz%.*}_xyz.hdf)
+            ${ali2xyz%.*}_x.hdf) #\
+            #${ali2xyz%.*}_y.hdf \
+            #${ali2xyz%.*}_z.hdf \
+            #${ali2xyz%.*}_xy.hdf \
+            #${ali2xyz%.*}_xz.hdf \
+            #${ali2xyz%.*}_yz.hdf \
+            #${ali2xyz%.*}_xyz.hdf)
 
     #create 7 enantiomers (for total of 8) by flipping over each axis
     e2proc3d.py ${enants[0]} ${enants[1]} --process xform.flip:axis=x
-    e2proc3d.py ${enants[0]} ${enants[2]} --process xform.flip:axis=y
-    e2proc3d.py ${enants[0]} ${enants[3]} --process xform.flip:axis=z
-    e2proc3d.py ${enants[1]} ${enants[4]} --process xform.flip:axis=y
-    e2proc3d.py ${enants[1]} ${enants[5]} --process xform.flip:axis=z
-    e2proc3d.py ${enants[2]} ${enants[6]} --process xform.flip:axis=z
-    e2proc3d.py ${enants[4]} ${enants[7]} --process xform.flip:axis=z
+    #e2proc3d.py ${enants[0]} ${enants[2]} --process xform.flip:axis=y
+    #e2proc3d.py ${enants[0]} ${enants[3]} --process xform.flip:axis=z
+    #e2proc3d.py ${enants[1]} ${enants[4]} --process xform.flip:axis=y
+    #e2proc3d.py ${enants[1]} ${enants[5]} --process xform.flip:axis=z
+    #e2proc3d.py ${enants[2]} ${enants[6]} --process xform.flip:axis=z
+    #e2proc3d.py ${enants[4]} ${enants[7]} --process xform.flip:axis=z
 
     #if -g option is given, just generate the enantiomers, then exit the loop
     if [ $gen_only == "True" ]
