@@ -19,6 +19,18 @@ to 32 samples for efficiency to allow many users to try it out). For more
 complex particle shapes, install DENSS and EMAN2 (see below). Thanks to 
 Andrew Bruno and the CCR for DENSSWeb!
 
+#### New MEMBRANE mode
+DENSS now has a new mode for membrane proteins. Membrane proteins are often
+solubilized in detergents or lipid nanodiscs. The hydrophobic regions of these 
+molecules often have lesser scattering density than the bulk solvent, resulting in a 
+negative contrast relative to the solvent. The default setting for DENSS enforces a 
+positivity restraint that will not allow any density to be negative. While this is 
+appropriate for most standard biomolecules such as proteins and nucleic acids, 
+is it not appropriate for molecules containing regions of negative contrast. To 
+accommodate this scenario, there is a new MEMBRANE mode in addition to the 
+previously available FAST and SLOW modes. This mode disables the positivity 
+restraint and starts shrink-wrap immediately. 
+
 #### New symmetry averaging feature
 A new feature in denss v1.4.6 allows for the use of symmetry if known. The 
 options for imposing symmetry are --ncs, --ncs_axis, and --ncs_steps. Currently
