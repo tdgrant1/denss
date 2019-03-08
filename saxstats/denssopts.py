@@ -23,10 +23,10 @@ def parse_arguments(parser,gnomdmax=None):
     parser.add_argument("--ne", default=10000, type=float, help="Number of electrons in object")
     parser.add_argument("-s", "--steps", default=None, help="Maximum number of steps (iterations)")
     parser.add_argument("-ncs", "--ncs", default=0, type=int, help="Rotational symmetry")
-    parser.add_argument("-ncs_steps","--ncs_steps", default=[3000], type=int, nargs='+', help="List of steps for applying NCS averaging (default=3000)")
+    parser.add_argument("-ncs_steps","--ncs_steps", default=[3000,5000,7000,9000], type=int, nargs='+', help="List of steps for applying NCS averaging (default=3000,5000,7000,9000)")
     parser.add_argument("-ncs_axis", "--ncs_axis", default=1, type=int, help="Rotational symmetry axis (options: 1, 2, or 3 corresponding to xyz principal axes)")
     parser.add_argument("-o", "--output", default=None, help="Output map filename")
-    parser.add_argument("-m", "--mode", default="SLOW", type=str, help="Mode. F(AST) sets default options to run quickly for simple particle shapes. S(LOW) useful for more complex molecules. (default SLOW)")
+    parser.add_argument("-m", "--mode", default="SLOW", type=str, help="Mode. F(AST) sets default options to run quickly for simple particle shapes. S(LOW) useful for more complex molecules. M(EMBRANE) mode allows for negative contrast. (default SLOW)")
     parser.add_argument("--seed", default=None, help="Random seed to initialize the map")
     parser.add_argument("-ld_on","--limit_dmax_on", dest="limit_dmax", action="store_true", help="Limit electron density to sphere of radius 0.6*Dmax from center of object.")
     parser.add_argument("-ld_off","--limit_dmax_off", dest="limit_dmax", action="store_false", help="Do not limit electron density to sphere of radius 0.6*Dmax from center of object. (default)")
@@ -106,6 +106,15 @@ def parse_arguments(parser,gnomdmax=None):
         enforce_connectivity_steps = [6000]
         recenter_steps = range(501,8002,500)
         steps = 10000
+    elif args.mode[0].upper() == "M":
+        args.mode = "MEMBRANE"
+        nsamples = 64
+        args.positivity = False
+        shrinkwrap_minstep = 0
+        shrinkwrap_threshold_fraction = 0.1
+        enforce_connectivity_steps = [300]
+        recenter_steps = range(501,8002,500)
+        steps = 10000
     else:
         args.mode = "None"
 
@@ -115,6 +124,9 @@ def parse_arguments(parser,gnomdmax=None):
 
     if args.shrinkwrap_minstep is not None:
         shrinkwrap_minstep = args.shrinkwrap_minstep
+
+    if args.shrinkwrap_threshold_fraction is not None:
+        shrinkwrap_threshold_fraction = args.shrinkwrap_threshold_fraction
 
     if args.enforce_connectivity_steps is not None:
         enforce_connectivity_steps = args.enforce_connectivity_steps
@@ -153,6 +165,7 @@ def parse_arguments(parser,gnomdmax=None):
     #now recollect all the edited options back into args
     args.nsamples = nsamples
     args.shrinkwrap_minstep = shrinkwrap_minstep
+    args.shrinkwrap_threshold_fraction = shrinkwrap_threshold_fraction
     args.enforce_connectivity_steps = enforce_connectivity_steps
     args.recenter_steps = recenter_steps
     args.limit_dmax_steps = limit_dmax_steps

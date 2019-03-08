@@ -613,7 +613,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     else:
         seed = int(seed)
     prng = np.random.RandomState(seed)
-    rho = prng.random_sample(size=x.shape)
+    rho = prng.random_sample(size=x.shape) - 0.5
     if rho_start is not None:
         rho = rho_start
     update_support = True
@@ -787,6 +787,15 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     F *= factors[qbin_labels]
     rho = np.fft.ifftn(F,rho.shape)
     rho = rho.real
+
+    #negative images yield the same scattering, so flip the image
+    #to have more positive than negative values if necessary
+    #to make sure averaging is done properly
+    #whether theres actually more positive than negative values
+    #is ambiguous, but this ensures all maps are at least likely
+    #the same designation when averaging
+    if np.sum(rho[rho<0]) > np.sum(rho[rho>0]):
+        rho *= -1
 
     #scale total number of electrons
     if ne is not None:
