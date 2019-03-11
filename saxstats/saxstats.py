@@ -613,7 +613,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     else:
         seed = int(seed)
     prng = np.random.RandomState(seed)
-    rho = prng.random_sample(size=x.shape) - 0.5
+    rho = prng.random_sample(size=x.shape) #- 0.5
     if rho_start is not None:
         rho = rho_start
     update_support = True
