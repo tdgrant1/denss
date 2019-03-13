@@ -138,11 +138,19 @@ e2spt_binarytree.py --path=spt_bt_ref --input=${id}.hdf
 cp spt_bt_ref_01/final_avg.hdf reference.hdf
 e2spt_classaverage.py --path=spt_avg --input ${id}.hdf --ref reference.hdf --parallel=thread:${j} --saveali --savesteps --keep 3.0 --keepsig
 e2proc3d.py spt_avg_01/final_avg_ali2ref.hdf ${id}_avg.mrc
-cp spt_avg_01/fsc_0.txt ${id}_fsc.txt
-fsc2res.py -f ${id}_fsc.txt 
+#cp spt_avg_01/fsc_0.txt ${id}_fsc.txt
+#fsc2res.py -f ${id}_fsc.txt
 
+#Alternative resolution calculation
+halfn=`echo $n | awk '{print int($1/2)}'`
+halfrange=`eval echo {0..$((halfn-1))}`
+for i in ${halfrange};
+do
+    e2proc3d.py --calcfsc=${id}_avg.mrc spt_avg_01/aliptcls_even.hdf ${id}_even_$i.fsc --first $i --last $i
+    e2proc3d.py --calcfsc=${id}_avg.mrc spt_avg_01/aliptcls_odd.hdf ${id}_odd_$i.fsc --first $i --last $i
+done
 
-
+fsc2res.py -f ${id}_even_*.fsc ${id}_odd_*.fsc -o ${id}_avg_fsc
 
 
 
