@@ -857,9 +857,7 @@ def center_rho_roll(rho):
     gridcenter = np.array(rho.shape)/2.
     shift = gridcenter-rhocom
     shift = shift.astype(int)
-    print rhocom
     rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
-    print np.array(ndimage.measurements.center_of_mass(rho))
     return rho
 
 def euler_grid_search(refrho, movrho, topn=1):

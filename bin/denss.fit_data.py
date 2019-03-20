@@ -47,17 +47,21 @@ parser.add_argument("--version", action="version",version="%(prog)s v{version}".
 parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
 parser.add_argument("-d", "--dmax", default=100., type=float, help="Estimated maximum dimension")
 parser.add_argument("-a", "--alpha", default=0., type=float, help="Set alpha smoothing factor")
+parser.add_argument("-n1", "--n1", default=0, type=int, help="First data point to use")
+parser.add_argument("-n2", "--n2", default=-1, type=int, help="Last data point to use")
 parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional)")
 parser.add_argument("--nes", default=2, type=int, help=argparse.SUPPRESS)
 parser.add_argument("--max_dmax", default=None, type=float, help="Maximum limit for allowed Dmax values (for plotting slider)")
 parser.add_argument("--max_alpha", default=None, type=float, help="Maximum limit for allowed alpha values (for plotting slider)")
 parser.add_argument("--max_nes", default=10, type=int, help=argparse.SUPPRESS)
 parser.add_argument("--no_gui", dest="plot", action="store_false", help="Do not run the interactive GUI mode.")
+parser.add_argument("--no_log", dest="log", action="store_false", help="Do not plot on log y axis.")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
 if matplotlib_found:
     parser.set_defaults(plot=True)
 else:
     parser.set_defaults(plot=False)
+parser.set_defaults(log=False)
 args = parser.parse_args()
 
 if __name__ == "__main__":
@@ -70,7 +74,7 @@ if __name__ == "__main__":
     else:
         output = args.output
 
-    Iq = np.genfromtxt(args.file, invalid_raise = False)
+    Iq = np.genfromtxt(args.file, invalid_raise = False)[args.n1:args.n2]
     Iq = Iq[~np.isnan(Iq).any(axis = 1)]
     D = args.dmax
     nes = args.nes
@@ -108,7 +112,7 @@ if __name__ == "__main__":
 
         I_l1, = axI.plot(sasrec.q, sasrec.I, 'k.')
         I_l2, = axI.plot(sasrec.qc, sasrec.Ic, 'r-', lw=2)
-        axI.semilogy()
+        if args.log: axI.semilogy()
         axI.set_ylabel('I(q)')
         axI.set_xlabel('q')
 
