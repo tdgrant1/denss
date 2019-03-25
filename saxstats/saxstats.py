@@ -697,6 +697,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         #apply non-crystallographic symmetry averaging
         if ncs != 0 and j in ncs_steps:
             newrho = align2xyz(newrho)
+        if ncs != 0 and j in [stepi+1 for stepi in ncs_steps]:
             degrees = 360./ncs
             if ncs_axis == 1: axes=(1,2)
             if ncs_axis == 2: axes=(0,2)
