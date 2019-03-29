@@ -651,7 +651,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         print "\n Step     Chi2     Rg    Support Volume"
         print " ----- --------- ------- --------------"
 
-    for j in range(steps):
+    for j in range(steps): 
         F = np.fft.fftn(rho)
         #APPLY RECIPROCAL SPACE RESTRAINTS
         #calculate spherical average of intensities from 3D Fs
