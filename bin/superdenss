@@ -3,7 +3,7 @@
 while getopts hvf:o:i:n:j:e opt; do
   case $opt in
     h)
-      echo ""
+      echo "" 
       echo " ------------------------------------------------------------------------------ "
       echo " superdenss is a simple wrapper for denss that automates the process of "
       echo " generating multiple density reconstructions and averaging them with EMAN2. "
