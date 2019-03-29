@@ -37,6 +37,8 @@ def parse_arguments(parser,gnomdmax=None):
     parser.add_argument("-rc_mode", "--recenter_mode", default="com", type=str, help="Recenter based on either center of mass (com, default) or maximum density value (max)")
     parser.add_argument("-p_on","--positivity_on", dest="positivity", action="store_true", help="Enforce positivity restraint inside support. (default)")
     parser.add_argument("-p_off","--positivity_off", dest="positivity", action="store_false", help="Do not enforce positivity restraint inside support.")
+    parser.add_argument("-fld_on","--flatten_low_density_on", dest="flatten_low_density", action="store_true", help="Density values near zero (.01 e-/A3) will be set to zero. (default)")
+    parser.add_argument("-fld_off","--flatten_low_density_off", dest="flatten_low_density", action="store_false", help="Density values near zero (.01 e-/A3) will be not set to zero.")
     parser.add_argument("-min","--minimum_density", default=None, type=float, help="Minimum density value in e-/angstrom^3 (must also set --ne to be meaningful)")
     parser.add_argument("-max","--maximum_density", default=None, type=float, help="Maximum density value in e-/angstrom^3 (must also set --ne to be meaningful)")
     parser.add_argument("-rho", "--rho_start", default=None, type=str, help="Starting electron density map filename (for use in denss.refine.py only)")
@@ -66,6 +68,7 @@ def parse_arguments(parser,gnomdmax=None):
     parser.set_defaults(shrinkwrap=True)
     parser.set_defaults(recenter=True)
     parser.set_defaults(positivity=True)
+    parser.set_defaults(flatten_low_density=True)
     parser.set_defaults(extrapolate=True)
     parser.set_defaults(enforce_connectivity=True)
     parser.set_defaults(cutout=False)
@@ -98,14 +101,12 @@ def parse_arguments(parser,gnomdmax=None):
         shrinkwrap_minstep = 1000
         enforce_connectivity_steps = [2000]
         recenter_steps = range(501,2502,500)
-        steps = 5000
     elif args.mode[0].upper() == "S":
         args.mode = "SLOW"
         nsamples = 64
         shrinkwrap_minstep = 5000
         enforce_connectivity_steps = [6000]
         recenter_steps = range(501,8002,500)
-        steps = 10000
     elif args.mode[0].upper() == "M":
         args.mode = "MEMBRANE"
         nsamples = 64
@@ -114,7 +115,6 @@ def parse_arguments(parser,gnomdmax=None):
         shrinkwrap_threshold_fraction = 0.1
         enforce_connectivity_steps = [300]
         recenter_steps = range(501,8002,500)
-        steps = 10000
     else:
         args.mode = "None"
 
@@ -169,7 +169,6 @@ def parse_arguments(parser,gnomdmax=None):
     args.enforce_connectivity_steps = enforce_connectivity_steps
     args.recenter_steps = recenter_steps
     args.limit_dmax_steps = limit_dmax_steps
-    args.steps = steps
     args.dmax = dmax
     args.voxel = voxel
 

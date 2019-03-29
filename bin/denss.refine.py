@@ -122,6 +122,7 @@ if __name__ == "__main__":
         recenter_steps=args.recenter_steps,
         recenter_mode=args.recenter_mode,
         positivity=args.positivity,
+        flatten_low_density=args.flatten_low_density,
         minimum_density=args.minimum_density,
         maximum_density=args.maximum_density,
         rho_start=args.rho_start,

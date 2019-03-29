@@ -514,7 +514,7 @@ def loadProfile(fname):
 def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False, limit_dmax_steps=[500],
         recenter=True, recenter_steps=None, recenter_mode="com", positivity=True, extrapolate=True,
         output="map", steps=None, seed=None,  minimum_density=None,  maximum_density=None,
-        rho_start=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
+        flatten_low_density=True, rho_start=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
         shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
         shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01, write_xplor_format=False, write_freq=100,
         enforce_connectivity=True, enforce_connectivity_steps=[500],cutout=True,quiet=False,ncs=0,ncs_steps=[500],ncs_axis=1):
@@ -597,8 +597,13 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     I *= scale_factor
     sigq *= scale_factor
     if steps == 'None' or steps is None or steps < 1:
-        steps = int(shrinkwrap_iter * (np.log(shrinkwrap_sigma_end/shrinkwrap_sigma_start)/np.log(shrinkwrap_sigma_decay)) + shrinkwrap_minstep)
-        steps += 3000
+        stepsarr = np.concatenate((enforce_connectivity_steps,[shrinkwrap_minstep]))
+        maxec = np.max(stepsarr)
+        steps = int(shrinkwrap_iter * (np.log(shrinkwrap_sigma_end/shrinkwrap_sigma_start)/np.log(shrinkwrap_sigma_decay)) + maxec)
+        #add enough steps for convergence after shrinkwrap is finished
+        #something like 7000 seems reasonable, likely will finish before that on its own
+        #then just make a round number when using defaults
+        steps += 7621
     else:
         steps = np.int(steps)
     Imean = np.zeros((steps+1,len(qbins)))
