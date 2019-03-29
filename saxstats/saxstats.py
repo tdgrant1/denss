@@ -675,8 +675,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         rhoprime = rhoprime.real
         if j%write_freq == 0:
             if write_xplor_format:
-                write_xplor(rhoprime,side,output+"_current.xplor")
-            write_mrc(rhoprime,side,output+"_current.mrc")
+                write_xplor(rhoprime/dV,side,output+"_current.xplor")
+            write_mrc(rhoprime/dV,side,output+"_current.mrc")
         rg[j] = rho2rg(rhoprime,r=r,support=support,dx=dx)
         newrho = np.zeros_like(rho)
         #Error Reduction
@@ -688,6 +688,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             newrho[newrho<0] = 0.0
             if np.sum(newrho) != 0:
                 newrho *= netmp / np.sum(newrho)
+        if flatten_low_density:
+            newrho[np.abs(newrho)<0.01*dV] = 0
         #allow further bounds on density, rather than just positivity
         if rho_min is not None:
             netmp = np.sum(newrho)
