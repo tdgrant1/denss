@@ -724,7 +724,15 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             shift = shift.astype(int)
             newrho = np.roll(np.roll(np.roll(newrho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
             support = np.roll(np.roll(np.roll(support, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
-        if shrinkwrap and j >= shrinkwrap_minstep and j%shrinkwrap_iter==0:
+        if shrinkwrap and j >= shrinkwrap_minstep and j%shrinkwrap_iter==1:
+            if recenter_mode == "max":
+                rhocom = np.unravel_index(newrho.argmax(), newrho.shape)
+            else:
+                rhocom = np.array(ndimage.measurements.center_of_mass(newrho))
+            gridcenter = np.array(rho.shape)/2.
+            shift = gridcenter-rhocom
+            shift = shift.astype(int)
+            newrho = np.roll(np.roll(np.roll(newrho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
             tmp = newrho
             if j>500:
                 tmp = np.abs(newrho)
