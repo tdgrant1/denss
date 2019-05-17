@@ -126,6 +126,8 @@ def multi_denss(niter, **kwargs):
         fh.setFormatter(formatter)
         logger.addHandler(fh)
 
+        kwargs['logger'] = logger
+
         logging.info('BEGIN')
         logging.info('Script name: %s', sys.argv[0])
         logging.info('DENSS Version: %s', __version__)
