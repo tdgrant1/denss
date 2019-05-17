@@ -27,14 +27,21 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+
+import multiprocessing
+import logging
+import sys
+import argparse
+import os
+import copy
+import time
+from functools import partial
+
 import numpy as np
-from scipy import ndimage
-from multiprocessing import Pool
-import imp, logging, sys, argparse, os, copy, time
+
+import saxstats.denssopts as dopts
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
-from functools import partial
-import saxstats.denssopts as dopts
 
 #have to run parser twice, first just to get filename for loadProfile
 #then have to run it after deciding what the correct dmax should be
@@ -98,10 +105,15 @@ del args.force_run
 
 def multi_denss(niter, **kwargs):
     try:
+        # Processing keyword args for compatibility with RAW GUI
+        kwargs['denss_queue'] = kwargs.pop('com_queues')[niter]
+        kwargs['prefix'] = '.'
+
         kwargs['output'] = kwargs['output'] +'_'+str(niter)
         np.random.seed(niter+int(time.time()))
         kwargs['seed'] = np.random.randint(2**31-1)
         kwargs['quiet'] = True
+
         if niter<=superargs.nmaps-1:
             sys.stdout.write( "\r Running denss job: %i / %i " % (niter+1,superargs.nmaps))
             sys.stdout.flush()
@@ -171,7 +183,16 @@ if __name__ == "__main__":
     for arg in vars(args):
         denss_inputs[arg]= getattr(args, arg)
 
-    pool = Pool(superargs.cores)
+    # Make some communication items for when run in a GUI
+    my_manager = multiprocessing.Manager()
+    abort_event = my_manager.Event()
+    abort_event.clear()
+    com_queues = [my_manager.Queue() for i in range(superargs.nmaps)]
+
+    denss_inputs['abort_event'] = abort_event
+    denss_inputs['com_queues'] = com_queues
+
+    pool = multiprocessing.Pool(superargs.cores)
 
     try:
         mapfunc = partial(multi_denss, **denss_inputs)
@@ -296,16 +317,3 @@ if __name__ == "__main__":
 
     logging.info('Resolution: %.1f '+ u'\u212B'.encode('utf-8'), resn )
     logging.info('END')
-
-
-
-
-
-
-
-
-
-
-
-
-
