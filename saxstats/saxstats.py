@@ -522,7 +522,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     write_xplor_format=False, write_freq=100, enforce_connectivity=True,
     enforce_connectivity_steps=[500], cutout=True, quiet=False, ncs=0,
     ncs_steps=[500],ncs_axis=1, abort_event=multiprocessing.Event(),
-    denss_queue=multiprocessing.Queue(), my_logger=logging.Logger(),
+    denss_queue=multiprocessing.Queue(), my_logger=logging.getLogger(),
     path='.'):
     """Calculate electron density from scattering data."""
 
@@ -839,7 +839,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         supportV[j] = np.sum(support)*dV
 
         if not quiet:
-            my_logger.info("\r% 5i % 4.2e % 3.2f       % 5i          ", j, chi[j], rg[j], supportV[j])
+            my_logger.info("% 5i % 4.2e % 3.2f       % 5i          ", j, chi[j], rg[j], supportV[j])
 
         if j > 101 + shrinkwrap_minstep and np.std(chi[j-100:j]) < chi_end_fraction * np.median(chi[j-100:j]):
             break
@@ -919,14 +919,15 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     np.savetxt(fprefix+'_map.fit', fit, delimiter=' ', fmt='%.5e',
         header='q(data),I(data),error(data),q(density),I(density)')
 
-    np.savetxt(fprefix+'_stats_by_step.txt', np.vstack((chi, rg, supportV)).T, delimiter=" ", fmt="%.5e")
+    np.savetxt(fprefix+'_stats_by_step.dat',np.vstack((chi, rg, supportV)).T,
+        delimiter=" ", fmt="%.5e", header='Chi2 Rg SupportVolume')
 
     my_logger.info('FINISHED DENSITY REFINEMENT')
     my_logger.info('Number of steps: %i', j)
     my_logger.info('Final Chi2: %.3e', chi[j])
     my_logger.info('Final Rg: %3.3f', rg[j+1])
     my_logger.info('Final Support Volume: %3.3f', supportV[j+1])
-    my_logger.info('END')
+    # my_logger.info('END')
 
     #return original unscaled values of Idata (and therefore Imean) for comparison with real data
     Idata /= scale_factor

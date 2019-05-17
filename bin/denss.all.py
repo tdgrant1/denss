@@ -107,7 +107,7 @@ def multi_denss(niter, **kwargs):
     try:
         # Processing keyword args for compatibility with RAW GUI
         kwargs['denss_queue'] = kwargs.pop('com_queues')[niter]
-        kwargs['prefix'] = '.'
+        kwargs['path'] = '.'
 
         kwargs['output'] = kwargs['output'] +'_'+str(niter)
         np.random.seed(niter+int(time.time()))
@@ -126,7 +126,7 @@ def multi_denss(niter, **kwargs):
         fh.setFormatter(formatter)
         logger.addHandler(fh)
 
-        kwargs['logger'] = logger
+        kwargs['my_logger'] = logger
 
         logging.info('BEGIN')
         logging.info('Script name: %s', sys.argv[0])
