@@ -105,7 +105,7 @@ def multi_denss(niter, **kwargs):
         if niter<=superargs.nmaps-1:
             sys.stdout.write( "\r Running denss job: %i / %i " % (niter+1,superargs.nmaps))
             sys.stdout.flush()
-        
+
         fname = kwargs['output']+'.log'
         logger = logging.getLogger("")
         logger.setLevel(logging.INFO)
@@ -113,7 +113,7 @@ def multi_denss(niter, **kwargs):
         formatter = logging.Formatter('%(asctime)s - %(message)s')
         fh.setFormatter(formatter)
         logger.addHandler(fh)
-        
+
         logging.info('BEGIN')
         logging.info('Script name: %s', sys.argv[0])
         logging.info('DENSS Version: %s', __version__)

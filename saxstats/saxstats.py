@@ -159,7 +159,7 @@ def read_mrc(filename="map.mrc",returnABC=False):
         #side = struct.unpack_from('<f',MRCdata,40)[0]
         a, b, c = struct.unpack_from('<fff',MRCdata,40)
         side = a
-        
+
         fin.seek(1024, os.SEEK_SET)
         rho = np.fromfile(file=fin, dtype=np.dtype(np.float32)).reshape((nx,ny,nz),order='F')
         fin.close()
@@ -232,7 +232,7 @@ def pad_rho(rho,newshape):
 
 def zoom_rho(rho,vx,dx):
     """Resample rho to have new voxel size.
-    
+
     rho - map to resample (3D array)
     vx - length of voxel of rho, float or tuple of three sides (a,b,c)
     dx - desired voxel size (only float allowed, assumes cubic grid desired)
@@ -519,9 +519,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01, write_xplor_format=False, write_freq=100,
         enforce_connectivity=True, enforce_connectivity_steps=[500],cutout=True,quiet=False,ncs=0,ncs_steps=[500],ncs_axis=1):
     """Calculate electron density from scattering data."""
-    
+
     D = dmax
-    
+
     logging.info('q range of input data: %3.3f < q < %3.3f', q.min(), q.max())
     logging.info('Maximum dimension: %3.3f', D)
     logging.info('Sampling ratio: %3.3f', oversampling)
@@ -651,7 +651,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         print "\n Step     Chi2     Rg    Support Volume"
         print " ----- --------- ------- --------------"
 
-    for j in range(steps): 
+    for j in range(steps):
         F = np.fft.fftn(rho)
         #APPLY RECIPROCAL SPACE RESTRAINTS
         #calculate spherical average of intensities from 3D Fs
@@ -933,7 +933,7 @@ def minimize_rho(refrho, movrho, T = np.zeros(6)):
 
 def minimize_rho_score(T, refrho, movrho):
     """Scoring function for superposition of electron density maps.
-        
+
         refrho - fixed, reference rho
         movrho - moving rho
         T - 6-element list containing alpha, beta, gamma, Tx, Ty, Tz in that order
@@ -953,7 +953,7 @@ def rho_overlap_score(rho1,rho2):
 
 def transform_rho(rho, T, order=1):
     """ Rotate and translate electron density map by T vector.
-    
+
         T = [alpha, beta, gamma, x, y, z], angles in radians
         order = interpolation order (0-5)
     """
@@ -969,12 +969,12 @@ def transform_rho(rho, T, order=1):
 
 def euler2matrix(alpha=0.0,beta=0.0,gamma=0.0):
     """Convert Euler angles alpha, beta, gamma to a standard rotation matrix.
-        
+
         alpha - yaw, counterclockwise rotation about z-axis, upper-left quadrant
         beta - pitch, counterclockwise rotation about y-axis, four-corners
         gamma - roll, counterclockwise rotation about x-axis, lower-right quadrant
         all angles given in radians
-        
+
         """
     R = []
     cosa = np.cos(alpha)
@@ -1155,7 +1155,7 @@ def select_best_enantiomers(rhos, refrho=None, cores=1):
             pool.terminate()
             pool.close()
             sys.exit(1)
-        
+
         #now select the best enantiomer and set it as the new rhos[i]
         enans = np.array([results[k][0] for k in range(len(results))])
         enans_scores = np.array([results[k][1] for k in range(len(results))])
@@ -1380,7 +1380,7 @@ class Sasrec(object):
 
     def Perrt(self,r, Sn, Sm, Cinv):
         """Return the standard errors on P(r).
-            
+
             To work, Sn will generally equal something like S[N[:, None], pts] where N is
             the array of n shannon channels, same for Sm, and pts is the array of
             indices for the number of data points, e.g. np.arange(npts).
@@ -1395,9 +1395,9 @@ class Sasrec(object):
         qmax = np.max(q)
         D = float(D)
         nmax = shannon_channels(qmax, D)+ne
-        
+
         sigq.clip(1e-10)
-        
+
         B = np.zeros((nmax, npts))
         C = np.zeros((nmax, nmax))
         Y = np.zeros((nmax))
@@ -1406,20 +1406,20 @@ class Sasrec(object):
         N = Ni+1 #values
         M = Mi+1 #values
         pts = np.arange(npts)
-        
+
         qsh = N*shannon_width(D)
         Ish = np.zeros((nmax,3))
-        
+
         B[Ni] = Bt(N[:, None], q, D)
         Y[Mi] = Yt(I=I,Ierr=sigq,Bm=B[Mi])
         C[Mi[:, None], Ni] = Ct(Ierr=sigq, Bm=B[Mi], Bn=B[Ni])
-        
+
         Cinv = np.linalg.inv(C)
-        
+
         Ish[:,0] = qsh
         Ish[:,1] = 0.5*np.linalg.solve(C,Y)
         Ish[:,2] = 0.5*(np.diagonal(Cinv))**(0.5)
-        
+
         return Ish
 
     def Iq2Cinv(self,q,I,sigq,D,ne=2):
@@ -1428,9 +1428,9 @@ class Sasrec(object):
         qmax = np.max(q)
         D = float(D)
         nmax = shannon_channels(qmax, D)+ne
-        
+
         sigq.clip(1e-10)
-        
+
         B = np.zeros((nmax, npts))
         C = np.zeros((nmax, nmax))
         Y = np.zeros((nmax))
@@ -1439,20 +1439,20 @@ class Sasrec(object):
         N = Ni+1 #values
         M = Mi+1 #values
         pts = np.arange(npts)
-        
+
         qsh = N*shannon_width(D)
         Ish = np.zeros((nmax,3))
-        
+
         B[Ni] = Bt(N[:, None], q, D)
         Y[Mi] = Yt(I=I,sigq=sigq,Bm=B[Mi])
         C[Mi[:, None], Ni] = Ct(sigq=sigq, Bm=B[Mi], Bn=B[Ni])
-        
+
         Cinv = np.linalg.inv(C)
-        
+
         Ish[:,0] = qsh
         Ish[:,1] = 0.5*np.linalg.solve(C,Y)
         Ish[:,2] = 0.5*(np.diagonal(Cinv))**(0.5)
-        
+
         return Cinv
 
     def Ish2Iq(self,Ish,D,q=(np.arange(500)+1.)/1000):
@@ -1505,7 +1505,7 @@ class Sasrec(object):
 
     def Perrf(self,r, D, Sn, Sm, Cinv):
         """Return the standard errors on P(r).
-            
+
             To work, Sn will generally equal something like S[N[:, None], pts] where N is
             the array of n shannon channels, same for Sm, and pts is the array of
             indices for the number of data points, e.g. np.arange(npts).
@@ -1861,7 +1861,7 @@ def pdb2map_FFT(pdb,x,y,z,radii=None,restrict=True):
             F += sphere(q=qr, R=radii[i], I0=pdb.nelectrons[i],amp=True) * np.exp(-1j * (qx*pdb.coords[i,0] + qy*pdb.coords[i,1] + qz*pdb.coords[i,2]))
         else:
             F += formfactor(element=pdb.atomtype[i],q=qr) * np.exp(-1j * (qx*pdb.coords[i,0] + qy*pdb.coords[i,1] + qz*pdb.coords[i,2]))
-    print 
+    print
     print "Total number of electrons = %f " % np.abs(F[0,0,0])
     qbin_labels = np.zeros(F.shape, dtype=int)
     qbin_labels = np.digitize(qr, qbins)
@@ -1914,7 +1914,7 @@ def formfactor(element, q=(np.arange(500)+1)/1000.):
     ff += ffcoeff[element]['c']
     return ff
 
-def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=True, 
+def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=True,
         output="map", steps=2001, seed=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
         shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
         shrinkwrap_iter=20, shrinkwrap_minstep=50, write_freq=100,support=None,
