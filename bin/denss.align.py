@@ -109,13 +109,19 @@ if __name__ == "__main__":
 
     if args.enan:
         print " Selecting best enantiomer(s)..."
-        if args.ref:
-            allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
-        else:
-            allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=allrhos[0], cores=args.cores)
+        try:
+            if args.ref:
+                allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
+            else:
+                allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=allrhos[0], cores=args.cores)
+        except KeyboardInterrupt:
+            sys.exit(1)
 
     print " Aligning to reference..."
-    aligned, scores = saxs.align_multiple(refrho, allrhos, args.cores)
+    try:
+        aligned, scores = saxs.align_multiple(refrho, allrhos, args.cores)
+    except KeyboardInterrupt:
+        sys.exit(1)
 
     for i in range(nmaps):
         basename, ext = os.path.splitext(args.files[i])

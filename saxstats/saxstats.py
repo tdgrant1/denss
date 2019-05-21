@@ -522,8 +522,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     write_xplor_format=False, write_freq=100, enforce_connectivity=True,
     enforce_connectivity_steps=[500], cutout=True, quiet=False, ncs=0,
     ncs_steps=[500],ncs_axis=1, abort_event=multiprocessing.Event(),
-    denss_queue=multiprocessing.Queue(), my_logger=logging.getLogger(),
-    path='.'):
+    my_logger=logging.getLogger(), path='.'):
     """Calculate electron density from scattering data."""
 
     if abort_event.is_set():
@@ -636,6 +635,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     support = np.ones(x.shape,dtype=bool)
 
     if seed is None:
+        #Have to reset the random seed to get a random in different from other processes
         prng = np.random.RandomState()
         seed = prng.randint(2**31-1)
     else:
@@ -948,7 +948,7 @@ def center_rho_roll(rho):
     rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
     return rho
 
-def euler_grid_search(refrho, movrho, topn=1):
+def euler_grid_search(refrho, movrho, topn=1, abort_event=multiprocessing.Event()):
     """Simple grid search on uniformly sampled sphere to optimize alignment.
         Return the topn candidate maps (default=1, i.e. the best candidate)."""
     #taken from https://stackoverflow.com/a/44164075/2836338
@@ -960,12 +960,21 @@ def euler_grid_search(refrho, movrho, topn=1):
     for p in range(len(phi)):
         for t in range(len(theta)):
             scores[p,t] = 1/minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],refrho=np.abs(refrho),movrho=np.abs(movrho))
+
+            if abort_event.is_set():
+                return None, None
+
     #best_pt = np.unravel_index(scores.argmin(), scores.shape)
     best_pt = largest_indices(scores, topn)
     best_scores = scores[best_pt]
     movrhos = np.zeros((topn,movrho.shape[0],movrho.shape[1],movrho.shape[2]))
+
     for i in range(topn):
         movrhos[i] = transform_rho(movrho, T=[phi[best_pt[0][i]],theta[best_pt[1][i]],0,0,0,0])
+
+        if abort_event.is_set():
+            return movrhos, best_scores
+
     return movrhos, best_scores
 
 def largest_indices(a, n):
@@ -975,14 +984,24 @@ def largest_indices(a, n):
     indices = indices[np.argsort(-flat[indices])]
     return np.unravel_index(indices, a.shape)
 
-def coarse_then_fine_alignment(refrho,movrho,topn=1):
+def coarse_then_fine_alignment(refrho, movrho, topn=1,
+    abort_event=multiprocessing.Event()):
     """Course alignment followed by fine alignment.
         Select the topn candidates from the grid search
         and minimize each, selecting the best fine alignment.
         """
-    movrhos, scores = euler_grid_search(refrho, movrho, topn=topn)
+    movrhos, scores = euler_grid_search(refrho, movrho, topn=topn,
+        abort_event=abort_event)
+
+    if abort_event.is_set():
+        return None, None
+
     for i in range(movrhos.shape[0]):
         movrhos[i], scores[i] = minimize_rho(refrho, movrhos[i])
+
+        if abort_event.is_set():
+            return None, None
+
     best_i = np.argmax(scores)
     movrho = movrhos[best_i]
     score = scores[best_i]
@@ -997,7 +1016,9 @@ def minimize_rho(refrho, movrho, T = np.zeros(6)):
     bounds[3:,1] = 5
     save_movrho = np.copy(movrho)
     save_refrho = np.copy(refrho)
-    result = optimize.fmin_l_bfgs_b(minimize_rho_score, T, factr= 0.1, maxiter=100, maxfun=200, epsilon=0.05, args=(np.abs(refrho),np.abs(movrho)), approx_grad=True)
+    result = optimize.fmin_l_bfgs_b(minimize_rho_score, T, factr= 0.1,
+        maxiter=100, maxfun=200, epsilon=0.05,
+        args=(np.abs(refrho),np.abs(movrho)), approx_grad=True)
     Topt = result[0]
     newrho = transform_rho(save_movrho, Topt)
     finalscore = 1/rho_overlap_score(save_refrho,newrho)
@@ -1034,8 +1055,10 @@ def transform_rho(rho, T, order=1):
     c_in = np.array(ndimage.measurements.center_of_mass(rho))
     c_out = np.array(rho.shape)/2.
     offset = c_in-c_out.dot(R)
-    rho = ndimage.interpolation.affine_transform(rho,R.T,order=order,offset=offset,output=np.float64,mode='wrap')
-    rho = ndimage.interpolation.shift(rho,T[3:],order=order,mode='wrap',output=np.float64)
+    rho = ndimage.interpolation.affine_transform(rho,R.T, order=order,
+        offset=offset, output=np.float64, mode='wrap')
+    rho = ndimage.interpolation.shift(rho,T[3:], order=order, mode='wrap',
+        output=np.float64)
     rho *= ne_rho/np.sum(rho)
     return rho
 
@@ -1148,7 +1171,8 @@ def align2xyz(rho, return_transform=False):
         c_in = np.array(ndimage.measurements.center_of_mass(rho))
         c_out = np.array(rho.shape)/2.
         offset=c_in-c_out.dot(R)
-        rho = ndimage.interpolation.affine_transform(rho,R.T,order=3,offset=offset,mode='wrap')
+        rho = ndimage.interpolation.affine_transform(rho, R.T, order=3,
+            offset=offset, mode='wrap')
     rho *= ne_rho/np.sum(rho)
     if return_transform:
         return rho, refR, refshift
@@ -1175,15 +1199,23 @@ def generate_enantiomers(rho):
     enans = np.array([rho,rho_xflip])
     return enans
 
-def align(refrho, movrho):
+def align(refrho, movrho, abort_event=multiprocessing.Event()):
     """ Align second electron density map to the first."""
+    if abort_event.is_set():
+        return None, None
+
     ne_rho = np.sum((movrho))
     #movrho, score = minimize_rho(refrho, movrho)
-    movrho, score = coarse_then_fine_alignment(refrho, movrho, topn=5)
-    movrho *= ne_rho/np.sum(movrho)
+    movrho, score = coarse_then_fine_alignment(refrho, movrho, topn=5,
+        abort_event=abort_event)
+
+    if movrho is not None:
+        movrho *= ne_rho/np.sum(movrho)
+
     return movrho, score
 
-def select_best_enantiomers(rhos, refrho=None, cores=1):
+def select_best_enantiomers(rhos, refrho=None, cores=1,
+    avg_queue=multiprocessing.Queue(), abort_event=multiprocessing.Event()):
     """ Select the best enantiomer from each map in the set (or a single map).
         refrho should not be binary averaged from the original
         denss maps, since that would likely lose handedness.
@@ -1197,6 +1229,9 @@ def select_best_enantiomers(rhos, refrho=None, cores=1):
     xyz_refrho, refR, refshift = align2xyz(refrho, return_transform=True)
     scores = np.zeros(rhos.shape[0])
     for i in range(rhos.shape[0]):
+        if abort_event.is_set():
+            return None, None
+        avg_queue.put_nowait('Selecting enantiomer for model {}\n'.format(i+1))
         #align rho to xyz and generate the enantiomers, then shift/rotate each enan
         #by inverse of refrho, then perform minimization around the original refrho location,
         #and select the best enantiomer from that set,
@@ -1213,7 +1248,6 @@ def select_best_enantiomers(rhos, refrho=None, cores=1):
         c_out = np.array(rhos[i].shape)/2.
         offset = c_in-c_out.dot(R)
         for j in range(len(enans)):
-            ne_rho = np.sum(enans[j])
             enans[j] = ndimage.interpolation.affine_transform(enans[j],R.T,order=3,offset=offset,mode='wrap')
             enans[j] = ndimage.interpolation.shift(enans[j],-refshift,order=3,mode='wrap')
         #now minimize each enan around the original refrho location
@@ -1226,17 +1260,19 @@ def select_best_enantiomers(rhos, refrho=None, cores=1):
         except KeyboardInterrupt:
             pool.terminate()
             pool.close()
-            sys.exit(1)
+            raise
 
         #now select the best enantiomer and set it as the new rhos[i]
         enans = np.array([results[k][0] for k in range(len(results))])
         enans_scores = np.array([results[k][1] for k in range(len(results))])
+
         best_i = np.argmax(enans_scores)
         rhos[i], scores[i] = enans[best_i], enans_scores[best_i]
+        avg_queue.put_nowait('Best enantiomer for model {} has score {}\n'.format(i+1, round(scores[i],3)))
 
     return rhos, scores
 
-def align_multiple(refrho, rhos, cores=1):
+def align_multiple(refrho, rhos, cores=1, abort_event=multiprocessing.Event()):
     """ Align multiple (or a single) maps to the reference."""
     if rhos.ndim == 3:
         rhos = rhos[np.newaxis,...]
@@ -1248,6 +1284,10 @@ def align_multiple(refrho, rhos, cores=1):
         #now shift each rho back to where refrho was originally
         rhos[i] = ndimage.interpolation.shift(rhos[i],-refshift,order=3,mode='wrap')
         rhos[i] *= ne_rho/np.sum(rhos[i])
+
+    if abort_event.is_set():
+        return None, None
+
     pool = multiprocessing.Pool(cores)
     try:
         mapfunc = partial(align, refrho)
@@ -1257,33 +1297,30 @@ def align_multiple(refrho, rhos, cores=1):
     except KeyboardInterrupt:
         pool.terminate()
         pool.close()
-        sys.exit(1)
+        raise
 
     rhos = np.array([results[i][0] for i in range(len(results))])
     scores = np.array([results[i][1] for i in range(len(results))])
 
     return rhos, scores
 
-def average_two(rho1, rho2):
+def average_two(rho1, rho2, abort_event=multiprocessing.Event()):
     """ Align two electron density maps and return the average."""
-    rho2, score = align(rho1, rho2)
+    rho2, score = align(rho1, rho2, abort_event=abort_event)
     average_rho = (rho1+rho2)/2
     return average_rho
 
 def multi_average_two(niter, **kwargs):
     """ Wrapper script for averaging two maps for multiprocessing."""
-    try:
-        kwargs['rho1']=kwargs['rho1'][niter]
-        kwargs['rho2']=kwargs['rho2'][niter]
-        time.sleep(1)
-        return average_two(**kwargs)
-    except KeyboardInterrupt:
-        pass
+    kwargs['rho1']=kwargs['rho1'][niter]
+    kwargs['rho2']=kwargs['rho2'][niter]
+    time.sleep(1)
+    return average_two(**kwargs)
 
-def average_pairs(rhos, cores = 1):
+def average_pairs(rhos, cores=1, abort_event=multiprocessing.Event()):
     """ Average pairs of electron density maps, second half to first half."""
     #create even/odd pairs, odds are the references
-    rho_args = {'rho1':rhos[::2], 'rho2':rhos[1::2]}
+    rho_args = {'rho1':rhos[::2], 'rho2':rhos[1::2], 'abort_event': abort_event}
     pool = multiprocessing.Pool(cores)
     try:
         mapfunc = partial(multi_average_two, **rho_args)
@@ -1293,17 +1330,18 @@ def average_pairs(rhos, cores = 1):
     except KeyboardInterrupt:
         pool.terminate()
         pool.close()
-        sys.exit(1)
+        raise
+
     return np.array(average_rhos)
 
-def binary_average(rhos, cores=1):
+def binary_average(rhos, cores=1, abort_event=multiprocessing.Event()):
     """ Generate a reference electron density map using binary averaging."""
     twos = 2**np.arange(20)
     nmaps = np.max(twos[twos<=rhos.shape[0]])
     levels = int(np.log2(nmaps))-1
     rhos = rhos[:nmaps]
     for level in range(levels):
-         rhos = average_pairs(rhos,cores)
+         rhos = average_pairs(rhos, cores, abort_event=abort_event)
     refrho = center_rho(rhos[0])
     return refrho
 
@@ -1324,9 +1362,12 @@ def calc_fsc(rho1, rho2, side):
     qbin_labels -= 1
     F1 = np.fft.fftn(rho1)
     F2 = np.fft.fftn(rho2)
-    numerator = ndimage.sum(np.real(F1*np.conj(F2)), labels=qbin_labels, index = np.arange(0,qbin_labels.max()+1))
-    term1 = ndimage.sum(np.abs(F1)**2, labels=qbin_labels, index = np.arange(0,qbin_labels.max()+1))
-    term2 = ndimage.sum(np.abs(F2)**2, labels=qbin_labels, index = np.arange(0,qbin_labels.max()+1))
+    numerator = ndimage.sum(np.real(F1*np.conj(F2)), labels=qbin_labels,
+        index=np.arange(0,qbin_labels.max()+1))
+    term1 = ndimage.sum(np.abs(F1)**2, labels=qbin_labels,
+        index=np.arange(0,qbin_labels.max()+1))
+    term2 = ndimage.sum(np.abs(F2)**2, labels=qbin_labels,
+        index=np.arange(0,qbin_labels.max()+1))
     denominator = (term1*term2)**0.5
     FSC = numerator/denominator
     qidx = np.where(qbins<qx_max)
