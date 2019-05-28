@@ -27,14 +27,21 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+
+import multiprocessing
+import logging
+import sys
+import argparse
+import os
+import copy
+import time
+from functools import partial
+
 import numpy as np
-from scipy import ndimage
-from multiprocessing import Pool
-import imp, logging, sys, argparse, os, copy, time
+
+import saxstats.denssopts as dopts
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
-from functools import partial
-import saxstats.denssopts as dopts
 
 #have to run parser twice, first just to get filename for loadProfile
 #then have to run it after deciding what the correct dmax should be
@@ -98,14 +105,18 @@ del args.force_run
 
 def multi_denss(niter, **kwargs):
     try:
+        # Processing keyword args for compatibility with RAW GUI
+        kwargs['path'] = '.'
+
         kwargs['output'] = kwargs['output'] +'_'+str(niter)
         np.random.seed(niter+int(time.time()))
         kwargs['seed'] = np.random.randint(2**31-1)
         kwargs['quiet'] = True
+
         if niter<=superargs.nmaps-1:
             sys.stdout.write( "\r Running denss job: %i / %i " % (niter+1,superargs.nmaps))
             sys.stdout.flush()
-        
+
         fname = kwargs['output']+'.log'
         logger = logging.getLogger("")
         logger.setLevel(logging.INFO)
@@ -113,7 +124,9 @@ def multi_denss(niter, **kwargs):
         formatter = logging.Formatter('%(asctime)s - %(message)s')
         fh.setFormatter(formatter)
         logger.addHandler(fh)
-        
+
+        kwargs['my_logger'] = logger
+
         logging.info('BEGIN')
         logging.info('Script name: %s', sys.argv[0])
         logging.info('DENSS Version: %s', __version__)
@@ -140,15 +153,15 @@ if __name__ == "__main__":
     else:
         output = superargs.output
 
-    dir = output
+    out_dir = output
     dirn = 0
-    while os.path.isdir(dir):
-        dir = output + "_" + str(dirn)
+    while os.path.isdir(out_dir):
+        out_dir = output + "_" + str(dirn)
         dirn += 1
 
-    print dir
-    os.mkdir(dir)
-    output = dir+'/'+dir
+    print out_dir
+    os.mkdir(out_dir)
+    output = out_dir+'/'+out_dir
     args.output = output
     superargs.output = output
 
@@ -171,7 +184,7 @@ if __name__ == "__main__":
     for arg in vars(args):
         denss_inputs[arg]= getattr(args, arg)
 
-    pool = Pool(superargs.cores)
+    pool = multiprocessing.Pool(superargs.cores)
 
     try:
         mapfunc = partial(multi_denss, **denss_inputs)
@@ -235,16 +248,25 @@ if __name__ == "__main__":
     if superargs.enan:
         print
         print " Selecting best enantiomers..."
-        allrhos, scores = saxs.select_best_enantiomers(allrhos, cores=superargs.cores)
+        try:
+            allrhos, scores = saxs.select_best_enantiomers(allrhos, cores=superargs.cores)
+        except KeyboardInterrupt:
+            sys.exit(1)
 
     if superargs.ref is None:
         print
         print " Generating reference..."
-        refrho = saxs.binary_average(allrhos, superargs.cores)
+        try:
+            refrho = saxs.binary_average(allrhos, superargs.cores)
+        except KeyboardInterrupt:
+            sys.exit(1)
 
     print
     print " Aligning all maps to reference..."
-    aligned, scores = saxs.align_multiple(refrho, allrhos, superargs.cores)
+    try:
+        aligned, scores = saxs.align_multiple(refrho, allrhos, superargs.cores)
+    except KeyboardInterrupt:
+        sys.exit(1)
 
     #filter rhos with scores below the mean - 2*standard deviation.
     mean = np.mean(scores)
@@ -282,8 +304,8 @@ if __name__ == "__main__":
     """
     #rather than compare two halves, average all fsc's to the reference
     fscs = []
-    for map in range(len(aligned)):
-        fscs.append(saxs.calc_fsc(aligned[map],refrho,sides[0]))
+    for calc_map in range(len(aligned)):
+        fscs.append(saxs.calc_fsc(aligned[calc_map],refrho,sides[0]))
     fscs = np.array(fscs)
     fsc = np.mean(fscs,axis=0)
     np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC")
@@ -296,16 +318,3 @@ if __name__ == "__main__":
 
     logging.info('Resolution: %.1f '+ u'\u212B'.encode('utf-8'), resn )
     logging.info('END')
-
-
-
-
-
-
-
-
-
-
-
-
-

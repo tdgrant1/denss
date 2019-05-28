@@ -7,13 +7,13 @@
 
 
    *******    Input file(s) : t_dat.dat
-           Condition P(rmin) = 0 is used. 
-           Condition P(rmax) = 0 is used. 
+           Condition P(rmin) = 0 is used.
+           Condition P(rmax) = 0 is used.
 
           Highest ALPHA is found to be   0.5405E+01
 
   The measure of inconsistency AN1 equals to    0.8920E+00
-     Alpha    Discrp  Oscill  Stabil  Sysdev  Positv  Valcen    Total   
+     Alpha    Discrp  Oscill  Stabil  Sysdev  Positv  Valcen    Total
   0.5405E+04 30.9468  1.0240  0.6098  0.1884  1.0000  0.8967  0.39777
   0.1081E+04 12.7852  1.0165  0.2493  0.0471  1.0000  0.9010  0.40239
   0.2162E+03  4.4967  1.0079  0.0832  0.1028  1.0000  0.9131  0.55784
@@ -39,7 +39,7 @@
   0.2267E-11  0.3727 15.1350  0.8598  1.0064  0.6876  0.5051  0.00000
 
           ***  Golden section search to maximize estimate ***
-     Alpha    Discrp  Oscill  Stabil  Sysdev  Positv  Valcen    Total   
+     Alpha    Discrp  Oscill  Stabil  Sysdev  Positv  Valcen    Total
   0.3198E+01  0.5689  1.1121  0.0169  0.9293  1.0000  0.9536  0.90719
   0.1368E+01  0.5116  1.1228  0.0107  0.9550  1.0000  0.9551  0.97036
   0.2187E+01  0.5345  1.1175  0.0134  0.9465  1.0000  0.9545  0.92957
@@ -67,7 +67,7 @@
  Sigma         0.300     0.600     0.120     0.120     0.120     0.120
  Ideal         0.700     1.100     0.000     1.000     1.000     0.950
  Current       0.522     1.120     0.012     0.955     1.000     0.955
-                - - - - - - - - - - - - - - - - - - - - - - - - - 
+                - - - - - - - - - - - - - - - - - - - - - - - - -
  Estimate      0.703     0.999     0.990     1.000     1.000     0.998
 
   Angular   range    :     from    0.0098   to    0.2793
@@ -566,7 +566,7 @@
   0.2787E+00  0.1041E-02  0.3335E-03  0.8572E-03  0.8572E-03
   0.2793E+00  0.1317E-02  0.3276E-03  0.8550E-03  0.8550E-03
 
-           Distance distribution  function of particle  
+           Distance distribution  function of particle
 
 
        R          P(R)      ERROR

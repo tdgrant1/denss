@@ -4,7 +4,7 @@ Author: Thomas Grant | email: tgrant@hwi.buffalo.edu
 #### [Nature Methods paper describing DENSS](https://www.nature.com/articles/nmeth.4581)
 If you use DENSS in your work, please cite:
 
-Grant, Thomas D. (2018). Ab initio electron density determination directly from 
+Grant, Thomas D. (2018). Ab initio electron density determination directly from
 solution scattering data. Nature Methods. http://dx.doi.org/10.1038/nmeth.4581.
 
 #### [DENSS.org (tdgrant.com/denss)](https://www.tdgrant.com/denss)
@@ -16,30 +16,30 @@ useful tips and best practices.
 Try out DENSS without installing the code using the DENSSWeb server to
 perform simple online calculations suitable for most cases. (N is limited
 to 32 samples for efficiency to allow many users to try it out). For more
-complex particle shapes, install DENSS and EMAN2 (see below). Thanks to 
+complex particle shapes, install DENSS and EMAN2 (see below). Thanks to
 Andrew Bruno and the CCR for DENSSWeb!
 
 #### New MEMBRANE mode
 DENSS now has a new mode for membrane proteins. Membrane proteins are often
-solubilized in detergents or lipid nanodiscs. The hydrophobic regions of these 
-molecules often have lesser scattering density than the bulk solvent, resulting in a 
-negative contrast relative to the solvent. The default setting for DENSS enforces a 
-positivity restraint that will not allow any density to be negative. While this is 
-appropriate for most standard biomolecules such as proteins and nucleic acids, 
-is it not appropriate for molecules containing regions of negative contrast. To 
-accommodate this scenario, there is a new MEMBRANE mode in addition to the 
-previously available FAST and SLOW modes. This mode disables the positivity 
-restraint and starts shrink-wrap immediately. 
+solubilized in detergents or lipid nanodiscs. The hydrophobic regions of these
+molecules often have lesser scattering density than the bulk solvent, resulting in a
+negative contrast relative to the solvent. The default setting for DENSS enforces a
+positivity restraint that will not allow any density to be negative. While this is
+appropriate for most standard biomolecules such as proteins and nucleic acids,
+is it not appropriate for molecules containing regions of negative contrast. To
+accommodate this scenario, there is a new MEMBRANE mode in addition to the
+previously available FAST and SLOW modes. This mode disables the positivity
+restraint and starts shrink-wrap immediately.
 
 #### New symmetry averaging feature
-A new feature in denss v1.4.6 allows for the use of symmetry if known. The 
+A new feature in denss v1.4.6 allows for the use of symmetry if known. The
 options for imposing symmetry are --ncs, --ncs_axis, and --ncs_steps. Currently
 only symmetry along a single axis is supported, though multiple axes will be
 supported in the future. Symmetry is imposed by first aligning the principal
 axes of inertia with the XYZ axes (largest to smallest). Then symmetry averaging
-is performed along the selected axis at the given step(s). More frequent steps 
+is performed along the selected axis at the given step(s). More frequent steps
 makes for stronger restraint, but consequently more bias. Can select a different
-axis (in case the largest principal axis is not the symmetry axis). 
+axis (in case the largest principal axis is not the symmetry axis).
 Note that the averaging procedure is still symmetry agnostic.
 Also, you may need to manually filter sets of maps in case the wrong
 symmetry axis was chosen in some cases, then perform averaging separately
@@ -47,11 +47,11 @@ with the denss.align_and_average.py script.
 
 #### New script for performing simple operations on MRC files
 A new script, `denss.mrcops.py`, is included in v1.4.5 that includes handy
-tools for resampling or reshaping an MRC formatted electron density map. 
+tools for resampling or reshaping an MRC formatted electron density map.
 
 #### New refinement script
-A new script called `denss.refine.py` is available for refining an averaged 
-electron density map. Final averaged maps from denss.all.py or superdenss are 
+A new script called `denss.refine.py` is available for refining an averaged
+electron density map. Final averaged maps from denss.all.py or superdenss are
 unlikely to have scattering profiles matching the data (since they are an average
 from many different maps). To potentially improve the results, one can input
 the averaged map to denss.refine.py using the --rho_start option. `denss.refine.py`
@@ -66,13 +66,13 @@ the ground up and no longer requires EMAN2 to be installed. The new procedure
 can be accessed with a series of new scripts, named as denss.xxx.py where xxx
 is the name of the script. denss.all.py acts as the old superdenss, running
 twenty reconstructions, aligning and averaging all maps, including enantiomer
-generation and selection. The new scripts are still in testing, so use at your 
+generation and selection. The new scripts are still in testing, so use at your
 own risk. Old scripts using the EMAN2 averaging procedure are still available.
 Manuals for the new scripts coming soon. Thanks to intern Nhan Nguyen for helping
 to write the new code.
 
 #### New interactive GUI for fitting data
-A new script (denss.fit_data.py) is provided with DENSS v1.3.0 for calculating smooth 
+A new script (denss.fit_data.py) is provided with DENSS v1.3.0 for calculating smooth
 fits to experimental data using a convenient interactive GUI.
 
 #### New script for calculating profiles from MRC files
@@ -132,10 +132,10 @@ shell.
 ## Input files
 DENSS uses smooth fits to experimental scattering profiles (rather than the noisy
 experimental data). Two file formats are currently acceptable: .dat files or .out files.
-Files with .dat extensions are expected to be the smoothed (i.e. fitted) curve. 
+Files with .dat extensions are expected to be the smoothed (i.e. fitted) curve.
 
 A script called `denss.fit_data.py` is provided which can be used to fit experimental data
-with a smooth curve based on an extended version of Peter Moore's approach (Moore 1979) 
+with a smooth curve based on an extended version of Peter Moore's approach (Moore 1979)
 using a trigonometric series. The denss.fit_data.py script includes a simple interactive
 GUI for selecting Dmax and the smoothing factor alpha and displays the experimental
 data, the smooth fit to the data, and the real space pair distribution function.
@@ -243,7 +243,7 @@ radius of gyration calculated directly from the electron density map, and
 `Support Volume` is the volume of the support region.
 
 Electron density maps are written in CCP4/MRC format (credit Andrew Bruno) and
-optionally as Xplor ASCII text format (with the --write_xplor option enabled). 
+optionally as Xplor ASCII text format (with the --write_xplor option enabled).
 These files can be opened directly in some visualization programs such as
 [Chimera](http://www.rbvi.ucsf.edu/chimera/) and [PyMOL](https://www.pymol.org).
 In particular, the PyMOL "volume" function is well suited for displaying these
@@ -280,8 +280,8 @@ and requires no additional programs or modules to be installed (just the already
 required NumPy and SciPy modules). The built-in method is fully parallelized
 for taking advantage of multicore machines.
 
-`denss.all.py` is the primary script for running the full pipeline of DENSS, 
-including running multiple runs of DENSS (default = 20), aligning, selecting 
+`denss.all.py` is the primary script for running the full pipeline of DENSS,
+including running multiple runs of DENSS (default = 20), aligning, selecting
 enantiomers, averaging, and estimating resolution. To run the defaults, which
 should be suitable for most applications, simply type:
 ```
@@ -295,28 +295,28 @@ for example to run on 4 cores. All options available to denss.py can also be pas
 to `denss.all.py`. Some additional options exist as well. Type `denss.all.py -h` to
 view all of the options available.
 
-Several helper scripts are also supplied for performing various tasks:  
-`denss.align.py` - aligns electron density maps to a reference (MRC or PDB file)  
-`denss.align2xyz.py` - aligns electron density maps to the XYZ axes  
-`denss.align_by_principal_axes.py` - aligns electron density maps to a reference 
-(MRC or PDB), but performs no minimization.  
-`denss.align_and_average.py` - aligns and averages a set of electron density maps  
-`denss.average.py` - averages a set of pre-aligned electron density maps  
+Several helper scripts are also supplied for performing various tasks:
+`denss.align.py` - aligns electron density maps to a reference (MRC or PDB file)
+`denss.align2xyz.py` - aligns electron density maps to the XYZ axes
+`denss.align_by_principal_axes.py` - aligns electron density maps to a reference
+(MRC or PDB), but performs no minimization.
+`denss.align_and_average.py` - aligns and averages a set of electron density maps
+`denss.average.py` - averages a set of pre-aligned electron density maps
 `denss.calcfsc.py` - calculates the Fourier Shell Correlation curve between two
-pre-aligned electron density maps, and estimates resolution.  
-`denss.pdb2mrc.py` - calculates an electron density map from a PDB file.  
-`denss.get_info.py` - prints basic information about an MRC file, to be used 
-with denss.pdb2mrc.py, for example, to set box sizes, voxels, etc.  
-`denss.rho2dat.py` - calculates a solution scattering profile from an electron density map.  
+pre-aligned electron density maps, and estimates resolution.
+`denss.pdb2mrc.py` - calculates an electron density map from a PDB file.
+`denss.get_info.py` - prints basic information about an MRC file, to be used
+with denss.pdb2mrc.py, for example, to set box sizes, voxels, etc.
+`denss.rho2dat.py` - calculates a solution scattering profile from an electron density map.
 `denss.mrcops.py` - performs basic operations on MRC file, such as resampling
-an electron density map to have a new size or shape.  
+an electron density map to have a new size or shape.
 
 ### EMAN2 Method:
 The older option for alignment and averaging requires installation of EMAN2.
-Installing is pretty straightforward on Unix systems. Some users have noted difficulty 
+Installing is pretty straightforward on Unix systems. Some users have noted difficulty
 with installation of EMAN2 on Windows systems.
 
-To install EMAN2, download the appropriate EMAN2 binary from [this page](https://cryoem.bcm.edu/cryoem/downloads/view_eman2_versions) 
+To install EMAN2, download the appropriate EMAN2 binary from [this page](https://cryoem.bcm.edu/cryoem/downloads/view_eman2_versions)
 Then, change to the folder where you would like to install EMAN2 (such as your home folder)
 and move the eman2 script you downloaded to that directory. Then execute the script.
 For example:
@@ -325,7 +325,7 @@ $ cd $HOME
 $ mv $HOME/Downloads/eman2.21.MacOS.sh .
 $ bash eman2.21.MacOS.sh
 ```
-But, obviously, use the correct filenames and paths for your platform. 
+But, obviously, use the correct filenames and paths for your platform.
 If you have issues getting EMAN2 installed, see their [installation page](http://blake.bcm.edu/emanwiki/EMAN2/Install).
 
 #### superdenss
@@ -338,9 +338,9 @@ superdenss -f 6lyz.out
 superdenss also takes its own options, as well as all of the options accepted by
 denss.py. The following options are available for superdenss (accessible with the -h option):
 ```
- ------------------------------------------------------------------------------ 
- superdenss is a simple wrapper for denss that automates the process of 
- generating multiple density reconstructions and averaging them with EMAN2. 
+ ------------------------------------------------------------------------------
+ superdenss is a simple wrapper for denss that automates the process of
+ generating multiple density reconstructions and averaging them with EMAN2.
 
  -f: filename of .out GNOM file or .dat solution scattering data
  -o: the output prefix to name the output directory and all the files.
@@ -349,7 +349,7 @@ denss.py. The following options are available for superdenss (accessible with th
  -n: the number of reconstructions to run (default 20)
  -j: the number of cores to use for parallel processing (defaults to ncores - 1)
  -e: generate and select enantiomers (significantly increases runtime, default=no)
- ----------------------------------------------------------------------------- 
+ -----------------------------------------------------------------------------
 ```
 For example, to run superdenss while checking for the best enantiomers, type:
 ```
@@ -357,7 +357,7 @@ superdenss -f 6lyz.dat -e
 ```
 If you would like to edit the parameters of denss.py, pass them into the -i option
 of superdenss. This is admittedly a little awkward to use to pass the arguments correctly
-as you must pass the denss.py options enclosed in double quotes after the -i option: 
+as you must pass the denss.py options enclosed in double quotes after the -i option:
 To run the above example using a .dat file (note the quotes in the command line):
 ```
 superdenss -f 6lyz.dat -e -i " -d 50.0 " -o lysozyme

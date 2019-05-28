@@ -111,17 +111,26 @@ if __name__ == "__main__":
 
     if args.enan:
         print " Selecting best enantiomers..."
-        if args.ref:
-            allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
-        else:
-            allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=allrhos[0], cores=args.cores)
+        try:
+            if args.ref:
+                allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
+            else:
+                allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=allrhos[0], cores=args.cores)
+        except KeyboardInterrupt:
+            sys.exit(1)
 
     if args.ref is None:
         print " Generating reference..."
-        refrho = saxs.binary_average(allrhos, args.cores)
+        try:
+            refrho = saxs.binary_average(allrhos, args.cores)
+        except KeyboardInterrupt:
+            sys.exit(1)
 
     print " Aligning all maps to reference..."
-    aligned, scores = saxs.align_multiple(refrho, allrhos, args.cores)
+    try:
+        aligned, scores = saxs.align_multiple(refrho, allrhos, args.cores)
+    except KeyboardInterrupt:
+        sys.exit(1)
 
     #filter rhos with scores below the mean - 2*standard deviation.
     mean = np.mean(scores)

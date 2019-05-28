@@ -13,7 +13,7 @@ except ImportError:
     matplotlib_found = False
 
 def parse_arguments(parser,gnomdmax=None):
-    
+
     parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
     parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
     parser.add_argument("-d", "--dmax", default=None, type=float, help="Estimated maximum dimension")

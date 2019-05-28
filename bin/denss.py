@@ -70,15 +70,28 @@ parser = argparse.ArgumentParser(description="DENSS: DENsity from Solution Scatt
 args = dopts.parse_arguments(parser, gnomdmax=dmax)
 
 if __name__ == "__main__":
+    my_logger = logging.getLogger()
+    my_logger.setLevel(logging.DEBUG)
 
-    logging.basicConfig(filename=args.output+'.log',level=logging.INFO,filemode='w',
-        format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
-    logging.info('BEGIN')
-    logging.info('Script name: %s', sys.argv[0])
-    logging.info('DENSS Version: %s', __version__)
-    logging.info('Data filename: %s', args.file)
-    logging.info('Output prefix: %s', args.output)
-    logging.info('Mode: %s', args.mode)
+    formatter = logging.Formatter('%(asctime)s %(message)s', '%Y-%m-%d %I:%M:%S %p')
+
+    # h1 = logging.StreamHandler(sys.stdout)
+    # h1.setLevel(logging.INFO)
+    # h1.setFormatter(formatter)
+
+    h2 = logging.FileHandler(os.path.join('.', args.output+'.log'), mode='w')
+    h2.setLevel(logging.INFO)
+    h2.setFormatter(formatter)
+
+    # my_logger.addHandler(h1)
+    my_logger.addHandler(h2)
+
+    my_logger.info('BEGIN')
+    my_logger.info('Script name: %s', sys.argv[0])
+    my_logger.info('DENSS Version: %s', __version__)
+    my_logger.info('Data filename: %s', args.file)
+    my_logger.info('Output prefix: %s', args.output)
+    my_logger.info('Mode: %s', args.mode)
 
     qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV, rho, side = saxs.denss(
         q=q,I=I,sigq=sigq,
@@ -114,7 +127,8 @@ if __name__ == "__main__":
         write_freq=args.write_freq,
         enforce_connectivity=args.enforce_connectivity,
         enforce_connectivity_steps=args.enforce_connectivity_steps,
-        cutout=args.cutout)
+        cutout=args.cutout,
+        my_logger=my_logger)
 
     print args.output
 
@@ -124,8 +138,8 @@ if __name__ == "__main__":
     fit[:len(sigqdata),2] = sigqdata
     fit[:len(qbinsc),3] = qbinsc
     fit[:len(Imean),4] = Imean
-    np.savetxt(args.output+'_map.fit',fit,delimiter=' ',fmt='%.5e', header='q(data),I(data),error(data),q(density),I(density)')
-    np.savetxt(args.output+'_stats_by_step.dat',np.vstack((chis, rg, supportV)).T,delimiter=" ",fmt="%.5e",header='Chi2 Rg SupportVolume')
+    # np.savetxt(args.output+'_map.fit',fit,delimiter=' ',fmt='%.5e', header='q(data),I(data),error(data),q(density),I(density)')
+    # np.savetxt(args.output+'_stats_by_step.dat',np.vstack((chis, rg, supportV)).T,delimiter=" ",fmt="%.5e",header='Chi2 Rg SupportVolume')
 
     if args.plot and matplotlib_found:
         f = plt.figure(figsize=[6,6])
