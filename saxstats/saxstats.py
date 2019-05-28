@@ -35,16 +35,12 @@ import os
 import json
 import struct
 import logging
-import argparse
-import matplotlib
-import numpy as np
+from functools import partial
 import multiprocessing
 import datetime, time
-from scipy import ndimage
-import matplotlib.pyplot as plt
-from functools import partial
-from _version import __version__
-from scipy import stats, signal, interpolate, spatial, special, optimize, ndimage, linalg
+
+import numpy as np
+from scipy import ndimage, interpolate, spatial, special, optimize
 
 def chi2(exp, calc, sig):
     """Return the chi2 discrepancy between experimental and calculated data"""
@@ -521,13 +517,13 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01,
     write_xplor_format=False, write_freq=100, enforce_connectivity=True,
     enforce_connectivity_steps=[500], cutout=True, quiet=False, ncs=0,
-    ncs_steps=[500],ncs_axis=1, abort_event=multiprocessing.Event(),
-    my_logger=logging.getLogger(), path='.'):
+    ncs_steps=[500],ncs_axis=1, abort_event=None, my_logger=logging.getLogger(),
+    path='.', gui=False):
     """Calculate electron density from scattering data."""
-
-    if abort_event.is_set():
-        my_logger.info('Aborted!')
-        return []
+    if abort_event is not None:
+        if abort_event.is_set():
+            my_logger.info('Aborted!')
+            return []
 
     fprefix = os.path.join(path, output)
 
@@ -674,13 +670,18 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     my_logger.info('Width of q shells (angstroms^(-1)): %3.3f', qstep)
     my_logger.info('Random seed: %i', seed)
     if not quiet:
-        my_logger.info("\n Step     Chi2     Rg    Support Volume")
-        my_logger.info(" ----- --------- ------- --------------")
+        if gui:
+            my_logger.info("\n Step     Chi2     Rg    Support Volume")
+            my_logger.info(" ----- --------- ------- --------------")
+        else:
+            print("\n Step     Chi2     Rg    Support Volume")
+            print(" ----- --------- ------- --------------")
 
     for j in range(steps):
-        if abort_event.is_set():
-            my_logger.info('Aborted!')
-            return []
+        if abort_event is not None:
+            if abort_event.is_set():
+                my_logger.info('Aborted!')
+                return []
 
         F = np.fft.fftn(rho)
 
@@ -811,7 +812,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             labeled_support, num_features = ndimage.label(support, structure=struct)
             sums = np.zeros((num_features))
             if not quiet:
-                my_logger.info(num_features)
+                if not gui:
+                    print(num_features)
 
             #find the feature with the greatest number of electrons
             for feature in range(num_features):
@@ -839,7 +841,11 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         supportV[j] = np.sum(support)*dV
 
         if not quiet:
-            my_logger.info("% 5i % 4.2e % 3.2f       % 5i          ", j, chi[j], rg[j], supportV[j])
+            if gui:
+                my_logger.info("% 5i % 4.2e % 3.2f       % 5i          ", j, chi[j], rg[j], supportV[j])
+            else:
+                sys.stdout.write("\r% 5i % 4.2e % 3.2f       % 5i          " % (j, chi[j], rg[j], supportV[j]))
+                sys.stdout.flush()
 
         if j > 101 + shrinkwrap_minstep and np.std(chi[j-100:j]) < chi_end_fraction * np.median(chi[j-100:j]):
             break
@@ -948,10 +954,11 @@ def center_rho_roll(rho):
     rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
     return rho
 
-def euler_grid_search(refrho, movrho, topn=1, abort_event=multiprocessing.Event()):
+def euler_grid_search(refrho, movrho, topn=1, abort_event=None):
     """Simple grid search on uniformly sampled sphere to optimize alignment.
         Return the topn candidate maps (default=1, i.e. the best candidate)."""
     #taken from https://stackoverflow.com/a/44164075/2836338
+
     num_pts = 18 #~20 degrees between points
     indices = np.arange(0, num_pts, dtype=float) + 0.5
     phi = np.arccos(1 - 2*indices/num_pts)
@@ -961,8 +968,9 @@ def euler_grid_search(refrho, movrho, topn=1, abort_event=multiprocessing.Event(
         for t in range(len(theta)):
             scores[p,t] = 1/minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],refrho=np.abs(refrho),movrho=np.abs(movrho))
 
-            if abort_event.is_set():
-                return None, None
+            if abort_event is not None:
+                if abort_event.is_set():
+                    return None, None
 
     #best_pt = np.unravel_index(scores.argmin(), scores.shape)
     best_pt = largest_indices(scores, topn)
@@ -972,8 +980,9 @@ def euler_grid_search(refrho, movrho, topn=1, abort_event=multiprocessing.Event(
     for i in range(topn):
         movrhos[i] = transform_rho(movrho, T=[phi[best_pt[0][i]],theta[best_pt[1][i]],0,0,0,0])
 
-        if abort_event.is_set():
-            return movrhos, best_scores
+        if abort_event is not None:
+            if abort_event.is_set():
+                return movrhos, best_scores
 
     return movrhos, best_scores
 
@@ -985,7 +994,7 @@ def largest_indices(a, n):
     return np.unravel_index(indices, a.shape)
 
 def coarse_then_fine_alignment(refrho, movrho, topn=1,
-    abort_event=multiprocessing.Event()):
+    abort_event=None):
     """Course alignment followed by fine alignment.
         Select the topn candidates from the grid search
         and minimize each, selecting the best fine alignment.
@@ -993,14 +1002,16 @@ def coarse_then_fine_alignment(refrho, movrho, topn=1,
     movrhos, scores = euler_grid_search(refrho, movrho, topn=topn,
         abort_event=abort_event)
 
-    if abort_event.is_set():
-        return None, None
+    if abort_event is not None:
+        if abort_event.is_set():
+            return None, None
 
     for i in range(movrhos.shape[0]):
         movrhos[i], scores[i] = minimize_rho(refrho, movrhos[i])
 
-        if abort_event.is_set():
-            return None, None
+        if abort_event is not None:
+            if abort_event.is_set():
+                return None, None
 
     best_i = np.argmax(scores)
     movrho = movrhos[best_i]
@@ -1199,10 +1210,11 @@ def generate_enantiomers(rho):
     enans = np.array([rho,rho_xflip])
     return enans
 
-def align(refrho, movrho, abort_event=multiprocessing.Event()):
+def align(refrho, movrho, abort_event=None):
     """ Align second electron density map to the first."""
-    if abort_event.is_set():
-        return None, None
+    if abort_event is not None:
+        if abort_event.is_set():
+            return None, None
 
     ne_rho = np.sum((movrho))
     #movrho, score = minimize_rho(refrho, movrho)
@@ -1214,8 +1226,8 @@ def align(refrho, movrho, abort_event=multiprocessing.Event()):
 
     return movrho, score
 
-def select_best_enantiomers(rhos, refrho=None, cores=1,
-    avg_queue=multiprocessing.Queue(), abort_event=multiprocessing.Event()):
+def select_best_enantiomers(rhos, refrho=None, cores=1, avg_queue=None,
+    abort_event=None):
     """ Select the best enantiomer from each map in the set (or a single map).
         refrho should not be binary averaged from the original
         denss maps, since that would likely lose handedness.
@@ -1229,9 +1241,11 @@ def select_best_enantiomers(rhos, refrho=None, cores=1,
     xyz_refrho, refR, refshift = align2xyz(refrho, return_transform=True)
     scores = np.zeros(rhos.shape[0])
     for i in range(rhos.shape[0]):
-        if abort_event.is_set():
-            return None, None
-        avg_queue.put_nowait('Selecting enantiomer for model {}\n'.format(i+1))
+        if abort_event is not None:
+            if abort_event.is_set():
+                return None, None
+        if avg_queue is not None:
+            avg_queue.put_nowait('Selecting enantiomer for model {}\n'.format(i+1))
         #align rho to xyz and generate the enantiomers, then shift/rotate each enan
         #by inverse of refrho, then perform minimization around the original refrho location,
         #and select the best enantiomer from that set,
@@ -1268,11 +1282,12 @@ def select_best_enantiomers(rhos, refrho=None, cores=1,
 
         best_i = np.argmax(enans_scores)
         rhos[i], scores[i] = enans[best_i], enans_scores[best_i]
-        avg_queue.put_nowait('Best enantiomer for model {} has score {}\n'.format(i+1, round(scores[i],3)))
+        if avg_queue is not None:
+            avg_queue.put_nowait('Best enantiomer for model {} has score {}\n'.format(i+1, round(scores[i],3)))
 
     return rhos, scores
 
-def align_multiple(refrho, rhos, cores=1, abort_event=multiprocessing.Event()):
+def align_multiple(refrho, rhos, cores=1, abort_event=None):
     """ Align multiple (or a single) maps to the reference."""
     if rhos.ndim == 3:
         rhos = rhos[np.newaxis,...]
@@ -1285,8 +1300,9 @@ def align_multiple(refrho, rhos, cores=1, abort_event=multiprocessing.Event()):
         rhos[i] = ndimage.interpolation.shift(rhos[i],-refshift,order=3,mode='wrap')
         rhos[i] *= ne_rho/np.sum(rhos[i])
 
-    if abort_event.is_set():
-        return None, None
+    if abort_event is not None:
+        if abort_event.is_set():
+            return None, None
 
     pool = multiprocessing.Pool(cores)
     try:
@@ -1304,7 +1320,7 @@ def align_multiple(refrho, rhos, cores=1, abort_event=multiprocessing.Event()):
 
     return rhos, scores
 
-def average_two(rho1, rho2, abort_event=multiprocessing.Event()):
+def average_two(rho1, rho2, abort_event=None):
     """ Align two electron density maps and return the average."""
     rho2, score = align(rho1, rho2, abort_event=abort_event)
     average_rho = (rho1+rho2)/2
@@ -1317,7 +1333,7 @@ def multi_average_two(niter, **kwargs):
     time.sleep(1)
     return average_two(**kwargs)
 
-def average_pairs(rhos, cores=1, abort_event=multiprocessing.Event()):
+def average_pairs(rhos, cores=1, abort_event=None):
     """ Average pairs of electron density maps, second half to first half."""
     #create even/odd pairs, odds are the references
     rho_args = {'rho1':rhos[::2], 'rho2':rhos[1::2], 'abort_event': abort_event}
@@ -1334,7 +1350,7 @@ def average_pairs(rhos, cores=1, abort_event=multiprocessing.Event()):
 
     return np.array(average_rhos)
 
-def binary_average(rhos, cores=1, abort_event=multiprocessing.Event()):
+def binary_average(rhos, cores=1, abort_event=None):
     """ Generate a reference electron density map using binary averaging."""
     twos = 2**np.arange(20)
     nmaps = np.max(twos[twos<=rhos.shape[0]])
