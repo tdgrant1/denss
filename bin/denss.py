@@ -73,16 +73,17 @@ if __name__ == "__main__":
     my_logger = logging.getLogger()
     my_logger.setLevel(logging.DEBUG)
 
-    h1 = logging.StreamHandler(sys.stdout)
-    h1.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s %(message)s', '%Y-%m-%d %I:%M:%S %p')
-    h1.setFormatter(formatter)
+
+    # h1 = logging.StreamHandler(sys.stdout)
+    # h1.setLevel(logging.INFO)
+    # h1.setFormatter(formatter)
 
     h2 = logging.FileHandler(os.path.join('.', args.output+'.log'), mode='w')
     h2.setLevel(logging.INFO)
     h2.setFormatter(formatter)
 
-    my_logger.addHandler(h1)
+    # my_logger.addHandler(h1)
     my_logger.addHandler(h2)
 
     my_logger.info('BEGIN')
