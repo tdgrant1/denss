@@ -47,7 +47,7 @@ except ImportError:
 initparser = argparse.ArgumentParser(description=" DENSS: DENsity from Solution Scattering.\n A tool for calculating an electron density map from solution scattering data", formatter_class=argparse.RawTextHelpFormatter)
 initargs = dopts.parse_arguments(initparser, gnomdmax=None)
 
-q, I, sigq, dmax, isout = saxs.loadProfile(initargs.file)
+q, I, sigq, dmax, isout = saxs.loadProfile(initargs.file, units=initargs.units)
 
 if not initargs.force_run:
     if min(q) != 0.0:

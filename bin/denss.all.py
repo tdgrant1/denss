@@ -59,7 +59,7 @@ initparser.set_defaults(enan = True)
 initparser.set_defaults(center = True)
 initargs = dopts.parse_arguments(initparser, gnomdmax=None)
 
-q, I, sigq, dmax, isout = saxs.loadProfile(initargs.file)
+q, I, sigq, dmax, isout = saxs.loadProfile(initargs.file, units=initargs.units)
 
 if not initargs.force_run:
     if min(q) != 0.0:
@@ -91,6 +91,7 @@ parser.set_defaults(center = True)
 superargs = dopts.parse_arguments(parser, gnomdmax=dmax)
 
 args = copy.copy(superargs)
+del args.units
 del args.cores
 del args.enan
 del args.ref

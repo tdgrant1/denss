@@ -488,7 +488,7 @@ def loadDatFile(filename):
 
     return q, i, err, results
 
-def loadProfile(fname):
+def loadProfile(fname, units="a"):
     """Determines which loading function to run, and then runs it."""
 
     if os.path.splitext(fname)[1] == '.out':
@@ -504,6 +504,12 @@ def loadProfile(fname):
         dmax = float(results[keys['dmax']])
     else:
         dmax = -1.
+
+    if units == "nm":
+        #DENSS assumes 1/angstrom, so convert from 1/nm to 1/angstrom
+        q /= 10
+        dmax *= 10
+        print "Angular units converted from 1/nm to 1/angstrom"
 
     return q, I, Ierr, dmax, isout
 
