@@ -822,7 +822,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                     print(num_features)
 
             #find the feature with the greatest number of electrons
-            for feature in range(num_features):
+            for feature in range(num_features+1):
                 sums[feature-1] = np.sum(newrho[labeled_support==feature])
             big_feature = np.argmax(sums)+1
 
