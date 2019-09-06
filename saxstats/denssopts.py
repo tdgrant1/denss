@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from _version import __version__
+from ._version import __version__
 import os, argparse
 import imp
 try:
@@ -101,13 +101,13 @@ def parse_arguments(parser,gnomdmax=None):
         nsamples = 32
         shrinkwrap_minstep = 1000
         enforce_connectivity_steps = [2000]
-        recenter_steps = range(501,2502,500)
+        recenter_steps = list(range(501,2502,500))
     elif args.mode[0].upper() == "S":
         args.mode = "SLOW"
         nsamples = 64
         shrinkwrap_minstep = 5000
         enforce_connectivity_steps = [6000]
-        recenter_steps = range(501,8002,500)
+        recenter_steps = list(range(501,8002,500))
     elif args.mode[0].upper() == "M":
         args.mode = "MEMBRANE"
         nsamples = 64
@@ -115,7 +115,7 @@ def parse_arguments(parser,gnomdmax=None):
         shrinkwrap_minstep = 0
         shrinkwrap_threshold_fraction = 0.1
         enforce_connectivity_steps = [300]
-        recenter_steps = range(501,8002,500)
+        recenter_steps = list(range(501,8002,500))
     else:
         args.mode = "None"
 
@@ -146,8 +146,10 @@ def parse_arguments(parser,gnomdmax=None):
     if not isinstance(limit_dmax_steps, list):
         limit_dmax_steps = [ limit_dmax_steps ]
 
+    if args.steps is 'None':
+        args.steps = None
     if args.steps is not None:
-        steps = args.steps
+        steps = int(args.steps)
 
     if args.dmax is not None and args.dmax >= 0:
         dmax = args.dmax
@@ -164,6 +166,7 @@ def parse_arguments(parser,gnomdmax=None):
         voxel = args.voxel
 
     #now recollect all the edited options back into args
+    args.steps = steps
     args.nsamples = nsamples
     args.shrinkwrap_minstep = shrinkwrap_minstep
     args.shrinkwrap_threshold_fraction = shrinkwrap_threshold_fraction

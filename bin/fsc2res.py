@@ -2,9 +2,9 @@
 
 import numpy as np
 import os, sys, argparse
-import imp
+import importlib
 try:
-    imp.find_module('matplotlib')
+    importlib.util.find_spec('matplotlib')
     matplotlib_found = True
     import matplotlib.pyplot as plt
 except ImportError:
@@ -52,7 +52,7 @@ resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
 
 resn = round(float(1./resx),1)
 
-print "Resolution: %.1f" % resn, u'\u212B'.encode('utf-8')
+print("Resolution: %.1f A" % resn)
 
 if args.plot:
     import matplotlib.pyplot as plt

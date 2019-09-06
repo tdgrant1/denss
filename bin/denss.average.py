@@ -67,11 +67,11 @@ if __name__ == "__main__":
             rhosum = rho
         else:
             rhosum += rho
-    print
+    print()
     rhos = np.array(rhos)
     average_rho = rhosum / nmaps
     saxs.write_mrc(average_rho,side, output+"_avg.mrc")
-    print "%s_avg.mrc written." % output
+    print("%s_avg.mrc written." % output)
 
     """
     #split maps into 2 halves--> enan, align, average independently with same refrho
@@ -92,9 +92,9 @@ if __name__ == "__main__":
     resi = np.argmin(y>=0.5)
     resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
     resn = round(float(1./resx),1)
-    print "Resolution: %.1f" % resn, u'\u212B'.encode('utf-8')
+    print("Resolution: %.1f" % resn, '\u212B'.encode('utf-8'))
 
-    logging.info('Resolution: %.1f '+ u'\u212B'.encode('utf-8'), resn )
+    logging.info('Resolution: %.1f '+ '\u212B'.encode('utf-8'), resn )
     logging.info('END')
 
     logging.info('END')

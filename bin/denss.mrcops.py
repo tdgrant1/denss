@@ -64,17 +64,17 @@ if __name__ == "__main__":
     else:
         voxel = args.voxel
 
-    print "prezoom"
-    print "Shape:  ", rho.shape
-    print "Sides:  ", a, b, c
-    print "Voxels: ", vx, vy, vz
+    print("prezoom")
+    print("Shape:  ", rho.shape)
+    print("Sides:  ", a, b, c)
+    print("Voxels: ", vx, vy, vz)
     rho = saxs.zoom_rho(rho,(vx,vy,vz),voxel)
 
     vx, vy, vz = np.array((a,b,c))/np.array(rho.shape)
-    print "postzoom"
-    print "Shape:  ", rho.shape
-    print "Sides:  ", a, b, c
-    print "Voxels: ", vx, vy, vz
+    print("postzoom")
+    print("Shape:  ", rho.shape)
+    print("Sides:  ", a, b, c)
+    print("Voxels: ", vx, vy, vz)
 
     if args.side is None:
         newside = max((a,b,c))
@@ -91,10 +91,10 @@ if __name__ == "__main__":
 
     rho = saxs.pad_rho(rho,newshape)
     a,b,c = vx * newshape[0], vy * newshape[1], vz*newshape[2]
-    print "postpad"
-    print "Shape:  ", rho.shape
-    print "Sides:  ", a, b, c
-    print "Voxels: ", vx, vy, vz
+    print("postpad")
+    print("Shape:  ", rho.shape)
+    print("Sides:  ", a, b, c)
+    print("Voxels: ", vx, vy, vz)
 
     #rescale map after interpolation
     if args.ne is not None:
@@ -110,7 +110,7 @@ if __name__ == "__main__":
     rho *= ne/np.sum(rho) #rescale to the total number of electrons
     rho /= vx*vy*vz #now divide by total volume to convert to electron density
 
-    print rho.sum()*vx*vy*vz
+    print(rho.sum()*vx*vy*vz)
 
     saxs.write_mrc(rho,(a,b,c),filename=output+'.mrc')
 

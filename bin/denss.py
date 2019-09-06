@@ -51,15 +51,15 @@ q, I, sigq, dmax, isout = saxs.loadProfile(initargs.file, units=initargs.units)
 
 if not initargs.force_run:
     if min(q) != 0.0:
-        print "CAUTION: Minimum q value = %f " % min(q)
-        print "is not 0.0. It is STRONGLY recommended to include"
-        print "I(q=0) in your given scattering profile. You can use"
-        print "denss.fit_data.py to calculate a scattering profile fit"
-        print "which will include I(q=0), or you can also use the GNOM"
-        print "program from ATSAS to create a .out file."
-        print
-        print "If you are positive you would like to continue, "
-        print "rerun with the --force_run option."
+        print("CAUTION: Minimum q value = %f " % min(q))
+        print("is not 0.0. It is STRONGLY recommended to include")
+        print("I(q=0) in your given scattering profile. You can use")
+        print("denss.fit_data.py to calculate a scattering profile fit")
+        print("which will include I(q=0), or you can also use the GNOM")
+        print("program from ATSAS to create a .out file.")
+        print()
+        print("If you are positive you would like to continue, ")
+        print("rerun with the --force_run option.")
         sys.exit()
 
 
@@ -130,7 +130,7 @@ if __name__ == "__main__":
         cutout=args.cutout,
         my_logger=my_logger)
 
-    print args.output
+    print(args.output)
 
     fit = np.zeros(( len(qbinsc),5 ))
     fit[:len(qdata),0] = qdata

@@ -182,15 +182,15 @@ if __name__ == "__main__":
         print_button = Button(axprint, 'Print Values', color=axcolor, hovercolor='0.975')
 
         def print_values(event):
-            print "---------------------------------"
-            print "Dmax = " + str(round(sasrec.D,2))
-            print "alpha = %.5e" % sasrec.alpha
-            print "Rg = " + str(round(sasrec.rg,2)) + " +- " + str(round(sasrec.rgerr,2))
-            print "I(0) = " + str(round(sasrec.I0,2)) + " +- " + str(round(sasrec.I0err,2))
-            print "Vp = " + str(round(sasrec.Vp,2)) + " +- " + str(round(sasrec.Vperr,2))
-            print "Vp MW = " + str(round(sasrec.mwVp,2)) + " +- " + str(round(sasrec.mwVperr,2))
-            print "Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2))
-            print "Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2))
+            print("---------------------------------")
+            print("Dmax = " + str(round(sasrec.D,2)))
+            print("alpha = %.5e" % sasrec.alpha)
+            print("Rg = " + str(round(sasrec.rg,2)) + " +- " + str(round(sasrec.rgerr,2)))
+            print("I(0) = " + str(round(sasrec.I0,2)) + " +- " + str(round(sasrec.I0err,2)))
+            print("Vp = " + str(round(sasrec.Vp,2)) + " +- " + str(round(sasrec.Vperr,2)))
+            print("Vp MW = " + str(round(sasrec.mwVp,2)) + " +- " + str(round(sasrec.mwVperr,2)))
+            print("Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2)))
+            print("Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2)))
         print_button.on_clicked(print_values)
 
         axsave = plt.axes([0.35, 0.02, 0.1, 0.04])
@@ -201,21 +201,21 @@ if __name__ == "__main__":
             #sascif.write(output+".sascif")
             #print "%s file saved" % (output+".sascif")
             np.savetxt(output+'.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr)).T,delimiter=' ',fmt='%.5e')
-            print "%s file saved" % (output+".dat")
+            print("%s file saved" % (output+".dat"))
         save_button.on_clicked(save_file)
 
         plt.show()
 
 
-    print "---------------------------------"
-    print "Dmax = " + str(round(sasrec.D,2))
-    print "alpha = %.5e" % sasrec.alpha
-    print "Rg = " + str(round(sasrec.rg,2)) + " +- " + str(round(sasrec.rgerr,2))
-    print "I(0) = " + str(round(sasrec.I0,2)) + " +- " + str(round(sasrec.I0err,2))
-    print "Vp = " + str(round(sasrec.Vp,2)) + " +- " + str(round(sasrec.Vperr,2))
-    print "Vp MW = " + str(round(sasrec.mwVp,2)) + " +- " + str(round(sasrec.mwVperr,2))
-    print "Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2))
-    print "Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2))
+    print("---------------------------------")
+    print("Dmax = " + str(round(sasrec.D,2)))
+    print("alpha = %.5e" % sasrec.alpha)
+    print("Rg = " + str(round(sasrec.rg,2)) + " +- " + str(round(sasrec.rgerr,2)))
+    print("I(0) = " + str(round(sasrec.I0,2)) + " +- " + str(round(sasrec.I0err,2)))
+    print("Vp = " + str(round(sasrec.Vp,2)) + " +- " + str(round(sasrec.Vperr,2)))
+    print("Vp MW = " + str(round(sasrec.mwVp,2)) + " +- " + str(round(sasrec.mwVperr,2)))
+    print("Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2)))
+    print("Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2)))
 
 
     #sascif = saxs.Sascif(sasrec)
@@ -223,4 +223,4 @@ if __name__ == "__main__":
     #print "%s file saved" % (output+".sascif")
 
     np.savetxt(output+'.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr)).T,delimiter=' ',fmt='%.5e')
-    print "%s file saved" % (output+".dat")
+    print("%s file saved" % (output+".dat"))
