@@ -705,11 +705,12 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         factors = np.ones((len(qbins)))
         factors[qbin_args] = np.sqrt(Idata/Imean[j,qbin_args])
         F *= factors[qbin_labels]
-        chi[j] = np.sum(((Imean[j,qbin_args]-Idata)/sigqdata)**2)/qbin_args.size
-        interp = interpolate.interp1d(qbinsc, Imean[j], kind='cubic',fill_value="extrapolate")
-        I4chi = interp(q)
-        chi[j] = np.sum(((I4chi-I)/sigq)**2)/len(q)
-
+        try:
+            interp = interpolate.interp1d(qbinsc, Imean[j], kind='cubic',fill_value="extrapolate")
+            I4chi = interp(q)
+            chi[j] = np.sum(((I4chi-I)/sigq)**2)/len(q)
+        except:
+            chi[j] = np.sum(((Imean[j,qbin_args]-Idata)/sigqdata)**2)/qbin_args.size
         #APPLY REAL SPACE RESTRAINTS
         rhoprime = np.fft.ifftn(F,rho.shape)
         rhoprime = rhoprime.real

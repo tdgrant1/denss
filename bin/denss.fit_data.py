@@ -34,7 +34,6 @@ import logging
 import numpy as np
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
-print saxs.__file__
 try:
     imp.find_module('matplotlib')
     matplotlib_found = True
@@ -61,7 +60,7 @@ if matplotlib_found:
     parser.set_defaults(plot=True)
 else:
     parser.set_defaults(plot=False)
-parser.set_defaults(log=False)
+parser.set_defaults(log=True)
 args = parser.parse_args()
 
 if __name__ == "__main__":
