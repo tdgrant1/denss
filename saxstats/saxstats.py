@@ -973,14 +973,20 @@ def euler_grid_search(refrho, movrho, topn=1, abort_event=None):
     scores = np.zeros((len(phi),len(theta)))
     for p in range(len(phi)):
         for t in range(len(theta)):
-            scores[p,t] = 1/minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],refrho=np.abs(refrho),movrho=np.abs(movrho))
-
+            ns = 16
+            refF = np.abs(np.fft.fftn(refrho))[:ns,:ns,:ns]
+            movF = np.abs(np.fft.fftn(movrho))[:ns,:ns,:ns]
+            scores[p,t] = 1./minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],
+                                            refrho=refF,
+                                            movrho=movF
+                                            )
             if abort_event is not None:
                 if abort_event.is_set():
                     return None, None
 
     #best_pt = np.unravel_index(scores.argmin(), scores.shape)
     best_pt = largest_indices(scores, topn)
+    print best_pt
     best_scores = scores[best_pt]
     movrhos = np.zeros((topn,movrho.shape[0],movrho.shape[1],movrho.shape[2]))
 
@@ -1034,12 +1040,17 @@ def minimize_rho(refrho, movrho, T = np.zeros(6)):
     bounds[3:,1] = 5
     save_movrho = np.copy(movrho)
     save_refrho = np.copy(refrho)
+    ns = 16
+    refF = np.abs(np.fft.fftn(refrho))[:ns,:ns,:ns]
+    movF = np.abs(np.fft.fftn(movrho))[:ns,:ns,:ns]
+    print 1/rho_overlap_score(save_refrho,save_movrho)
     result = optimize.fmin_l_bfgs_b(minimize_rho_score, T, factr= 0.1,
         maxiter=100, maxfun=200, epsilon=0.05,
-        args=(np.abs(refrho),np.abs(movrho)), approx_grad=True)
+        args=(refF,movF), approx_grad=True)
     Topt = result[0]
     newrho = transform_rho(save_movrho, Topt)
     finalscore = 1/rho_overlap_score(save_refrho,newrho)
+    print finalscore
     return newrho, finalscore
 
 def minimize_rho_score(T, refrho, movrho):
