@@ -1,6 +1,6 @@
 #!/bin/bash
 
-while getopts hvf:o:i:n:j:e opt; do
+while getopts hvf:o:i:n:j:ep opt; do
   case $opt in
     h)
       echo ""
@@ -17,6 +17,7 @@ while getopts hvf:o:i:n:j:e opt; do
       echo " -n: the number of reconstructions to run (default 20)"
       echo " -j: the number of cores to use for parallel processing (default one less than system)"
       echo " -e: generate and select enantiomers (significantly increases runtime, default=no)"
+      echo " -p: turn off plotting (default is to plot)"
       echo " ----------------------------------------------------------------------------- "
       echo ""
       exit 0
@@ -41,6 +42,9 @@ while getopts hvf:o:i:n:j:e opt; do
       ;;
     e)
       enantiomers=True
+      ;;
+    p)
+      plot=False
       ;;
     \?)
       echo "Invalid option: -$OPTARG" >&2
@@ -94,10 +98,15 @@ then
     mkdir $newdir
 fi
 
+cp ${file} ${newdir}/
 cd $newdir
-cp ../${file} .
 pwd
 echo "superdenss $@" > command
+
+if [ ${plot} == "False" ];
+then
+    options="${options} --plot_off"
+fi
 
 printf "Running denss.py %i times \n" $n
 
@@ -150,7 +159,12 @@ do
     e2proc3d.py --calcfsc=${id}_avg.mrc spt_avg_01/aliptcls_odd.hdf ${id}_odd_$i.fsc --first $i --last $i
 done
 
-fsc2res.py -f ${id}_even_*.fsc ${id}_odd_*.fsc -o ${id}_avg_fsc
+if [ "${plot}" == "False"];
+then
+    fsc2res.py -f ${id}_even_*.fsc ${id}_odd_*.fsc -o ${id}_avg_fsc --plot_off
+else
+  fsc2res.py -f ${id}_even_*.fsc ${id}_odd_*.fsc -o ${id}_avg_fsc --plot_on
+fi
 
 
 
