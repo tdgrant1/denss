@@ -125,7 +125,7 @@ def write_mrc(rho,side,filename="map.mrc"):
             fout.write(struct.pack('<f', 0.0))
 
         # XORIGIN, YORIGIN, ZORIGIN
-        fout.write(struct.pack('<fff', nxstart*(a/xs), nystart*(b/ys), nzstart*(c/zs)))
+        fout.write(struct.pack('<fff', 0.,0.,0. )) #nxstart*(a/xs), nystart*(b/ys), nzstart*(c/zs) ))
         # MAP
         fout.write('MAP ')
         # MACHST (little endian)
