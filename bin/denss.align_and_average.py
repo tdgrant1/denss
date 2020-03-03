@@ -78,7 +78,7 @@ if __name__ == "__main__":
     sides = np.array(sides)
 
     if nmaps<2:
-        print "Not enough maps to align. Please input more maps again..."
+        print("Not enough maps to align. Please input more maps again...")
         sys.exit(1)
 
     if args.ref is not None:
@@ -106,11 +106,11 @@ if __name__ == "__main__":
         if args.ref.endswith('.mrc'):
             refrho, refside = saxs.read_mrc(args.ref)
         if (not args.ref.endswith('.mrc')) and (not args.ref.endswith('.pdb')):
-            print "Invalid reference filename given. .mrc or .pdb file required"
+            print("Invalid reference filename given. .mrc or .pdb file required")
             sys.exit(1)
 
     if args.enan:
-        print " Selecting best enantiomers..."
+        print(" Selecting best enantiomers...")
         try:
             if args.ref:
                 allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
@@ -120,13 +120,13 @@ if __name__ == "__main__":
             sys.exit(1)
 
     if args.ref is None:
-        print " Generating reference..."
+        print(" Generating reference...")
         try:
             refrho = saxs.binary_average(allrhos, args.cores)
         except KeyboardInterrupt:
             sys.exit(1)
 
-    print " Aligning all maps to reference..."
+    print(" Aligning all maps to reference...")
     try:
         aligned, scores = saxs.align_multiple(refrho, allrhos, args.cores)
     except KeyboardInterrupt:
@@ -137,9 +137,9 @@ if __name__ == "__main__":
     std = np.std(scores)
     threshold = mean - 2*std
     filtered = np.empty(len(scores),dtype=str)
-    print
-    print "Mean of correlation scores: %.3f" % mean
-    print "Standard deviation of scores: %.3f" % std
+    print()
+    print("Mean of correlation scores: %.3f" % mean)
+    print("Standard deviation of scores: %.3f" % std)
     for i in range(nmaps):
         if scores[i] < threshold:
             filtered[i] = 'Filtered'
@@ -148,7 +148,7 @@ if __name__ == "__main__":
         basename, ext = os.path.splitext(args.files[i])
         ioutput = basename+"_aligned"
         saxs.write_mrc(aligned[i], sides[0], ioutput+'.mrc')
-        print "%s.mrc written. Score = %0.3f %s " % (ioutput,scores[i],filtered[i])
+        print("%s.mrc written. Score = %0.3f %s " % (ioutput,scores[i],filtered[i]))
         logging.info('Correlation score to reference: %s.mrc %.3f %s', ioutput, scores[i], filtered[i])
 
     aligned = aligned[scores>threshold]
@@ -181,9 +181,9 @@ if __name__ == "__main__":
     resi = np.argmin(y>=0.5)
     resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
     resn = round(float(1./resx),1)
-    print "Resolution: %.1f" % resn, u'\u212B'.encode('utf-8')
+    print("Resolution: %.1f" % resn, '\u212B'.encode('utf-8'))
 
-    logging.info('Resolution: %.1f '+ u'\u212B'.encode('utf-8'), resn )
+    logging.info('Resolution: %.1f '+ '\u212B'.encode('utf-8'), resn )
     logging.info('END')
 
 

@@ -61,7 +61,7 @@ if __name__ == "__main__":
     aligned = saxs.align2xyz(rho)
 
     saxs.write_mrc(aligned, side, output+'.mrc')
-    print "%s.mrc written. " % (output,)
+    print("%s.mrc written. " % (output,))
 
     logging.info('END')
 

@@ -65,7 +65,7 @@ if __name__ == "__main__":
     rho, side = saxs.read_mrc(args.file)
 
     if args.ref is None:
-        print "Need reference file (.mrc or .pdb)"
+        print("Need reference file (.mrc or .pdb)")
         sys.exit(1)
     else:
         if args.ref.endswith('.pdb'):
@@ -91,13 +91,13 @@ if __name__ == "__main__":
         if args.ref.endswith('.mrc'):
             refrho, refside = saxs.read_mrc(args.ref)
         if (not args.ref.endswith('.mrc')) and (not args.ref.endswith('.pdb')):
-            print "Invalid reference filename given. .mrc or .pdb file required"
+            print("Invalid reference filename given. .mrc or .pdb file required")
             sys.exit(1)
 
     aligned = saxs.principal_axis_alignment(refrho,rho)
 
     saxs.write_mrc(aligned, side, output+'.mrc')
-    print "%s.mrc written. " % (output,)
+    print("%s.mrc written. " % (output,))
 
     logging.info('END')
 

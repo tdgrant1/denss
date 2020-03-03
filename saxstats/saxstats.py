@@ -41,6 +41,7 @@ import datetime, time
 
 import numpy as np
 from scipy import ndimage, interpolate, spatial, special, optimize
+from functools import reduce
 
 def chi2(exp, calc, sig):
     """Return the chi2 discrepancy between experimental and calculated data"""
@@ -69,7 +70,7 @@ def center_rho(rho, centering="com", return_shift=False):
 def rho2rg(rho,side=None,r=None,support=None,dx=None):
     """Calculate radius of gyration from an electron density map."""
     if side is None and r is None:
-        print "Error: To calculate Rg, must provide either side or r parameters."
+        print("Error: To calculate Rg, must provide either side or r parameters.")
         sys.exit()
     if side is not None and r is None:
         n = rho.shape[0]
@@ -79,7 +80,7 @@ def rho2rg(rho,side=None,r=None,support=None,dx=None):
     if support is None:
         support = np.ones_like(rho,dtype=bool)
     if dx is None:
-        print "Error: To calculate Rg, must provide dx"
+        print("Error: To calculate Rg, must provide dx")
         sys.exit()
     rhocom = (np.array(ndimage.measurements.center_of_mass(rho))-np.array(rho.shape)/2.)*dx
     rg2 = np.sum(r[support]**2*rho[support])/np.sum(rho[support])
@@ -101,7 +102,7 @@ def write_mrc(rho,side,filename="map.mrc"):
     elif len(side) == 3:
         a,b,c = side
     else:
-        print "Error. Argument 'side' must be float or 3-tuple"
+        print("Error. Argument 'side' must be float or 3-tuple")
     with open(filename, "wb") as fout:
         # NC, NR, NS, MODE = 2 (image : 32-bit reals)
         fout.write(struct.pack('<iiii', xs, ys, zs, 2))
@@ -135,7 +136,7 @@ def write_mrc(rho,side,filename="map.mrc"):
         # NLABL
         fout.write(struct.pack('<i', 0))
         # LABEL(20,10) 10 80-character text labels
-        for i in xrange(0, 800):
+        for i in range(0, 800):
             fout.write(struct.pack('<B', 0x00))
 
         # Write out data
@@ -239,7 +240,7 @@ def zoom_rho(rho,vx,dx):
     elif len(vx) == 3:
         vx, vy, vz = vx
     else:
-        print "Error. Argument 'side' must be float or 3-tuple"
+        print("Error. Argument 'side' must be float or 3-tuple")
     #zoom factors
     zx, zy, zz = vx/dx, vy/dx, vz/dx
     newrho = ndimage.zoom(rho,(zx, zy, zz),order=1,mode="wrap")
@@ -478,7 +479,7 @@ def loadDatFile(filename):
             hdict = {}
 
     if hdict:
-        for each in hdict.iterkeys():
+        for each in hdict.keys():
             if each != 'filename':
                 results[each] = hdict[each]
 
@@ -498,7 +499,7 @@ def loadProfile(fname, units="a"):
         q, I, Ierr, results = loadDatFile(fname)
         isout = False
 
-    keys = {key.lower().strip().translate(None, '_ '): key for key in results.keys()}
+    keys = {key.lower().strip().translate(None, '_ '): key for key in list(results.keys())}
 
     if 'dmax' in keys:
         dmax = float(results[keys['dmax']])
@@ -509,7 +510,7 @@ def loadProfile(fname, units="a"):
         #DENSS assumes 1/angstrom, so convert from 1/nm to 1/angstrom
         q /= 10
         dmax *= 10
-        print "Angular units converted from 1/nm to 1/angstrom"
+        print("Angular units converted from 1/nm to 1/angstrom")
 
     return q, I, Ierr, dmax, isout
 
@@ -1347,7 +1348,7 @@ def average_pairs(rhos, cores=1, abort_event=None):
     pool = multiprocessing.Pool(cores)
     try:
         mapfunc = partial(multi_average_two, **rho_args)
-        average_rhos = pool.map(mapfunc, range(rhos.shape[0]/2))
+        average_rhos = pool.map(mapfunc, list(range(rhos.shape[0]/2)))
         pool.close()
         pool.join()
     except KeyboardInterrupt:
@@ -1925,7 +1926,7 @@ def pdb2map_gauss(pdb,xyz,sigma,mode="slow",eps=1e-6):
     #dist = spatial.distance.cdist(pdb.coords, xyz)
     #rho = np.sum(values,axis=0).reshape(n,n,n)
     #run cdist in a loop over atoms to avoid overloading memory
-    print "\n Read density map from PDB... "
+    print("\n Read density map from PDB... ")
     if mode == "fast":
         if eps is None:
             eps = np.finfo('float64').eps
@@ -1949,7 +1950,7 @@ def pdb2map_gauss(pdb,xyz,sigma,mode="slow",eps=1e-6):
             dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
             dist *= dist
             values += pdb.nelectrons[i]*1./np.sqrt(2*np.pi*sigma**2) * np.exp(-dist[0]/(2*sigma**2))
-    print
+    print()
     return values.reshape(n,n,n)
 
 def pdb2map_FFT(pdb,x,y,z,radii=None,restrict=True):
@@ -1997,8 +1998,8 @@ def pdb2map_FFT(pdb,x,y,z,radii=None,restrict=True):
             F += sphere(q=qr, R=radii[i], I0=pdb.nelectrons[i],amp=True) * np.exp(-1j * (qx*pdb.coords[i,0] + qy*pdb.coords[i,1] + qz*pdb.coords[i,2]))
         else:
             F += formfactor(element=pdb.atomtype[i],q=qr) * np.exp(-1j * (qx*pdb.coords[i,0] + qy*pdb.coords[i,1] + qz*pdb.coords[i,2]))
-    print
-    print "Total number of electrons = %f " % np.abs(F[0,0,0])
+    print()
+    print("Total number of electrons = %f " % np.abs(F[0,0,0]))
     qbin_labels = np.zeros(F.shape, dtype=int)
     qbin_labels = np.digitize(qr, qbins)
     qbin_labels -= 1
@@ -2108,8 +2109,8 @@ def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=T
     Amp = np.abs(F)
 
     if not quiet:
-        print "\n Step     Chi2     Rg    Support Volume"
-        print " ----- --------- ------- --------------"
+        print("\n Step     Chi2     Rg    Support Volume")
+        print(" ----- --------- ------- --------------")
 
     for j in range(steps):
         F = np.fft.fftn(rho)
@@ -2145,7 +2146,7 @@ def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=T
         rho = newrho
 
     if not quiet:
-        print
+        print()
 
     F = np.fft.fftn(rho)
     #calculate spherical average intensity from 3D Fs

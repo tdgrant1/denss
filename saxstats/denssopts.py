@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from _version import __version__
+from ._version import __version__
 import os, argparse
 import imp
 try:
@@ -101,13 +101,13 @@ def parse_arguments(parser,gnomdmax=None):
         nsamples = 32
         shrinkwrap_minstep = 1000
         enforce_connectivity_steps = [2000]
-        recenter_steps = range(501,2502,500)
+        recenter_steps = list(range(501,2502,500))
     elif args.mode[0].upper() == "S":
         args.mode = "SLOW"
         nsamples = 64
         shrinkwrap_minstep = 5000
         enforce_connectivity_steps = [6000]
-        recenter_steps = range(501,8002,500)
+        recenter_steps = list(range(501,8002,500))
     elif args.mode[0].upper() == "M":
         args.mode = "MEMBRANE"
         nsamples = 64
@@ -115,7 +115,7 @@ def parse_arguments(parser,gnomdmax=None):
         shrinkwrap_minstep = 0
         shrinkwrap_threshold_fraction = 0.1
         enforce_connectivity_steps = [300]
-        recenter_steps = range(501,8002,500)
+        recenter_steps = list(range(501,8002,500))
     else:
         args.mode = "None"
 

@@ -63,15 +63,15 @@ q, I, sigq, dmax, isout = saxs.loadProfile(initargs.file, units=initargs.units)
 
 if not initargs.force_run:
     if min(q) != 0.0:
-        print "CAUTION: Minimum q value = %f " % min(q)
-        print "is not 0.0. It is STRONGLY recommended to include"
-        print "I(q=0) in your given scattering profile. You can use"
-        print "denss.fit_data.py to calculate a scattering profile fit"
-        print "which will include I(q=0), or you can also use the GNOM"
-        print "program from ATSAS to create a .out file."
-        print
-        print "If you are positive you would like to continue, "
-        print "rerun with the --force_run option."
+        print("CAUTION: Minimum q value = %f " % min(q))
+        print("is not 0.0. It is STRONGLY recommended to include")
+        print("I(q=0) in your given scattering profile. You can use")
+        print("denss.fit_data.py to calculate a scattering profile fit")
+        print("which will include I(q=0), or you can also use the GNOM")
+        print("program from ATSAS to create a .out file.")
+        print()
+        print("If you are positive you would like to continue, ")
+        print("rerun with the --force_run option.")
         sys.exit()
 
 if dmax <= 0:
@@ -145,7 +145,7 @@ def multi_denss(niter, **kwargs):
 if __name__ == "__main__":
 
     if superargs.nmaps<2:
-        print "Not enough maps to align"
+        print("Not enough maps to align")
         sys.exit(1)
 
     basename, ext = os.path.splitext(superargs.file)
@@ -160,7 +160,7 @@ if __name__ == "__main__":
         out_dir = output + "_" + str(dirn)
         dirn += 1
 
-    print out_dir
+    print(out_dir)
     os.mkdir(out_dir)
     output = out_dir+'/'+out_dir
     args.output = output
@@ -189,8 +189,8 @@ if __name__ == "__main__":
 
     try:
         mapfunc = partial(multi_denss, **denss_inputs)
-        denss_outputs = pool.map(mapfunc, range(superargs.nmaps))
-        print "\r Finishing denss job: %i / %i" % (superargs.nmaps,superargs.nmaps)
+        denss_outputs = pool.map(mapfunc, list(range(superargs.nmaps)))
+        print("\r Finishing denss job: %i / %i" % (superargs.nmaps,superargs.nmaps))
         sys.stdout.flush()
         pool.close()
         pool.join()
@@ -215,7 +215,7 @@ if __name__ == "__main__":
         header.append("I_fit_"+str(map))
 
     np.savetxt(output+'_map.fit',fit,delimiter=" ",fmt="%.5e", header=" ".join(header))
-    chi_header, rg_header, supportV_header = zip(*[('chi_'+str(i), 'rg_'+str(i),'supportV_'+str(i)) for i in range(superargs.nmaps)])
+    chi_header, rg_header, supportV_header = list(zip(*[('chi_'+str(i), 'rg_'+str(i),'supportV_'+str(i)) for i in range(superargs.nmaps)]))
     all_chis = np.array([denss_outputs[i][5] for i in np.arange(superargs.nmaps)])
     all_rg = np.array([denss_outputs[i][6] for i in np.arange(superargs.nmaps)])
     all_supportV = np.array([denss_outputs[i][7] for i in np.arange(superargs.nmaps)])
@@ -247,23 +247,23 @@ if __name__ == "__main__":
             refrho, refside = saxs.read_mrc(superargs.ref)
 
     if superargs.enan:
-        print
-        print " Selecting best enantiomers..."
+        print()
+        print(" Selecting best enantiomers...")
         try:
             allrhos, scores = saxs.select_best_enantiomers(allrhos, cores=superargs.cores)
         except KeyboardInterrupt:
             sys.exit(1)
 
     if superargs.ref is None:
-        print
-        print " Generating reference..."
+        print()
+        print(" Generating reference...")
         try:
             refrho = saxs.binary_average(allrhos, superargs.cores)
         except KeyboardInterrupt:
             sys.exit(1)
 
-    print
-    print " Aligning all maps to reference..."
+    print()
+    print(" Aligning all maps to reference...")
     try:
         aligned, scores = saxs.align_multiple(refrho, allrhos, superargs.cores)
     except KeyboardInterrupt:
@@ -274,8 +274,8 @@ if __name__ == "__main__":
     std = np.std(scores)
     threshold = mean - 2*std
     filtered = np.empty(len(scores),dtype=str)
-    print "Mean of correlation scores: %.3f" % mean
-    print "Standard deviation of scores: %.3f" % std
+    print("Mean of correlation scores: %.3f" % mean)
+    print("Standard deviation of scores: %.3f" % std)
     for i in range(superargs.nmaps):
         if scores[i] < threshold:
             filtered[i] = 'Filtered'
@@ -283,7 +283,7 @@ if __name__ == "__main__":
             filtered[i] = ' '
         ioutput = output+"_"+str(i)+"_aligned"
         saxs.write_mrc(aligned[i], sides[0], ioutput+".mrc")
-        print "%s.mrc written. Score = %0.3f %s " % (ioutput,scores[i],filtered[i])
+        print("%s.mrc written. Score = %0.3f %s " % (ioutput,scores[i],filtered[i]))
         logging.info('Correlation score to reference: %s.mrc %.3f %s', ioutput, scores[i], filtered[i])
 
     aligned = aligned[scores>threshold]
@@ -315,7 +315,7 @@ if __name__ == "__main__":
     resi = np.argmin(y>=0.5)
     resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
     resn = round(float(1./resx),1)
-    print "Resolution: %.1f" % resn, u'\u212B'.encode('utf-8')
+    print("Resolution: %.1f" % resn, '\u212B'.encode('utf-8'))
 
-    logging.info('Resolution: %.1f '+ u'\u212B'.encode('utf-8'), resn )
+    logging.info('Resolution: %.1f '+ '\u212B'.encode('utf-8'), resn )
     logging.info('END')

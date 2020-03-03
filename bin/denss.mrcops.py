@@ -63,17 +63,17 @@ if __name__ == "__main__":
     V = a*b*c
     dV = vx*vy*vz
     ne = np.sum(rho) * dV
-    print "Original number of electrons:", ne
+    print("Original number of electrons:", ne)
 
     if args.voxel is None:
         voxel = min((vx, vy, vz))
     else:
         voxel = args.voxel
 
-    print "prezoom"
-    print "Shape:  ", rho.shape
-    print "Sides:  ", a, b, c
-    print "Voxels: ", vx, vy, vz
+    print("prezoom")
+    print("Shape:  ", rho.shape)
+    print("Sides:  ", a, b, c)
+    print("Voxels: ", vx, vy, vz)
 
     if args.voxel is not None:
         #only resample if voxel option is defined by user
@@ -83,10 +83,10 @@ if __name__ == "__main__":
         vx, vy, vz = np.array((a,b,c))/np.array(rho.shape)
         dV = vx*vy*vz
 
-    print "postzoom"
-    print "Shape:  ", rho.shape
-    print "Sides:  ", a, b, c
-    print "Voxels: ", vx, vy, vz
+    print("postzoom")
+    print("Shape:  ", rho.shape)
+    print("Sides:  ", a, b, c)
+    print("Voxels: ", vx, vy, vz)
 
     if args.side is None:
         newside = max((a,b,c))
@@ -104,10 +104,10 @@ if __name__ == "__main__":
     if (args.side is not None) or (args.n is not None):
         rho = saxs.pad_rho(rho,newshape)
         a,b,c = vx * newshape[0], vy * newshape[1], vz*newshape[2]
-    print "postpad"
-    print "Shape:  ", rho.shape
-    print "Sides:  ", a, b, c
-    print "Voxels: ", vx, vy, vz
+    print("postpad")
+    print("Shape:  ", rho.shape)
+    print("Sides:  ", a, b, c)
+    print("Voxels: ", vx, vy, vz)
 
 
     if args.threshold is not None:
@@ -123,7 +123,7 @@ if __name__ == "__main__":
     #original total number of electrons even if args.ne is not given
     rho *= ne/np.sum(rho) * dV
 
-    print "Final number of electrons:", np.sum(rho)*dV
+    print("Final number of electrons:", np.sum(rho)*dV)
 
     saxs.write_mrc(rho,(a,b,c),filename=output+'.mrc')
 

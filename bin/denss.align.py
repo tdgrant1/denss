@@ -78,7 +78,7 @@ if __name__ == "__main__":
     sides = np.array(sides)
 
     if args.ref is None:
-        print "Need reference file (.mrc or .pdb)"
+        print("Need reference file (.mrc or .pdb)")
         sys.exit(1)
     else:
         if args.ref.endswith('.pdb'):
@@ -104,11 +104,11 @@ if __name__ == "__main__":
         if args.ref.endswith('.mrc'):
             refrho, refside = saxs.read_mrc(args.ref)
         if (not args.ref.endswith('.mrc')) and (not args.ref.endswith('.pdb')):
-            print "Invalid reference filename given. .mrc or .pdb file required"
+            print("Invalid reference filename given. .mrc or .pdb file required")
             sys.exit(1)
 
     if args.enan:
-        print " Selecting best enantiomer(s)..."
+        print(" Selecting best enantiomer(s)...")
         try:
             if args.ref:
                 allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
@@ -117,7 +117,7 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             sys.exit(1)
 
-    print " Aligning to reference..."
+    print(" Aligning to reference...")
     try:
         aligned, scores = saxs.align_multiple(refrho, allrhos, args.cores)
     except KeyboardInterrupt:
@@ -127,7 +127,7 @@ if __name__ == "__main__":
         basename, ext = os.path.splitext(args.files[i])
         output = basename+"_aligned"
         saxs.write_mrc(aligned[i], sides[0], output+'.mrc')
-        print "%s.mrc written. Score = %0.3f" % (output,scores[i])
+        print("%s.mrc written. Score = %0.3f" % (output,scores[i]))
         logging.info('Correlation score to reference: %s.mrc %.3f', output, scores[i])
 
     logging.info('END')
