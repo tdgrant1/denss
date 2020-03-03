@@ -103,7 +103,7 @@ cd $newdir
 pwd
 echo "superdenss $@" > command
 
-if [ ${plot} == "False" ];
+if [ "${plot}" == "False" ];
 then
     options="${options} --plot_off"
 fi
@@ -159,11 +159,11 @@ do
     e2proc3d.py --calcfsc=${id}_avg.mrc spt_avg_01/aliptcls_odd.hdf ${id}_odd_$i.fsc --first $i --last $i
 done
 
-if [ "${plot}" == "False"];
+if [ "${plot}" == "False" ];
 then
     fsc2res.py -f ${id}_even_*.fsc ${id}_odd_*.fsc -o ${id}_avg_fsc --plot_off
 else
-  fsc2res.py -f ${id}_even_*.fsc ${id}_odd_*.fsc -o ${id}_avg_fsc --plot_on
+    fsc2res.py -f ${id}_even_*.fsc ${id}_odd_*.fsc -o ${id}_avg_fsc --plot_on
 fi
 
 

@@ -52,7 +52,7 @@ resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
 
 resn = round(float(1./resx),1)
 
-print("Resolution: %.1f" % resn, '\u212B'.encode('utf-8'))
+print("Resolution: %.1f A" % resn)
 
 if args.plot:
     import matplotlib.pyplot as plt
