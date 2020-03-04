@@ -27,7 +27,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-
+from __future__ import print_function
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 import saxstats.denssopts as dopts

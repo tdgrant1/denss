@@ -29,6 +29,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+from __future__ import print_function
 import sys
 import re
 import os
@@ -195,11 +196,11 @@ def pad_rho(rho,newshape):
     a = rho
     a_nx,a_ny,a_nz = a.shape
     b_nx,b_ny,b_nz = newshape
-    padx1 = (b_nx-a_nx)/2
+    padx1 = (b_nx-a_nx)//2
     padx2 = (b_nx-a_nx) - padx1
-    pady1 = (b_ny-a_ny)/2
+    pady1 = (b_ny-a_ny)//2
     pady2 = (b_ny-a_ny) - pady1
-    padz1 = (b_nz-a_nz)/2
+    padz1 = (b_nz-a_nz)//2
     padz2 = (b_nz-a_nz) - padz1
     #np.pad cannot take negative values, i.e. where the array will be cropped
     #however, can instead just use slicing to do the equivalent

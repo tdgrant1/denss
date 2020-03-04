@@ -28,6 +28,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+from __future__ import print_function
 import os, argparse, sys, imp
 import logging
 import numpy as np
@@ -123,7 +124,7 @@ if __name__ == "__main__":
     #original total number of electrons even if args.ne is not given
     rho *= ne/np.sum(rho) * dV
 
-    print("Final number of electrons:", np.sum(rho)*dV)
+    print("Final number of electrons:", np.sum(rho)/dV)
 
     saxs.write_mrc(rho,(a,b,c),filename=output+'.mrc')
 
