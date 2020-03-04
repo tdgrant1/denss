@@ -93,9 +93,9 @@ def write_mrc(rho,side,filename="map.mrc"):
        See here: http://www2.mrc-lmb.cam.ac.uk/research/locally-developed-software/image-processing-software/#image
     """
     xs, ys, zs = rho.shape
-    nxstart = -xs/2+1
-    nystart = -ys/2+1
-    nzstart = -zs/2+1
+    nxstart = -xs//2+1
+    nystart = -ys//2+1
+    nzstart = -zs//2+1
     side = np.atleast_1d(side)
     if len(side) == 1:
         a,b,c = side, side, side
@@ -128,7 +128,7 @@ def write_mrc(rho,side,filename="map.mrc"):
         # XORIGIN, YORIGIN, ZORIGIN
         fout.write(struct.pack('<fff', 0.,0.,0. )) #nxstart*(a/xs), nystart*(b/ys), nzstart*(c/zs) ))
         # MAP
-        fout.write('MAP ')
+        fout.write('MAP '.encode())
         # MACHST (little endian)
         fout.write(struct.pack('<BBBB', 0x44, 0x41, 0x00, 0x00))
         # RMS (std)
@@ -499,7 +499,10 @@ def loadProfile(fname, units="a"):
         q, I, Ierr, results = loadDatFile(fname)
         isout = False
 
-    keys = {key.lower().strip().translate(None, '_ '): key for key in list(results.keys())}
+    if sys.version_info[0] > 2:
+        keys = {key.lower().strip().translate(str.maketrans('','', '_ ')): key for key in list(results.keys())}
+    else:
+        keys = {key.lower().strip().translate(None, '_ '): key for key in list(results.keys())}
 
     if 'dmax' in keys:
         dmax = float(results[keys['dmax']])
@@ -1348,7 +1351,7 @@ def average_pairs(rhos, cores=1, abort_event=None):
     pool = multiprocessing.Pool(cores)
     try:
         mapfunc = partial(multi_average_two, **rho_args)
-        average_rhos = pool.map(mapfunc, list(range(rhos.shape[0]/2)))
+        average_rhos = pool.map(mapfunc, list(range(rhos.shape[0]//2)))
         pool.close()
         pool.join()
     except KeyboardInterrupt:
