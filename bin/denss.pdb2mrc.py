@@ -39,7 +39,7 @@ parser.add_argument("-f", "--file", type=str, help="PDB filename")
 parser.add_argument("-s", "--side", default=300., type=float, help="Desired length real space box side (default=300 angstroms)")
 parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired voxel size (default=None)")
 parser.add_argument("-n", "--nsamples", default=64, type=float, help="Desired number of samples per axis (default=64)")
-parser.add_argument("-m", "--mode", default="slow", type=str, help="Mode. Either fast, slow, or FFT (default=slow).")
+parser.add_argument("-m", "--mode", default="fast", type=str, help="Mode. Either fast or FFT (default=fast).")
 parser.add_argument("-r", "--resolution", default=10.0, type=float, help="Desired resolution (i.e. Gaussian width sigma) (default=15 angstroms)")
 parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB reference (default).")
 parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB reference.")
@@ -77,15 +77,14 @@ if __name__ == "__main__":
         pdb.coords -= pdb.coords.mean(axis=0)
         pdb.write(filename=pdboutput)
 
-    if n <= 20:
-        #n must be greater than 20 with current implementation of fast
-        #mode using KDTrees. So switch to slow mode, since its a small grid anyways
-        args.mode = "slow"
-
     if args.mode == "fast":
-        rho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution,mode="fast",eps=1e-6)
+        #rho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution,mode="fast",eps=1e-6)
+        rho = saxs.pdb2map_fastgauss(pdb,x=x,y=y,z=z,sigma=args.resolution,r=args.resolution*2)
     elif args.mode == "slow":
-        rho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution,mode="slow")
+        print("slow mode doesn't exist anymore. Use fast mode.")
+        #not even going to bother with this version anymore. fastgauss is the 
+        #same function as slow, so just as accurate, but it way, way faster
+        #rho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution,mode="slow")
     else:
         print("Note: Using FFT method results in severe truncation ripples in map.")
         print("This will also run a quick refinement of phases to attempt to clean this up.")

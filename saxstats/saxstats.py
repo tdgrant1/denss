@@ -1957,6 +1957,62 @@ def pdb2map_gauss(pdb,xyz,sigma,mode="slow",eps=1e-6):
     print()
     return values.reshape(n,n,n)
 
+def pdb2map_fastgauss(pdb,x,y,z,sigma,r=20.0):
+    """Simple isotropic gaussian sum at coordinate locations.
+
+    This fastgauss function only calculates the values at
+    grid points near the atom for speed.
+
+    pdb - instance of PDB class (required)
+    x,y,z - meshgrids for x, y, and z (required)
+    sigma - width of Gaussian, i.e. effectively resolution
+    r - maximum distance from atom to calculate density
+    """
+    side = x[-1,0,0] - x[0,0,0]
+    halfside = side/2
+    n = x.shape[0]
+    dx = side/n
+    dV = dx**3
+    V = side**3
+    x_ = x[:,0,0]
+    sigma /= 4. #to make compatible with e2pdb2mrc/chimera sigma
+    shift = np.ones(3)*dx/2.
+    print("\n Read density map from PDB... ")
+    values = np.zeros(x.shape)
+    for i in range(pdb.coords.shape[0]):
+        sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
+        sys.stdout.flush()
+        #this will cut out the grid points that are near the atom
+        #first, get the min and max distances for each dimension
+        #also, convert those distances to indices by dividing by dx
+        xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
+        xmin = int(np.floor((xa-r)/dx)) + n//2
+        xmax = int(np.ceil((xa+r)/dx)) + n//2
+        ymin = int(np.floor((ya-r)/dx)) + n//2
+        ymax = int(np.ceil((ya+r)/dx)) + n//2
+        zmin = int(np.floor((za-r)/dx)) + n//2
+        zmax = int(np.ceil((za+r)/dx)) + n//2
+        #handle edges
+        xmin = max([xmin,0])
+        xmax = min([xmax,n])
+        ymin = max([ymin,0])
+        ymax = min([ymax,n])
+        zmin = max([zmin,0])
+        zmax = min([zmax,n])
+        #now lets create a slice object for convenience
+        slc = np.s_[xmin:xmax,ymin:ymax,zmin:zmax]
+        nx = xmax-xmin
+        ny = ymax-ymin
+        nz = zmax-zmin
+        #now lets create a column stack of coordinates for the cropped grid
+        xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
+        dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
+        dist *= dist
+        tmpvalues = pdb.nelectrons[i]*1./np.sqrt(2*np.pi*sigma**2) * np.exp(-dist[0]/(2*sigma**2))
+        values[slc] += tmpvalues.reshape(nx,ny,nz)
+    print()
+    return values
+
 def pdb2map_FFT(pdb,x,y,z,radii=None,restrict=True):
     """Calculate electron density from pdb coordinates by FFT of Fs.
 
