@@ -151,8 +151,8 @@ if __name__ == "__main__":
         #create list of qbin indices just in region of data for later F scaling
         qbin_args = np.copy(qbinsc)
         rho_pad = np.zeros((n,n,n),dtype=np.float32)
-        a = n/2-n_orig/2
-        b = n/2+n_orig/2
+        a = n//2-n_orig//2
+        b = n//2+n_orig//2
         rho_pad[a:b,a:b,a:b] = rho
         F = np.fft.fftn(rho_pad)
         I3D = np.abs(F)**2
