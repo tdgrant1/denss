@@ -99,7 +99,9 @@ if __name__ == "__main__":
             if args.center:
                 pdb.coords -= pdb.coords.mean(axis=0)
                 pdb.write(filename=refoutput)
-            refrho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution)
+            #use the new fastgauss function
+            #refrho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution)
+            refrho = saxs.pdb2map_fastgauss(pdb,x=x,y=y,z=z,sigma=args.resolution,r=args.resolution*2)
             refrho = refrho*np.sum(allrhos[0])/np.sum(refrho)
             saxs.write_mrc(refrho,sides[0],filename=refbasename+'_pdb.mrc')
         if args.ref.endswith('.mrc'):
