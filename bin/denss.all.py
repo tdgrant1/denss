@@ -162,7 +162,7 @@ if __name__ == "__main__":
 
     print(out_dir)
     os.mkdir(out_dir)
-    output = out_dir+'/'+out_dir
+    output = out_dir+'/'+output
     args.output = output
     superargs.output = output
 
@@ -319,3 +319,19 @@ if __name__ == "__main__":
 
     logging.info('Resolution: %.1f ', resn )
     logging.info('END')
+
+    if superargs.plot:
+        import matplotlib.pyplot as plt
+        plt.plot(fsc[:,0],fsc[:,0]*0+0.5,'k--')
+        for i in range(superargs.nmaps):
+            plt.plot(fscs[i,:,0],fscs[i,:,1],'k--',alpha=0.1)
+        plt.plot(fsc[:,0],fsc[:,1],'bo-')
+        #plt.plot(x,y,'k-')
+        plt.plot([resx],[0.5],'ro',label='Resolution = '+str(resn)+r'$\mathrm{\AA}$')
+        plt.legend()
+        plt.xlabel('Resolution (1/$\mathrm{\AA}$)')
+        plt.ylabel('Fourier Shell Correlation')
+        pltoutput = os.path.splitext(output)[0]
+        print(pltoutput)
+        plt.savefig(pltoutput+'_fsc.png',dpi=150)
+        plt.close()

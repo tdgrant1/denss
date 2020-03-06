@@ -161,9 +161,9 @@ done
 
 if [ "${plot}" == "False" ];
 then
-    fsc2res.py -f ${id}_even_*.fsc ${id}_odd_*.fsc -o ${id}_avg_fsc --plot_off
+    fsc2res.py -f ${id}_even_*.fsc ${id}_odd_*.fsc -o ${id}_fsc.dat --plot_off
 else
-    fsc2res.py -f ${id}_even_*.fsc ${id}_odd_*.fsc -o ${id}_avg_fsc --plot_on
+    fsc2res.py -f ${id}_even_*.fsc ${id}_odd_*.fsc -o ${id}_fsc.dat --plot_on
 fi
 
 

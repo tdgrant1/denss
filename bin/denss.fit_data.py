@@ -74,7 +74,7 @@ if __name__ == "__main__":
     else:
         output = args.output
 
-    Iq = np.genfromtxt(args.file, invalid_raise = False)[args.n1:args.n2]
+    Iq = np.genfromtxt(args.file, invalid_raise = False, skip_header=args.n1,skip_footer=args.n2)#[args.n1:args.n2]
     Iq = Iq[~np.isnan(Iq).any(axis = 1)]
     D = args.dmax
     nes = args.nes
