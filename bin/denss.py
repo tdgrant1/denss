@@ -128,6 +128,7 @@ if __name__ == "__main__":
         enforce_connectivity=args.enforce_connectivity,
         enforce_connectivity_steps=args.enforce_connectivity_steps,
         cutout=args.cutout,
+        quiet=args.quiet,
         my_logger=my_logger)
 
     print(args.output)
