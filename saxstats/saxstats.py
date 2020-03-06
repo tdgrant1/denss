@@ -624,7 +624,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     I *= scale_factor
     sigq *= scale_factor
 
-    if steps == 'None' or steps is None or steps < 1:
+    if steps == 'None' or steps is None or np.int(steps) < 1:
         stepsarr = np.concatenate((enforce_connectivity_steps,[shrinkwrap_minstep]))
         maxec = np.max(stepsarr)
         steps = int(shrinkwrap_iter * (np.log(shrinkwrap_sigma_end/shrinkwrap_sigma_start)/np.log(shrinkwrap_sigma_decay)) + maxec)
