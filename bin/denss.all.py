@@ -119,7 +119,7 @@ def multi_denss(niter, **kwargs):
             sys.stdout.flush()
 
         fname = kwargs['output']+'.log'
-        logger = logging.getLogger("")
+        logger = logging.getLogger(kwargs['output'])
         logger.setLevel(logging.INFO)
         fh = logging.FileHandler(fname)
         formatter = logging.Formatter('%(asctime)s - %(message)s')
@@ -128,14 +128,14 @@ def multi_denss(niter, **kwargs):
 
         kwargs['my_logger'] = logger
 
-        logging.info('BEGIN')
-        logging.info('Script name: %s', sys.argv[0])
-        logging.info('DENSS Version: %s', __version__)
-        logging.info('Data filename: %s', superargs.file)
-        logging.info('Output prefix: %s', kwargs['output'])
-        logging.info('Mode: %s', superargs.mode)
+        logger.info('BEGIN')
+        logger.info('Script name: %s', sys.argv[0])
+        logger.info('DENSS Version: %s', __version__)
+        logger.info('Data filename: %s', superargs.file)
+        logger.info('Output prefix: %s', kwargs['output'])
+        logger.info('Mode: %s', superargs.mode)
         result = saxs.denss(**kwargs)
-        logging.info('END')
+        logger.info('END')
         return result
         time.sleep(1)
     except KeyboardInterrupt:
@@ -167,18 +167,19 @@ if __name__ == "__main__":
     superargs.output = output
 
     fname = output+'_final.log'
-    superlogger = logging.getLogger("")
+    superlogger = logging.getLogger(output+'_final')
     superlogger.setLevel(logging.INFO)
     fh = logging.FileHandler(fname)
     formatter = logging.Formatter('%(asctime)s - %(message)s')
     fh.setFormatter(formatter)
     superlogger.addHandler(fh)
 
-    logging.info('BEGIN')
-    logging.info('Script name: %s', sys.argv[0])
-    logging.info('DENSS Version: %s', __version__)
-    logging.info('Data filename: %s', superargs.file)
-    logging.info('Enantiomer selection: %r', superargs.enan)
+    superlogger.info('BEGIN')
+    superlogger.info('Command: %s', ' '.join(sys.argv))
+    #superlogger.info('Script name: %s', sys.argv[0])
+    superlogger.info('DENSS Version: %s', __version__)
+    superlogger.info('Data filename: %s', superargs.file)
+    superlogger.info('Enantiomer selection: %r', superargs.enan)
 
     denss_inputs = {'I':I,'sigq':sigq,'q':q}
 
@@ -289,11 +290,11 @@ if __name__ == "__main__":
     aligned = aligned[scores>threshold]
     average_rho = np.mean(aligned,axis=0)
 
-    logging.info('Mean of correlation scores: %.3f', mean)
-    logging.info('Standard deviation of the scores: %.3f', std)
-    logging.info('Total number of input maps for alignment: %i',allrhos.shape[0])
-    logging.info('Number of aligned maps accepted: %i', aligned.shape[0])
-    logging.info('Correlation score between average and reference: %.3f', 1/saxs.rho_overlap_score(average_rho, refrho))
+    superlogger.info('Mean of correlation scores: %.3f', mean)
+    superlogger.info('Standard deviation of the scores: %.3f', std)
+    superlogger.info('Total number of input maps for alignment: %i',allrhos.shape[0])
+    superlogger.info('Number of aligned maps accepted: %i', aligned.shape[0])
+    superlogger.info('Correlation score between average and reference: %.3f', 1/saxs.rho_overlap_score(average_rho, refrho))
     saxs.write_mrc(average_rho, sides[0], output+'_avg.mrc')
 
     """
@@ -317,8 +318,8 @@ if __name__ == "__main__":
     resn = round(float(1./resx),1)
     print("Resolution: %.1f A" % resn)
 
-    logging.info('Resolution: %.1f ', resn )
-    logging.info('END')
+    superlogger.info('Resolution: %.1f ', resn )
+    superlogger.info('END')
 
     if superargs.plot:
         import matplotlib.pyplot as plt
