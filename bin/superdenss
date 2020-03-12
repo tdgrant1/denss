@@ -143,7 +143,7 @@ else
     fi
 fi
 
-e2spt_binarytree.py --path=spt_bt_ref --input=${id}.hdf
+e2spt_binarytree.py --parallel=thread:${j} --path=spt_bt_ref --input=${id}.hdf
 cp spt_bt_ref_01/final_avg.hdf reference.hdf
 e2spt_classaverage.py --path=spt_avg --input ${id}.hdf --ref reference.hdf --parallel=thread:${j} --saveali --savesteps --keep 3.0 --keepsig
 e2proc3d.py spt_avg_01/final_avg_ali2ref.hdf ${id}_avg.mrc
