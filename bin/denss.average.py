@@ -27,6 +27,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+from __future__ import print_function
 import sys, os, argparse, logging
 import numpy as np
 from scipy import ndimage
@@ -50,7 +51,8 @@ if __name__ == "__main__":
     logging.basicConfig(filename=output+'_avg.log',level=logging.INFO,filemode='w',
                         format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
     logging.info('BEGIN')
-    logging.info('Script name: %s', sys.argv[0])
+    logging.info('Command: %s', ' '.join(sys.argv))
+    #logging.info('Script name: %s', sys.argv[0])
     logging.info('DENSS Version: %s', __version__)
 
     rhosum = None
@@ -67,11 +69,11 @@ if __name__ == "__main__":
             rhosum = rho
         else:
             rhosum += rho
-    print
+    print()
     rhos = np.array(rhos)
     average_rho = rhosum / nmaps
     saxs.write_mrc(average_rho,side, output+"_avg.mrc")
-    print "%s_avg.mrc written." % output
+    print("%s_avg.mrc written." % output)
 
     """
     #split maps into 2 halves--> enan, align, average independently with same refrho
@@ -92,9 +94,9 @@ if __name__ == "__main__":
     resi = np.argmin(y>=0.5)
     resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
     resn = round(float(1./resx),1)
-    print "Resolution: %.1f" % resn, u'\u212B'.encode('utf-8')
+    print("Resolution: %.1f" % resn, '\u212B'.encode('utf-8'))
 
-    logging.info('Resolution: %.1f '+ u'\u212B'.encode('utf-8'), resn )
+    logging.info('Resolution: %.1f '+ '\u212B'.encode('utf-8'), resn )
     logging.info('END')
 
     logging.info('END')

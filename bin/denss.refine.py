@@ -27,7 +27,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-
+from __future__ import print_function
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 import saxstats.denssopts as dopts
@@ -50,19 +50,19 @@ except ImportError:
 initparser = argparse.ArgumentParser(description=" A tool for refining an electron density map from solution scattering data", formatter_class=argparse.RawTextHelpFormatter)
 initargs = dopts.parse_arguments(initparser, gnomdmax=None)
 
-q, I, sigq, dmax, isout = saxs.loadProfile(initargs.file)
+q, I, sigq, dmax, isout = saxs.loadProfile(initargs.file, units=initargs.units)
 
 if not initargs.force_run:
     if min(q) != 0.0:
-        print "CAUTION: Minimum q value = %f " % min(q)
-        print "is not 0.0. It is STRONGLY recommended to include"
-        print "I(q=0) in your given scattering profile. You can use"
-        print "denss.fit_data.py to calculate a scattering profile fit"
-        print "which will include I(q=0), or you can also use the GNOM"
-        print "program from ATSAS to create a .out file."
-        print
-        print "If you are positive you would like to continue, "
-        print "rerun with the --force_run option."
+        print("CAUTION: Minimum q value = %f " % min(q))
+        print("is not 0.0. It is STRONGLY recommended to include")
+        print("I(q=0) in your given scattering profile. You can use")
+        print("denss.fit_data.py to calculate a scattering profile fit")
+        print("which will include I(q=0), or you can also use the GNOM")
+        print("program from ATSAS to create a .out file.")
+        print()
+        print("If you are positive you would like to continue, ")
+        print("rerun with the --force_run option.")
         sys.exit()
 
 
@@ -74,7 +74,7 @@ args = dopts.parse_arguments(parser, gnomdmax=dmax)
 
 
 if args.rho_start is None:
-    print " denss.refine.py requires a .mrc file to be given to the --rho_start option."
+    print(" denss.refine.py requires a .mrc file to be given to the --rho_start option.")
     sys.exit()
 
 basename, ext = os.path.splitext(args.rho_start)
@@ -90,8 +90,8 @@ args.side = args.dmax*args.oversampling
 if (not np.isclose(rho_side, args.side) or
     not np.isclose(rho_voxel, args.voxel) or
     not np.isclose(rho_nsamples, args.nsamples)):
-    print "rho_start density dimensions do not match given options."
-    print "Oversampling and voxel size adjusted to match rho_start dimensions."
+    print("rho_start density dimensions do not match given options.")
+    print("Oversampling and voxel size adjusted to match rho_start dimensions.")
 
 args.voxel = rho_voxel
 args.oversampling = rho_side/args.dmax
@@ -147,7 +147,7 @@ if __name__ == "__main__":
         enforce_connectivity_steps=args.enforce_connectivity_steps,
         cutout=args.cutout)
 
-    print args.output
+    print(args.output)
 
     fit = np.zeros(( len(qbinsc),5 ))
     fit[:len(qdata),0] = qdata

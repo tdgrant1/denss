@@ -29,6 +29,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+from __future__ import print_function
 import sys
 import re
 import os
@@ -41,6 +42,7 @@ import datetime, time
 
 import numpy as np
 from scipy import ndimage, interpolate, spatial, special, optimize
+from functools import reduce
 
 def chi2(exp, calc, sig):
     """Return the chi2 discrepancy between experimental and calculated data"""
@@ -69,7 +71,7 @@ def center_rho(rho, centering="com", return_shift=False):
 def rho2rg(rho,side=None,r=None,support=None,dx=None):
     """Calculate radius of gyration from an electron density map."""
     if side is None and r is None:
-        print "Error: To calculate Rg, must provide either side or r parameters."
+        print("Error: To calculate Rg, must provide either side or r parameters.")
         sys.exit()
     if side is not None and r is None:
         n = rho.shape[0]
@@ -79,7 +81,7 @@ def rho2rg(rho,side=None,r=None,support=None,dx=None):
     if support is None:
         support = np.ones_like(rho,dtype=bool)
     if dx is None:
-        print "Error: To calculate Rg, must provide dx"
+        print("Error: To calculate Rg, must provide dx")
         sys.exit()
     rhocom = (np.array(ndimage.measurements.center_of_mass(rho))-np.array(rho.shape)/2.)*dx
     rg2 = np.sum(r[support]**2*rho[support])/np.sum(rho[support])
@@ -92,16 +94,16 @@ def write_mrc(rho,side,filename="map.mrc"):
        See here: http://www2.mrc-lmb.cam.ac.uk/research/locally-developed-software/image-processing-software/#image
     """
     xs, ys, zs = rho.shape
-    nxstart = -xs/2+1
-    nystart = -ys/2+1
-    nzstart = -zs/2+1
+    nxstart = -xs//2+1
+    nystart = -ys//2+1
+    nzstart = -zs//2+1
     side = np.atleast_1d(side)
     if len(side) == 1:
         a,b,c = side, side, side
     elif len(side) == 3:
         a,b,c = side
     else:
-        print "Error. Argument 'side' must be float or 3-tuple"
+        print("Error. Argument 'side' must be float or 3-tuple")
     with open(filename, "wb") as fout:
         # NC, NR, NS, MODE = 2 (image : 32-bit reals)
         fout.write(struct.pack('<iiii', xs, ys, zs, 2))
@@ -125,9 +127,9 @@ def write_mrc(rho,side,filename="map.mrc"):
             fout.write(struct.pack('<f', 0.0))
 
         # XORIGIN, YORIGIN, ZORIGIN
-        fout.write(struct.pack('<fff', nxstart*(a/xs), nystart*(b/ys), nzstart*(c/zs)))
+        fout.write(struct.pack('<fff', 0.,0.,0. )) #nxstart*(a/xs), nystart*(b/ys), nzstart*(c/zs) ))
         # MAP
-        fout.write('MAP ')
+        fout.write('MAP '.encode())
         # MACHST (little endian)
         fout.write(struct.pack('<BBBB', 0x44, 0x41, 0x00, 0x00))
         # RMS (std)
@@ -135,7 +137,7 @@ def write_mrc(rho,side,filename="map.mrc"):
         # NLABL
         fout.write(struct.pack('<i', 0))
         # LABEL(20,10) 10 80-character text labels
-        for i in xrange(0, 800):
+        for i in range(0, 800):
             fout.write(struct.pack('<B', 0x00))
 
         # Write out data
@@ -194,11 +196,11 @@ def pad_rho(rho,newshape):
     a = rho
     a_nx,a_ny,a_nz = a.shape
     b_nx,b_ny,b_nz = newshape
-    padx1 = (b_nx-a_nx)/2
+    padx1 = (b_nx-a_nx)//2
     padx2 = (b_nx-a_nx) - padx1
-    pady1 = (b_ny-a_ny)/2
+    pady1 = (b_ny-a_ny)//2
     pady2 = (b_ny-a_ny) - pady1
-    padz1 = (b_nz-a_nz)/2
+    padz1 = (b_nz-a_nz)//2
     padz2 = (b_nz-a_nz) - padz1
     #np.pad cannot take negative values, i.e. where the array will be cropped
     #however, can instead just use slicing to do the equivalent
@@ -239,7 +241,7 @@ def zoom_rho(rho,vx,dx):
     elif len(vx) == 3:
         vx, vy, vz = vx
     else:
-        print "Error. Argument 'side' must be float or 3-tuple"
+        print("Error. Argument 'side' must be float or 3-tuple")
     #zoom factors
     zx, zy, zz = vx/dx, vy/dx, vz/dx
     newrho = ndimage.zoom(rho,(zx, zy, zz),order=1,mode="wrap")
@@ -478,7 +480,7 @@ def loadDatFile(filename):
             hdict = {}
 
     if hdict:
-        for each in hdict.iterkeys():
+        for each in hdict.keys():
             if each != 'filename':
                 results[each] = hdict[each]
 
@@ -488,7 +490,7 @@ def loadDatFile(filename):
 
     return q, i, err, results
 
-def loadProfile(fname):
+def loadProfile(fname, units="a"):
     """Determines which loading function to run, and then runs it."""
 
     if os.path.splitext(fname)[1] == '.out':
@@ -498,12 +500,21 @@ def loadProfile(fname):
         q, I, Ierr, results = loadDatFile(fname)
         isout = False
 
-    keys = {key.lower().strip().translate(None, '_ '): key for key in results.keys()}
+    if sys.version_info[0] > 2:
+        keys = {key.lower().strip().translate(str.maketrans('','', '_ ')): key for key in list(results.keys())}
+    else:
+        keys = {key.lower().strip().translate(None, '_ '): key for key in list(results.keys())}
 
     if 'dmax' in keys:
         dmax = float(results[keys['dmax']])
     else:
         dmax = -1.
+
+    if units == "nm":
+        #DENSS assumes 1/angstrom, so convert from 1/nm to 1/angstrom
+        q /= 10
+        dmax *= 10
+        print("Angular units converted from 1/nm to 1/angstrom")
 
     return q, I, Ierr, dmax, isout
 
@@ -613,7 +624,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     I *= scale_factor
     sigq *= scale_factor
 
-    if steps == 'None' or steps is None or steps < 1:
+    if steps == 'None' or steps is None or np.int(steps) < 1:
         stepsarr = np.concatenate((enforce_connectivity_steps,[shrinkwrap_minstep]))
         maxec = np.max(stepsarr)
         steps = int(shrinkwrap_iter * (np.log(shrinkwrap_sigma_end/shrinkwrap_sigma_start)/np.log(shrinkwrap_sigma_decay)) + maxec)
@@ -699,11 +710,12 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         factors = np.ones((len(qbins)))
         factors[qbin_args] = np.sqrt(Idata/Imean[j,qbin_args])
         F *= factors[qbin_labels]
-        chi[j] = np.sum(((Imean[j,qbin_args]-Idata)/sigqdata)**2)/qbin_args.size
-        interp = interpolate.interp1d(qbinsc, Imean[j], kind='cubic',fill_value="extrapolate")
-        I4chi = interp(q)
-        chi[j] = np.sum(((I4chi-I)/sigq)**2)/len(q)
-
+        try:
+            interp = interpolate.interp1d(qbinsc, Imean[j], kind='cubic',fill_value="extrapolate")
+            I4chi = interp(q)
+            chi[j] = np.sum(((I4chi-I)/sigq)**2)/len(q)
+        except:
+            chi[j] = np.sum(((Imean[j,qbin_args]-Idata)/sigqdata)**2)/qbin_args.size
         #APPLY REAL SPACE RESTRAINTS
         rhoprime = np.fft.ifftn(F,rho.shape)
         rhoprime = rhoprime.real
@@ -816,7 +828,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                     print(num_features)
 
             #find the feature with the greatest number of electrons
-            for feature in range(num_features):
+            for feature in range(num_features+1):
                 sums[feature-1] = np.sum(newrho[labeled_support==feature])
             big_feature = np.argmax(sums)+1
 
@@ -1340,7 +1352,7 @@ def average_pairs(rhos, cores=1, abort_event=None):
     pool = multiprocessing.Pool(cores)
     try:
         mapfunc = partial(multi_average_two, **rho_args)
-        average_rhos = pool.map(mapfunc, range(rhos.shape[0]/2))
+        average_rhos = pool.map(mapfunc, list(range(rhos.shape[0]//2)))
         pool.close()
         pool.join()
     except KeyboardInterrupt:
@@ -1918,7 +1930,7 @@ def pdb2map_gauss(pdb,xyz,sigma,mode="slow",eps=1e-6):
     #dist = spatial.distance.cdist(pdb.coords, xyz)
     #rho = np.sum(values,axis=0).reshape(n,n,n)
     #run cdist in a loop over atoms to avoid overloading memory
-    print "\n Read density map from PDB... "
+    print("\n Read density map from PDB... ")
     if mode == "fast":
         if eps is None:
             eps = np.finfo('float64').eps
@@ -1942,8 +1954,64 @@ def pdb2map_gauss(pdb,xyz,sigma,mode="slow",eps=1e-6):
             dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
             dist *= dist
             values += pdb.nelectrons[i]*1./np.sqrt(2*np.pi*sigma**2) * np.exp(-dist[0]/(2*sigma**2))
-    print
+    print()
     return values.reshape(n,n,n)
+
+def pdb2map_fastgauss(pdb,x,y,z,sigma,r=20.0):
+    """Simple isotropic gaussian sum at coordinate locations.
+
+    This fastgauss function only calculates the values at
+    grid points near the atom for speed.
+
+    pdb - instance of PDB class (required)
+    x,y,z - meshgrids for x, y, and z (required)
+    sigma - width of Gaussian, i.e. effectively resolution
+    r - maximum distance from atom to calculate density
+    """
+    side = x[-1,0,0] - x[0,0,0]
+    halfside = side/2
+    n = x.shape[0]
+    dx = side/n
+    dV = dx**3
+    V = side**3
+    x_ = x[:,0,0]
+    sigma /= 4. #to make compatible with e2pdb2mrc/chimera sigma
+    shift = np.ones(3)*dx/2.
+    print("\n Read density map from PDB... ")
+    values = np.zeros(x.shape)
+    for i in range(pdb.coords.shape[0]):
+        sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
+        sys.stdout.flush()
+        #this will cut out the grid points that are near the atom
+        #first, get the min and max distances for each dimension
+        #also, convert those distances to indices by dividing by dx
+        xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
+        xmin = int(np.floor((xa-r)/dx)) + n//2
+        xmax = int(np.ceil((xa+r)/dx)) + n//2
+        ymin = int(np.floor((ya-r)/dx)) + n//2
+        ymax = int(np.ceil((ya+r)/dx)) + n//2
+        zmin = int(np.floor((za-r)/dx)) + n//2
+        zmax = int(np.ceil((za+r)/dx)) + n//2
+        #handle edges
+        xmin = max([xmin,0])
+        xmax = min([xmax,n])
+        ymin = max([ymin,0])
+        ymax = min([ymax,n])
+        zmin = max([zmin,0])
+        zmax = min([zmax,n])
+        #now lets create a slice object for convenience
+        slc = np.s_[xmin:xmax,ymin:ymax,zmin:zmax]
+        nx = xmax-xmin
+        ny = ymax-ymin
+        nz = zmax-zmin
+        #now lets create a column stack of coordinates for the cropped grid
+        xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
+        dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
+        dist *= dist
+        tmpvalues = pdb.nelectrons[i]*1./np.sqrt(2*np.pi*sigma**2) * np.exp(-dist[0]/(2*sigma**2))
+        values[slc] += tmpvalues.reshape(nx,ny,nz)
+    print()
+    return values
 
 def pdb2map_FFT(pdb,x,y,z,radii=None,restrict=True):
     """Calculate electron density from pdb coordinates by FFT of Fs.
@@ -1990,8 +2058,8 @@ def pdb2map_FFT(pdb,x,y,z,radii=None,restrict=True):
             F += sphere(q=qr, R=radii[i], I0=pdb.nelectrons[i],amp=True) * np.exp(-1j * (qx*pdb.coords[i,0] + qy*pdb.coords[i,1] + qz*pdb.coords[i,2]))
         else:
             F += formfactor(element=pdb.atomtype[i],q=qr) * np.exp(-1j * (qx*pdb.coords[i,0] + qy*pdb.coords[i,1] + qz*pdb.coords[i,2]))
-    print
-    print "Total number of electrons = %f " % np.abs(F[0,0,0])
+    print()
+    print("Total number of electrons = %f " % np.abs(F[0,0,0]))
     qbin_labels = np.zeros(F.shape, dtype=int)
     qbin_labels = np.digitize(qr, qbins)
     qbin_labels -= 1
@@ -2101,8 +2169,8 @@ def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=T
     Amp = np.abs(F)
 
     if not quiet:
-        print "\n Step     Chi2     Rg    Support Volume"
-        print " ----- --------- ------- --------------"
+        print("\n Step     Chi2     Rg    Support Volume")
+        print(" ----- --------- ------- --------------")
 
     for j in range(steps):
         F = np.fft.fftn(rho)
@@ -2138,7 +2206,7 @@ def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=T
         rho = newrho
 
     if not quiet:
-        print
+        print()
 
     F = np.fft.fftn(rho)
     #calculate spherical average intensity from 3D Fs

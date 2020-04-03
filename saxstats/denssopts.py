@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from _version import __version__
+from ._version import __version__
 import os, argparse
 import imp
 try:
@@ -16,6 +16,7 @@ def parse_arguments(parser,gnomdmax=None):
 
     parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
     parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
+    parser.add_argument("-u", "--units", default="a", type=str, help="Angular units (\"a\" [1/angstrom] or \"nm\" [1/nanometer]; default=\"a\")")
     parser.add_argument("-d", "--dmax", default=None, type=float, help="Estimated maximum dimension")
     parser.add_argument("-v", "--voxel", default=None, type=float, help="Set desired voxel size, setting resolution of map")
     parser.add_argument("-os","--oversampling", default=3., type=float, help="Sampling ratio")
@@ -55,7 +56,7 @@ def parse_arguments(parser,gnomdmax=None):
     parser.add_argument("-ec_on","--enforce_connectivity_on", dest="enforce_connectivity", action="store_true", help="Enforce connectivity of support, i.e. remove extra blobs (default)")
     parser.add_argument("-ec_off","--enforce_connectivity_off", dest="enforce_connectivity", action="store_false", help="Do not enforce connectivity of support")
     parser.add_argument("-ec_steps","--enforce_connectivity_steps", default=None, type=int, nargs='+', help="List of steps to enforce connectivity")
-    parser.add_argument("--chi_end_fraction", default=0.001, type=float, help="Convergence criterion. Minimum threshold of chi2 std dev, as a fraction of the median chi2 of last 100 steps.")
+    parser.add_argument("-cef", "--chi_end_fraction", default=0.001, type=float, help="Convergence criterion. Minimum threshold of chi2 std dev, as a fraction of the median chi2 of last 100 steps.")
     parser.add_argument("--write_xplor_format", default=False, action="store_true", help="Write out XPLOR map format (default only write MRC format).")
     parser.add_argument("--write_freq", default=100, type=int, help="How often to write out current density map (in steps, default 100).")
     parser.add_argument("--cutout_on", dest="cutout", action="store_true", help="When writing final map, cut out the particle to make smaller files.")
@@ -100,13 +101,13 @@ def parse_arguments(parser,gnomdmax=None):
         nsamples = 32
         shrinkwrap_minstep = 1000
         enforce_connectivity_steps = [2000]
-        recenter_steps = range(501,2502,500)
+        recenter_steps = list(range(501,2502,500))
     elif args.mode[0].upper() == "S":
         args.mode = "SLOW"
         nsamples = 64
         shrinkwrap_minstep = 5000
         enforce_connectivity_steps = [6000]
-        recenter_steps = range(501,8002,500)
+        recenter_steps = list(range(501,8002,500))
     elif args.mode[0].upper() == "M":
         args.mode = "MEMBRANE"
         nsamples = 64
@@ -114,7 +115,7 @@ def parse_arguments(parser,gnomdmax=None):
         shrinkwrap_minstep = 0
         shrinkwrap_threshold_fraction = 0.1
         enforce_connectivity_steps = [300]
-        recenter_steps = range(501,8002,500)
+        recenter_steps = list(range(501,8002,500))
     else:
         args.mode = "None"
 

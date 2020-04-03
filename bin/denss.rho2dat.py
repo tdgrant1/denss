@@ -28,6 +28,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+from __future__ import print_function
 import os, argparse, sys, imp
 import logging
 import numpy as np
@@ -105,7 +106,7 @@ if __name__ == "__main__":
     Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
 
     if args.plot: plt.plot(qbinsc, Imean, label='Default dq = %.4f' % (2*np.pi/side))
-    print 'Default dq = %.4f' % (2*np.pi/side)
+    print('Default dq = %.4f' % (2*np.pi/side))
 
     if args.dq is not None or args.n is not None:
 
@@ -116,8 +117,8 @@ if __name__ == "__main__":
             current_dq = 2*np.pi/side
             desired_dq = args.dq
             if desired_dq > current_dq:
-                print "desired dq must be smaller than dq calculated from map (which is %f)" % current_dq
-                print "Resetting desired dq to current dq..."
+                print("desired dq must be smaller than dq calculated from map (which is %f)" % current_dq)
+                print("Resetting desired dq to current dq...")
                 desired_dq = current_dq
             #what side would give us desired dq?
             desired_side = 2*np.pi/desired_dq
@@ -133,7 +134,7 @@ if __name__ == "__main__":
         x_ = np.linspace(-halfside,halfside,n)
         x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
         df = 1/side
-        print n, 2*np.pi*df
+        print(n, 2*np.pi*df)
         qx_ = np.fft.fftfreq(x_.size)*n*df*2*np.pi
         qx, qy, qz = np.meshgrid(qx_,qx_,qx_,indexing='ij')
         qr = np.sqrt(qx**2+qy**2+qz**2)
@@ -150,15 +151,15 @@ if __name__ == "__main__":
         #create list of qbin indices just in region of data for later F scaling
         qbin_args = np.copy(qbinsc)
         rho_pad = np.zeros((n,n,n),dtype=np.float32)
-        a = n/2-n_orig/2
-        b = n/2+n_orig/2
+        a = n//2-n_orig//2
+        b = n//2+n_orig//2
         rho_pad[a:b,a:b,a:b] = rho
         F = np.fft.fftn(rho_pad)
         I3D = np.abs(F)**2
         Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
 
     qmax_to_use = np.max(qx_)
-    print "qmax to use: %f" % qmax_to_use
+    print("qmax to use: %f" % qmax_to_use)
     qbinsc_to_use = qbinsc[qbinsc<qmax_to_use]
     Imean_to_use = Imean[qbinsc<qmax_to_use]
 
@@ -170,7 +171,7 @@ if __name__ == "__main__":
     np.savetxt(output+'.dat', Iq, delimiter=' ', fmt='% .16e')
 
     if args.plot:
-        print 'Actual dq = %.4f' % (2*np.pi/side)
+        print('Actual dq = %.4f' % (2*np.pi/side))
         plt.plot(qbinsc_to_use, Imean_to_use,label='Actual dq = %.4f' % (2*np.pi/side))
         plt.semilogy()
         plt.legend()

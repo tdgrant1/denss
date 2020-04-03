@@ -2,7 +2,7 @@
 
 from distutils.core import setup
 
-execfile('saxstats/_version.py')
+exec(compile(open('saxstats/_version.py').read(), 'saxstats/_version.py', 'exec'))
 
 setup(name='denss',
       version=__version__,

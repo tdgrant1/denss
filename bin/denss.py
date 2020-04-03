@@ -24,7 +24,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-
+from __future__ import print_function
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 import saxstats.denssopts as dopts
@@ -47,19 +47,19 @@ except ImportError:
 initparser = argparse.ArgumentParser(description=" DENSS: DENsity from Solution Scattering.\n A tool for calculating an electron density map from solution scattering data", formatter_class=argparse.RawTextHelpFormatter)
 initargs = dopts.parse_arguments(initparser, gnomdmax=None)
 
-q, I, sigq, dmax, isout = saxs.loadProfile(initargs.file)
+q, I, sigq, dmax, isout = saxs.loadProfile(initargs.file, units=initargs.units)
 
 if not initargs.force_run:
     if min(q) != 0.0:
-        print "CAUTION: Minimum q value = %f " % min(q)
-        print "is not 0.0. It is STRONGLY recommended to include"
-        print "I(q=0) in your given scattering profile. You can use"
-        print "denss.fit_data.py to calculate a scattering profile fit"
-        print "which will include I(q=0), or you can also use the GNOM"
-        print "program from ATSAS to create a .out file."
-        print
-        print "If you are positive you would like to continue, "
-        print "rerun with the --force_run option."
+        print("CAUTION: Minimum q value = %f " % min(q))
+        print("is not 0.0. It is STRONGLY recommended to include")
+        print("I(q=0) in your given scattering profile. You can use")
+        print("denss.fit_data.py to calculate a scattering profile fit")
+        print("which will include I(q=0), or you can also use the GNOM")
+        print("program from ATSAS to create a .out file.")
+        print()
+        print("If you are positive you would like to continue, ")
+        print("rerun with the --force_run option.")
         sys.exit()
 
 
@@ -128,9 +128,10 @@ if __name__ == "__main__":
         enforce_connectivity=args.enforce_connectivity,
         enforce_connectivity_steps=args.enforce_connectivity_steps,
         cutout=args.cutout,
+        quiet=args.quiet,
         my_logger=my_logger)
 
-    print args.output
+    print(args.output)
 
     fit = np.zeros(( len(qbinsc),5 ))
     fit[:len(qdata),0] = qdata

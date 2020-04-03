@@ -28,6 +28,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+from __future__ import print_function
 import os, sys, logging
 import numpy as np
 from scipy import ndimage
@@ -52,7 +53,8 @@ if __name__ == "__main__":
     logging.basicConfig(filename=output+'.log',level=logging.INFO,filemode='w',
                         format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
     logging.info('BEGIN')
-    logging.info('Script name: %s', sys.argv[0])
+    logging.info('Command: %s', ' '.join(sys.argv))
+    #logging.info('Script name: %s', sys.argv[0])
     logging.info('DENSS Version: %s', __version__)
     logging.info('Map filename(s): %s', args.file)
 
@@ -61,7 +63,7 @@ if __name__ == "__main__":
     aligned = saxs.align2xyz(rho)
 
     saxs.write_mrc(aligned, side, output+'.mrc')
-    print "%s.mrc written. " % (output,)
+    print("%s.mrc written. " % (output,))
 
     logging.info('END')
 

@@ -27,6 +27,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+from __future__ import print_function
 import sys, os, argparse, logging
 import numpy as np
 from scipy import ndimage
@@ -60,7 +61,8 @@ if __name__ == "__main__":
     logging.basicConfig(filename=output+'_final.log',level=logging.INFO,filemode='w',
                         format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
     logging.info('BEGIN')
-    logging.info('Script name: %s', sys.argv[0])
+    logging.info('Command: %s', ' '.join(sys.argv))
+    #logging.info('Script name: %s', sys.argv[0])
     logging.info('DENSS Version: %s', __version__)
     logging.info('Map filename(s): %s', args.files)
     logging.info('Reference filename: %s', args.ref)
@@ -78,7 +80,7 @@ if __name__ == "__main__":
     sides = np.array(sides)
 
     if nmaps<2:
-        print "Not enough maps to align. Please input more maps again..."
+        print("Not enough maps to align. Please input more maps again...")
         sys.exit(1)
 
     if args.ref is not None:
@@ -100,17 +102,19 @@ if __name__ == "__main__":
             if args.center:
                 pdb.coords -= pdb.coords.mean(axis=0)
                 pdb.write(filename=refoutput)
-            refrho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution)
+            #use the new fastgauss function
+            #refrho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution)
+            refrho = saxs.pdb2map_fastgauss(pdb,x=x,y=y,z=z,sigma=args.resolution,r=args.resolution*2)
             refrho = refrho*np.sum(allrhos[0])/np.sum(refrho)
             saxs.write_mrc(refrho,sides[0],filename=refbasename+'_pdb.mrc')
         if args.ref.endswith('.mrc'):
             refrho, refside = saxs.read_mrc(args.ref)
         if (not args.ref.endswith('.mrc')) and (not args.ref.endswith('.pdb')):
-            print "Invalid reference filename given. .mrc or .pdb file required"
+            print("Invalid reference filename given. .mrc or .pdb file required")
             sys.exit(1)
 
     if args.enan:
-        print " Selecting best enantiomers..."
+        print(" Selecting best enantiomers...")
         try:
             if args.ref:
                 allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
@@ -120,13 +124,13 @@ if __name__ == "__main__":
             sys.exit(1)
 
     if args.ref is None:
-        print " Generating reference..."
+        print(" Generating reference...")
         try:
             refrho = saxs.binary_average(allrhos, args.cores)
         except KeyboardInterrupt:
             sys.exit(1)
 
-    print " Aligning all maps to reference..."
+    print(" Aligning all maps to reference...")
     try:
         aligned, scores = saxs.align_multiple(refrho, allrhos, args.cores)
     except KeyboardInterrupt:
@@ -137,9 +141,9 @@ if __name__ == "__main__":
     std = np.std(scores)
     threshold = mean - 2*std
     filtered = np.empty(len(scores),dtype=str)
-    print
-    print "Mean of correlation scores: %.3f" % mean
-    print "Standard deviation of scores: %.3f" % std
+    print()
+    print("Mean of correlation scores: %.3f" % mean)
+    print("Standard deviation of scores: %.3f" % std)
     for i in range(nmaps):
         if scores[i] < threshold:
             filtered[i] = 'Filtered'
@@ -148,7 +152,7 @@ if __name__ == "__main__":
         basename, ext = os.path.splitext(args.files[i])
         ioutput = basename+"_aligned"
         saxs.write_mrc(aligned[i], sides[0], ioutput+'.mrc')
-        print "%s.mrc written. Score = %0.3f %s " % (ioutput,scores[i],filtered[i])
+        print("%s.mrc written. Score = %0.3f %s " % (ioutput,scores[i],filtered[i]))
         logging.info('Correlation score to reference: %s.mrc %.3f %s', ioutput, scores[i], filtered[i])
 
     aligned = aligned[scores>threshold]
@@ -181,9 +185,9 @@ if __name__ == "__main__":
     resi = np.argmin(y>=0.5)
     resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
     resn = round(float(1./resx),1)
-    print "Resolution: %.1f" % resn, u'\u212B'.encode('utf-8')
+    print("Resolution: %.1f" % resn, '\u212B'.encode('utf-8'))
 
-    logging.info('Resolution: %.1f '+ u'\u212B'.encode('utf-8'), resn )
+    logging.info('Resolution: %.1f '+ '\u212B'.encode('utf-8'), resn )
     logging.info('END')
 
 

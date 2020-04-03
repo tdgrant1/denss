@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
 import numpy as np
 import os, sys, argparse
 import imp
@@ -23,7 +24,7 @@ args = parser.parse_args()
 
 if args.output is None:
     basename, ext = os.path.splitext(args.file[0])
-    output = basename+'_fsc'
+    output = basename+'_fsc.dat'
 else:
     output = args.output
 
@@ -42,7 +43,7 @@ if nf==1:
 else:
     fsc = np.mean(fscs,axis=0)
 
-np.savetxt(output+'_avg.txt',fsc,delimiter=' ',fmt='%.5e')
+np.savetxt(output,fsc,delimiter=' ',fmt='%.5e',header="1/resolution, FSC")
 
 x = np.linspace(fsc[0,0],fsc[-1,0],1000)
 y = np.interp(x, fsc[:,0], fsc[:,1])
@@ -52,7 +53,7 @@ resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
 
 resn = round(float(1./resx),1)
 
-print "Resolution: %.1f" % resn, u'\u212B'.encode('utf-8')
+print("Resolution: %.1f A" % resn)
 
 if args.plot:
     import matplotlib.pyplot as plt
@@ -65,6 +66,8 @@ if args.plot:
     plt.legend()
     plt.xlabel('Resolution (1/$\mathrm{\AA}$)')
     plt.ylabel('Fourier Shell Correlation')
-    plt.savefig(output,ext='png',dpi=150)
+    pltoutput = os.path.splitext(output)[0]
+    print(pltoutput)
+    plt.savefig(pltoutput+'.png',dpi=150)
     plt.close()
 

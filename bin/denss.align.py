@@ -27,6 +27,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+from __future__ import print_function
 import os, sys, logging
 import numpy as np
 from scipy import ndimage
@@ -60,7 +61,8 @@ if __name__ == "__main__":
     logging.basicConfig(filename=output+'.log',level=logging.INFO,filemode='w',
                         format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
     logging.info('BEGIN')
-    logging.info('Script name: %s', sys.argv[0])
+    logging.info('Command: %s', ' '.join(sys.argv))
+    #logging.info('Script name: %s', sys.argv[0])
     logging.info('DENSS Version: %s', __version__)
     logging.info('Map filename(s): %s', args.files)
     logging.info('Reference filename: %s', args.ref)
@@ -78,7 +80,7 @@ if __name__ == "__main__":
     sides = np.array(sides)
 
     if args.ref is None:
-        print "Need reference file (.mrc or .pdb)"
+        print("Need reference file (.mrc or .pdb)")
         sys.exit(1)
     else:
         if args.ref.endswith('.pdb'):
@@ -98,17 +100,19 @@ if __name__ == "__main__":
             if args.center:
                 pdb.coords -= pdb.coords.mean(axis=0)
                 pdb.write(filename=refoutput)
-            refrho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution)
+            #use the new fastgauss function
+            #refrho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution)
+            refrho = saxs.pdb2map_fastgauss(pdb,x=x,y=y,z=z,sigma=args.resolution,r=args.resolution*2)
             refrho = refrho*np.sum(allrhos[0])/np.sum(refrho)
             saxs.write_mrc(refrho,sides[0],filename=refbasename+'_pdb.mrc')
         if args.ref.endswith('.mrc'):
             refrho, refside = saxs.read_mrc(args.ref)
         if (not args.ref.endswith('.mrc')) and (not args.ref.endswith('.pdb')):
-            print "Invalid reference filename given. .mrc or .pdb file required"
+            print("Invalid reference filename given. .mrc or .pdb file required")
             sys.exit(1)
 
     if args.enan:
-        print " Selecting best enantiomer(s)..."
+        print(" Selecting best enantiomer(s)...")
         try:
             if args.ref:
                 allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
@@ -117,7 +121,7 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             sys.exit(1)
 
-    print " Aligning to reference..."
+    print(" Aligning to reference...")
     try:
         aligned, scores = saxs.align_multiple(refrho, allrhos, args.cores)
     except KeyboardInterrupt:
@@ -127,7 +131,7 @@ if __name__ == "__main__":
         basename, ext = os.path.splitext(args.files[i])
         output = basename+"_aligned"
         saxs.write_mrc(aligned[i], sides[0], output+'.mrc')
-        print "%s.mrc written. Score = %0.3f" % (output,scores[i])
+        print("%s.mrc written. Score = %0.3f" % (output,scores[i]))
         logging.info('Correlation score to reference: %s.mrc %.3f', output, scores[i])
 
     logging.info('END')
