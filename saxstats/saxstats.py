@@ -29,7 +29,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-from __future__ import print_function
+from __future__ import print_function, division, unicode_litera
 import sys
 import re
 import os
@@ -170,7 +170,7 @@ def write_xplor(rho,side,filename="map.xplor"):
     """Write an XPLOR formatted electron density map."""
     xs, ys, zs = rho.shape
     title_lines = ['REMARK FILENAME="'+filename+'"','REMARK DATE= '+str(datetime.datetime.today())]
-    with open(filename,'wb') as f:
+    with open(filename,'w') as f:
         f.write("\n")
         f.write("%8d !NTITLE\n" % len(title_lines))
         for line in title_lines:
@@ -909,8 +909,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         if nD%2==1:
             nD += 1
 
-        nmin = nbox/2 - nD/2
-        nmax = nbox/2 + nD/2 + 2
+        nmin = nbox//2 - nD//2
+        nmax = nbox//2 + nD//2 + 2
         #create new rho array containing only the particle
         newrho = rho[nmin:nmax,nmin:nmax,nmin:nmax]
         rho = newrho
@@ -934,11 +934,11 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     fit[:len(sigqdata),2] = sigqdata
     fit[:len(qbinsc),3] = qbinsc
     fit[:len(Imean[j+1]),4] = Imean[j+1]
-    np.savetxt(fprefix+'_map.fit', fit, delimiter=' ', fmt='%.5e',
+    np.savetxt(fprefix+'_map.fit', fit, delimiter=' ', fmt='%.5e'.encode('ascii'),
         header='q(data),I(data),error(data),q(density),I(density)')
 
     np.savetxt(fprefix+'_stats_by_step.dat',np.vstack((chi, rg, supportV)).T,
-        delimiter=" ", fmt="%.5e", header='Chi2 Rg SupportVolume')
+        delimiter=" ", fmt="%.5e".encode('ascii'), header='Chi2 Rg SupportVolume')
 
     my_logger.info('FINISHED DENSITY REFINEMENT')
     my_logger.info('Number of steps: %i', j)
@@ -1239,7 +1239,7 @@ def align(refrho, movrho, abort_event=None):
     return movrho, score
 
 def select_best_enantiomers(rhos, refrho=None, cores=1, avg_queue=None,
-    abort_event=None):
+    abort_event=None, single_proc=False):
     """ Select the best enantiomer from each map in the set (or a single map).
         refrho should not be binary averaged from the original
         denss maps, since that would likely lose handedness.
@@ -1277,16 +1277,22 @@ def select_best_enantiomers(rhos, refrho=None, cores=1, avg_queue=None,
             enans[j] = ndimage.interpolation.affine_transform(enans[j],R.T,order=3,offset=offset,mode='wrap')
             enans[j] = ndimage.interpolation.shift(enans[j],-refshift,order=3,mode='wrap')
         #now minimize each enan around the original refrho location
-        pool = multiprocessing.Pool(cores)
-        try:
-            mapfunc = partial(align, refrho)
-            results = pool.map(mapfunc, enans)
-            pool.close()
-            pool.join()
-        except KeyboardInterrupt:
-            pool.terminate()
-            pool.close()
-            raise
+
+        if not single_proc:
+            pool = multiprocessing.Pool(cores)
+            try:
+                mapfunc = partial(align, refrho)
+                results = pool.map(mapfunc, enans)
+                pool.close()
+                pool.join()
+            except KeyboardInterrupt:
+                pool.terminate()
+                pool.close()
+                raise
+
+        else:
+            results = [align(refrho, enan, abort_event=abort_event) for
+                enan in enans]
 
         #now select the best enantiomer and set it as the new rhos[i]
         enans = np.array([results[k][0] for k in range(len(results))])
@@ -1299,7 +1305,7 @@ def select_best_enantiomers(rhos, refrho=None, cores=1, avg_queue=None,
 
     return rhos, scores
 
-def align_multiple(refrho, rhos, cores=1, abort_event=None):
+def align_multiple(refrho, rhos, cores=1, abort_event=None, single_proc=False):
     """ Align multiple (or a single) maps to the reference."""
     if rhos.ndim == 3:
         rhos = rhos[np.newaxis,...]
@@ -1316,16 +1322,20 @@ def align_multiple(refrho, rhos, cores=1, abort_event=None):
         if abort_event.is_set():
             return None, None
 
-    pool = multiprocessing.Pool(cores)
-    try:
-        mapfunc = partial(align, refrho)
-        results = pool.map(mapfunc, rhos)
-        pool.close()
-        pool.join()
-    except KeyboardInterrupt:
-        pool.terminate()
-        pool.close()
-        raise
+    if not single_proc:
+        pool = multiprocessing.Pool(cores)
+        try:
+            mapfunc = partial(align, refrho)
+            results = pool.map(mapfunc, rhos)
+            pool.close()
+            pool.join()
+        except KeyboardInterrupt:
+            pool.terminate()
+            pool.close()
+            raise
+
+    else:
+        results = [align(refrho, rho, abort_event=abort_event) for rho in rhos]
 
     rhos = np.array([results[i][0] for i in range(len(results))])
     scores = np.array([results[i][1] for i in range(len(results))])
@@ -1345,31 +1355,38 @@ def multi_average_two(niter, **kwargs):
     time.sleep(1)
     return average_two(**kwargs)
 
-def average_pairs(rhos, cores=1, abort_event=None):
+def average_pairs(rhos, cores=1, abort_event=None, single_proc=False):
     """ Average pairs of electron density maps, second half to first half."""
     #create even/odd pairs, odds are the references
     rho_args = {'rho1':rhos[::2], 'rho2':rhos[1::2], 'abort_event': abort_event}
-    pool = multiprocessing.Pool(cores)
-    try:
-        mapfunc = partial(multi_average_two, **rho_args)
-        average_rhos = pool.map(mapfunc, list(range(rhos.shape[0]//2)))
-        pool.close()
-        pool.join()
-    except KeyboardInterrupt:
-        pool.terminate()
-        pool.close()
-        raise
+
+    if not single_proc:
+        pool = multiprocessing.Pool(cores)
+        try:
+            mapfunc = partial(multi_average_two, **rho_args)
+            average_rhos = pool.map(mapfunc, list(range(rhos.shape[0]//2)))
+            pool.close()
+            pool.join()
+        except KeyboardInterrupt:
+            pool.terminate()
+            pool.close()
+            raise
+
+    else:
+        average_rhos = [multi_average_two(niter, **rho_args) for niter in
+            range(rhos.shape[0]//2)]
 
     return np.array(average_rhos)
 
-def binary_average(rhos, cores=1, abort_event=None):
+def binary_average(rhos, cores=1, abort_event=None, single_proc=False):
     """ Generate a reference electron density map using binary averaging."""
     twos = 2**np.arange(20)
     nmaps = np.max(twos[twos<=rhos.shape[0]])
     levels = int(np.log2(nmaps))-1
     rhos = rhos[:nmaps]
     for level in range(levels):
-         rhos = average_pairs(rhos, cores, abort_event=abort_event)
+         rhos = average_pairs(rhos, cores, abort_event=abort_event,
+            single_proc=single_proc)
     refrho = center_rho(rhos[0])
     return refrho
 
@@ -1915,7 +1932,7 @@ class PDB(object):
             atomtype = '%2s' % self.atomtype[i]
             charge = '%2s' % self.charge[i]
             records.append(['ATOM  ' + atomnum + '  ' + atomname + ' ' + resname + ' ' + chain + resnum + '    ' + x + y + z + o + b + '          ' + atomtype + charge])
-        np.savetxt(filename, records, fmt = '%80s')
+        np.savetxt(filename, records, fmt = '%80s'.encode('ascii'))
 
 def pdb2map_gauss(pdb,xyz,sigma,mode="slow",eps=1e-6):
     """Simple isotropic gaussian sum at coordinate locations.
