@@ -29,7 +29,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-from __future__ import print_function, division, unicode_litera
+from __future__ import print_function, division, unicode_literals
 import sys
 import re
 import os
