@@ -44,6 +44,27 @@ import numpy as np
 from scipy import ndimage, interpolate, spatial, special, optimize
 from functools import reduce
 
+DENSS_GPU = False
+if os.getenv('DENSS_GPU'):
+    DENSS_GPU = True
+    import cupy as cp
+
+def fftn(x):
+    if DENSS_GPU:
+        x_gpu = cp.array(x)
+        res_gpu = cp.fft.fftn(x_gpu)
+        return cp.asnumpy(res_gpu)
+    else:
+        return np.fft.fftn(x)
+
+def ifftn(x, shape=None):
+    if DENSS_GPU:
+        x_gpu = cp.array(x)
+        res_gpu = cp.fft.ifftn(x_gpu, shape)
+        return cp.asnumpy(res_gpu)
+    else:
+        return np.fft.ifftn(x, shape)
+
 def chi2(exp, calc, sig):
     """Return the chi2 discrepancy between experimental and calculated data"""
     return np.sum(np.square(exp - calc) / np.square(sig))
@@ -694,7 +715,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                 my_logger.info('Aborted!')
                 return []
 
-        F = np.fft.fftn(rho)
+        F = fftn(rho)
 
         #APPLY RECIPROCAL SPACE RESTRAINTS
         #calculate spherical average of intensities from 3D Fs
@@ -717,7 +738,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         except:
             chi[j] = np.sum(((Imean[j,qbin_args]-Idata)/sigqdata)**2)/qbin_args.size
         #APPLY REAL SPACE RESTRAINTS
-        rhoprime = np.fft.ifftn(F,rho.shape)
+        rhoprime = ifftn(F,rho.shape)
         rhoprime = rhoprime.real
         if j%write_freq == 0:
             if write_xplor_format:
@@ -864,7 +885,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
 
         rho = newrho
 
-    F = np.fft.fftn(rho)
+    F = fftn(rho)
     #calculate spherical average intensity from 3D Fs
     Imean[j+1] = ndimage.mean(np.abs(F)**2, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
     #chi[j+1] = np.sum(((Imean[j+1,qbin_args]-Idata)/sigqdata)**2)/qbin_args.size
@@ -873,7 +894,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     factors = np.ones((len(qbins)))
     factors[qbin_args] = np.sqrt(Idata/Imean[j+1,qbin_args])
     F *= factors[qbin_labels]
-    rho = np.fft.ifftn(F,rho.shape)
+    rho = ifftn(F,rho.shape)
     rho = rho.real
 
     #negative images yield the same scattering, so flip the image
@@ -1388,8 +1409,8 @@ def calc_fsc(rho1, rho2, side):
     #create an array labeling each voxel according to which qbin it belongs
     qbin_labels = np.searchsorted(qbins, qr, "right")
     qbin_labels -= 1
-    F1 = np.fft.fftn(rho1)
-    F2 = np.fft.fftn(rho2)
+    F1 = fftn(rho1)
+    F2 = fftn(rho2)
     numerator = ndimage.sum(np.real(F1*np.conj(F2)), labels=qbin_labels,
         index=np.arange(0,qbin_labels.max()+1))
     term1 = ndimage.sum(np.abs(F1)**2, labels=qbin_labels,
@@ -2064,7 +2085,7 @@ def pdb2map_FFT(pdb,x,y,z,radii=None,restrict=True):
     qbin_labels = np.digitize(qr, qbins)
     qbin_labels -= 1
     Imean = ndimage.mean(np.abs(F)**2, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
-    rho = np.fft.ifftn(F,x.shape).real
+    rho = ifftn(F,x.shape).real
     rho[rho<0] = 0
     #need to shift rho to center of grid, since FFT is offset by half a grid length
     shift = np.array(rho.shape)/2
@@ -2165,7 +2186,7 @@ def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=T
     sigma = shrinkwrap_sigma_start
 
     rho = rho_start
-    F = np.fft.fftn(rho)
+    F = fftn(rho)
     Amp = np.abs(F)
 
     if not quiet:
@@ -2173,7 +2194,7 @@ def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=T
         print(" ----- --------- ------- --------------")
 
     for j in range(steps):
-        F = np.fft.fftn(rho)
+        F = fftn(rho)
         #APPLY RECIPROCAL SPACE RESTRAINTS
         #calculate spherical average of intensities from 3D Fs
         I3D = np.abs(F)**2
@@ -2182,7 +2203,7 @@ def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=T
         F *= Amp/np.abs(F)
         chi[j] = 1.0
         #APPLY REAL SPACE RESTRAINTS
-        rhoprime = np.fft.ifftn(F,rho.shape)
+        rhoprime = ifftn(F,rho.shape)
         rhoprime = rhoprime.real
         if j%write_freq == 0:
             write_mrc(rhoprime/dV,side,output+"_current.mrc")
@@ -2208,12 +2229,12 @@ def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=T
     if not quiet:
         print()
 
-    F = np.fft.fftn(rho)
+    F = fftn(rho)
     #calculate spherical average intensity from 3D Fs
     Imean[j+1] = ndimage.mean(np.abs(F)**2, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
     #scale Fs to match data
     F *= Amp/np.abs(F)
-    rho = np.fft.ifftn(F,rho.shape)
+    rho = ifftn(F,rho.shape)
     rho = rho.real
 
     #scale total number of electrons
