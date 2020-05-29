@@ -14,6 +14,9 @@
 #    Email:  <tgrant@hwi.buffalo.edu>
 #    Copyright 2018 The Research Foundation for SUNY
 #
+#    Additional authors:
+#    Christopher Handelmann
+#
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
 #    the Free Software Foundation, either version 3 of the License, or
@@ -100,13 +103,15 @@ if __name__ == "__main__":
 
 
     if args.plot:
+        import matplotlib
+        matplotlib.use('TkAgg')
         import matplotlib.pyplot as plt
-        from matplotlib.widgets import Slider, Button, RadioButtons
+        from matplotlib.widgets import Slider, Button, RadioButtons, TextBox
 
         #fig, (axI, axP) = plt.subplots(1, 2, figsize=(12,6))
         fig = plt.figure(0, figsize=(12,6))
         axI = plt.subplot2grid((3,2), (0,0),rowspan=2)
-        axR = plt.subplot2grid((3,2), (2,0))
+        axR = plt.subplot2grid((3,2), (2,0),sharex=axI)
         axP = plt.subplot2grid((3,2), (0,1),rowspan=3)
         plt.subplots_adjust(left=0.068, bottom=0.25, right=0.98, top=0.95)
 
@@ -144,14 +149,20 @@ if __name__ == "__main__":
         axVcmw = plt.figtext(.55, .025, "Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2)))
         axlc = plt.figtext(.75, .025, "Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2)))
 
-        sdmax = Slider(axdmax, 'Dmax', 0.0, args.max_dmax, valinit=D) #, valstep=D/1000.)
-        salpha = Slider(axalpha, 'Alpha', 0.0, args.max_alpha, valinit=alpha) #, valstep=alpha/100.)
+        sdmax = Slider(axdmax, 'Dmax', 0.0, args.max_dmax, valinit=D)
+        sdmax.valtext.set_visible(False)
+        # set up ticks marks on the slider to denote the change in interaction
+        axdmax.set_xticks([0.9 * sdmax.valmax, 0.1 * sdmax.valmax]) 
+        axdmax.xaxis.tick_top()
+
+        salpha = Slider(axalpha, 'Alpha', 0.0, args.max_alpha, valinit=alpha)
+        salpha.valtext.set_visible(False)
+
         #snes = Slider(axnes, 'NES', 0, args.max_nes, valinit=args.nes, valstep=1)
 
-        def update(val):
-            dmax = sdmax.val
-            alpha = salpha.val
-            #nes = int(snes.val)
+        dmax = D
+
+        def analyze(dmax,alpha):
             global sasrec
             sasrec = saxs.Sasrec(Iq, dmax, qc=qc, r=None, alpha=alpha, ne=nes)
             I_l2.set_data(sasrec.qc, sasrec.Ic)
@@ -164,9 +175,63 @@ if __name__ == "__main__":
             axVpmw.set_text("Vp MW = " + str(round(sasrec.mwVp,2)) + " +- " + str(round(sasrec.mwVperr,2)))
             axVcmw.set_text("Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2)))
             axlc.set_text("Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2)))
-            #axI.set_ylim([0.9*np.min(sasrec.Ic),1.1*np.max(sasrec.Ic)])
-            #axP.set_xlim([0,1.1*np.max(sasrec.r)])
+
+        def D_submit(text):
+            dmax = float(text)
+            alpha = salpha.val
+            analyze(dmax,alpha)
+            # this updates the slider value based on text box value
+            dmax = round(dmax,2)
+            sdmax.set_val(dmax)
+            axdmax.set_xticks([0.9 * sdmax.valmax, 0.1 * sdmax.valmax])
             fig.canvas.draw_idle()
+
+        def A_submit(text):
+            alpha = float(text)
+            dmax = sdmax.val
+            analyze(dmax,alpha)
+            # this updates the slider value based on text box value
+            salpha.set_val(alpha)
+            fig.canvas.draw_idle()
+
+        def update(val):
+            dmax = sdmax.val
+            alpha = salpha.val
+            analyze(dmax,alpha)
+            # partitions the slider, so clicking in the upper and lower rnage scale valmax
+            if (dmax > 0.9 * sdmax.valmax) or (dmax < 0.1 * sdmax.valmax):
+                sdmax.valmax = 2 * dmax
+                sdmax.ax.set_xlim(sdmax.valmin, sdmax.valmax)
+                axdmax.set_xticks([0.9 * sdmax.valmax, 0.1 * sdmax.valmax])
+            # partions slider as well
+            if (alpha > 0.9 * salpha.valmax) or (alpha < 0.1 * salpha.valmax):
+                salpha.valmax = 2 * alpha
+                # alpha starting at zero makes initial adjustment additive not multiplicative
+                if alpha != 0:
+                    salpha.ax.set_xlim(salpha.valmin, salpha.valmax)
+                elif alpha == 0:
+                    salpha.valmax = alpha + 10
+                    salpha.valmin = 0.0
+                    salpha.ax.set_xlim(salpha.valmin, salpha.valmax)
+
+            Dmax_box.set_val("%.2e"%dmax)
+            Alpha_box.set_val("%.2e"%alpha)
+
+            fig.canvas.draw_idle()
+
+        # making a text entry for dmax that allows for user input
+        Dvalue = "{}".format(dmax)
+        axIntDmax = plt.axes([0.45, 0.125, 0.07, 0.03])
+        Dmax_box = TextBox(axIntDmax, '', initial=Dvalue)
+        Dmax_box.on_submit(D_submit)
+
+        # making a text entry for alpha that allows for user input
+        Avalue = "{}".format(alpha)
+        axIntAlpha = plt.axes([0.45, 0.075, 0.07, 0.03])
+        Alpha_box = TextBox(axIntAlpha, '', initial=Avalue)
+        Alpha_box.on_submit(A_submit)
+
+        #here is the slider updating
         sdmax.on_changed(update)
         salpha.on_changed(update)
         #snes.on_changed(update)
