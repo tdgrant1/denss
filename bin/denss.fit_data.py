@@ -328,6 +328,6 @@ if __name__ == "__main__":
     #sascif = saxs.Sascif(sasrec)
     #sascif.write(output+".sascif")
     #print "%s file saved" % (output+".sascif")
-
-    np.savetxt(output+'.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr)).T,delimiter=' ',fmt='%.5e')
+    n2 = int(n2_box.text)
+    np.savetxt(output+'.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr[:n2])).T,delimiter=' ',fmt='%.5e')
     print("%s file saved" % (output+".dat"))
