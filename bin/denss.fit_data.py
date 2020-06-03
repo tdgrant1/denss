@@ -77,7 +77,7 @@ if __name__ == "__main__":
     else:
         output = args.output
 
-    Iq = np.genfromtxt(args.file, invalid_raise = False, skip_header=args.n1,skip_footer=args.n2)#[args.n1:args.n2]
+    Iq = np.genfromtxt(args.file, invalid_raise = False)
     Iq = Iq[~np.isnan(Iq).any(axis = 1)]
     D = args.dmax
     nes = args.nes
@@ -99,12 +99,13 @@ if __name__ == "__main__":
 
     Icerr = np.interp(qc,q,Iq[:,2])
 
-    sasrec = saxs.Sasrec(Iq, D, qc=qc, r=None, alpha=alpha, ne=nes)
+    sasrec = saxs.Sasrec(Iq[args.n1:args.n2], D, qc=qc, r=None, alpha=alpha, ne=nes)
 
 
     if args.plot:
         import matplotlib
-        matplotlib.use('TkAgg')
+        #matplotlib.use('TkAgg')
+        matplotlib.use('Qt5Agg')
         import matplotlib.pyplot as plt
         from matplotlib.widgets import Slider, Button, RadioButtons, TextBox
 
@@ -153,7 +154,8 @@ if __name__ == "__main__":
         sdmax.valtext.set_visible(False)
         # set up ticks marks on the slider to denote the change in interaction
         axdmax.set_xticks([0.9 * sdmax.valmax, 0.1 * sdmax.valmax]) 
-        axdmax.xaxis.tick_top()
+        #axdmax.xaxis.tick_top()
+        axdmax.tick_params(labelbottom=False)
 
         salpha = Slider(axalpha, 'Alpha', 0.0, args.max_alpha, valinit=alpha)
         salpha.valtext.set_visible(False)
@@ -161,12 +163,15 @@ if __name__ == "__main__":
         #snes = Slider(axnes, 'NES', 0, args.max_nes, valinit=args.nes, valstep=1)
 
         dmax = D
+        n1 = str(args.n1)
+        n2 = str(args.n2)
 
-        def analyze(dmax,alpha):
+        def analyze(dmax,alpha,n1,n2):
             global sasrec
-            sasrec = saxs.Sasrec(Iq, dmax, qc=qc, r=None, alpha=alpha, ne=nes)
+            sasrec = saxs.Sasrec(Iq[n1:n2], dmax, qc=qc[:n2], r=None, alpha=alpha, ne=nes)
+            Icinterp = np.interp(sasrec.q, sasrec.qc, np.abs(sasrec.Ic))
+            res = np.log10(np.abs(sasrec.I)) - np.log10(Icinterp)
             I_l2.set_data(sasrec.qc, sasrec.Ic)
-            res = np.log10(np.abs(sasrec.I)) - np.log10(np.interp(sasrec.q, sasrec.qc, np.abs(sasrec.Ic)))
             Ires_l1.set_data(sasrec.q, res)
             P_l2.set_data(sasrec.r, sasrec.P)
             axrg.set_text("Rg = " + str(round(sasrec.rg,2)) + " +- " + str(round(sasrec.rgerr,2)))
@@ -176,20 +181,39 @@ if __name__ == "__main__":
             axVcmw.set_text("Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2)))
             axlc.set_text("Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2)))
 
+        def n1_submit(text):
+            dmax = sdmax.val
+            alpha = salpha.val
+            n1 = int(text)
+            n2 = int(n2_box.text)
+            analyze(dmax,alpha,n1,n2)
+            fig.canvas.draw_idle()
+
+        def n2_submit(text):
+            dmax = sdmax.val
+            alpha = salpha.val
+            n1 = int(n1_box.text)
+            n2 = int(text)
+            analyze(dmax,alpha,n1,n2)
+            fig.canvas.draw_idle()
+
         def D_submit(text):
             dmax = float(text)
             alpha = salpha.val
-            analyze(dmax,alpha)
+            n1 = int(n1_box.text)
+            n2 = int(n2_box.text)
+            analyze(dmax,alpha,n1,n2)
             # this updates the slider value based on text box value
-            dmax = round(dmax,2)
             sdmax.set_val(dmax)
             axdmax.set_xticks([0.9 * sdmax.valmax, 0.1 * sdmax.valmax])
             fig.canvas.draw_idle()
 
         def A_submit(text):
-            alpha = float(text)
             dmax = sdmax.val
-            analyze(dmax,alpha)
+            alpha = float(text)
+            n1 = int(n1_box.text)
+            n2 = int(n2_box.text)
+            analyze(dmax,alpha,n1,n2)
             # this updates the slider value based on text box value
             salpha.set_val(alpha)
             fig.canvas.draw_idle()
@@ -197,8 +221,10 @@ if __name__ == "__main__":
         def update(val):
             dmax = sdmax.val
             alpha = salpha.val
-            analyze(dmax,alpha)
-            # partitions the slider, so clicking in the upper and lower rnage scale valmax
+            n1 = int(n1_box.text)
+            n2 = int(n2_box.text)
+            analyze(dmax,alpha,n1,n2)
+            # partitions the slider, so clicking in the upper and lower range scale valmax
             if (dmax > 0.9 * sdmax.valmax) or (dmax < 0.1 * sdmax.valmax):
                 sdmax.valmax = 2 * dmax
                 sdmax.ax.set_xlim(sdmax.valmin, sdmax.valmax)
@@ -214,22 +240,36 @@ if __name__ == "__main__":
                     salpha.valmin = 0.0
                     salpha.ax.set_xlim(salpha.valmin, salpha.valmax)
 
-            Dmax_box.set_val("%.2e"%dmax)
-            Alpha_box.set_val("%.2e"%alpha)
+            Dmax_box.set_val("%.4e"%dmax)
+            Alpha_box.set_val("%.4e"%alpha)
 
             fig.canvas.draw_idle()
 
         # making a text entry for dmax that allows for user input
         Dvalue = "{}".format(dmax)
-        axIntDmax = plt.axes([0.45, 0.125, 0.07, 0.03])
+        axIntDmax = plt.axes([0.45, 0.125, 0.08, 0.03])
         Dmax_box = TextBox(axIntDmax, '', initial=Dvalue)
         Dmax_box.on_submit(D_submit)
 
         # making a text entry for alpha that allows for user input
         Avalue = "{}".format(alpha)
-        axIntAlpha = plt.axes([0.45, 0.075, 0.07, 0.03])
+        axIntAlpha = plt.axes([0.45, 0.075, 0.08, 0.03])
         Alpha_box = TextBox(axIntAlpha, '', initial=Avalue)
         Alpha_box.on_submit(A_submit)
+
+        # making a text entry for n1 that allows for user input
+        n1value = "{}".format(n1)
+        plt.figtext(0.0085, 0.178, "First point")
+        axIntn1 = plt.axes([0.075, 0.170, 0.08, 0.03])
+        n1_box = TextBox(axIntn1, '', initial=n1)
+        n1_box.on_submit(n1_submit)
+
+        # making a text entry for n2 that allows for user input
+        n2value = "{}".format(n2)
+        plt.figtext(0.17, 0.178, "Last point")
+        axIntn2 = plt.axes([0.235, 0.170, 0.08, 0.03])
+        n2_box = TextBox(axIntn2, '', initial=n2)
+        n2_box.on_submit(n2_submit)
 
         #here is the slider updating
         sdmax.on_changed(update)
@@ -266,7 +306,8 @@ if __name__ == "__main__":
             #sascif = saxs.Sascif(sasrec)
             #sascif.write(output+".sascif")
             #print "%s file saved" % (output+".sascif")
-            np.savetxt(output+'.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr)).T,delimiter=' ',fmt='%.5e')
+            n2 = int(n2_box.text)
+            np.savetxt(output+'.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr[:n2])).T,delimiter=' ',fmt='%.5e')
             print("%s file saved" % (output+".dat"))
         save_button.on_clicked(save_file)
 
