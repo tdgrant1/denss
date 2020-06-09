@@ -73,7 +73,7 @@ if __name__ == "__main__":
 
     if args.output is None:
         basename, ext = os.path.splitext(args.file)
-        output = basename + '_fit'
+        output = basename
     else:
         output = args.output
 
@@ -311,8 +311,9 @@ if __name__ == "__main__":
             #sascif.write(output+".sascif")
             #print "%s file saved" % (output+".sascif")
             n2 = int(n2_box.text)
-            np.savetxt(output+'.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr)).T,delimiter=' ',fmt='%.5e')
-            print("%s file saved" % (output+".dat"))
+            np.savetxt(output+'_fit.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr)).T,delimiter=' ',fmt='%.5e')
+            np.savetxt(output+'_pr.dat', np.vstack((sasrec.r, sasrec.P, sasrec.Perr)).T,delimiter=' ',fmt='%.5e')
+            print("%s and %s files saved" % (output+"_fit.dat",output+"_pr.dat"))
         save_button.on_clicked(save_file)
 
         plt.show()
