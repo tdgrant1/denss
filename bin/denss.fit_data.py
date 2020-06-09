@@ -50,8 +50,8 @@ parser.add_argument("--version", action="version",version="%(prog)s v{version}".
 parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
 parser.add_argument("-d", "--dmax", default=100., type=float, help="Estimated maximum dimension")
 parser.add_argument("-a", "--alpha", default=0., type=float, help="Set alpha smoothing factor")
-parser.add_argument("-n1", "--n1", default=0, type=int, help="First data point to use")
-parser.add_argument("-n2", "--n2", default=-1, type=int, help="Last data point to use")
+parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use")
+parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use")
 parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional)")
 parser.add_argument("--nes", default=2, type=int, help=argparse.SUPPRESS)
 parser.add_argument("--max_dmax", default=None, type=float, help="Maximum limit for allowed Dmax values (for plotting slider)")
@@ -97,10 +97,14 @@ if __name__ == "__main__":
     if args.qfile is not None:
         qc = np.loadtxt(args.qfile,usecols=(0,))
 
-    Icerr = np.interp(qc,q,Iq[:,2])
+    if args.n1 is None:
+        n1 = 0
+    if args.n2 is None:
+        n2 = len(q)
 
-    sasrec = saxs.Sasrec(Iq[args.n1:args.n2], D, qc=qc, r=None, alpha=alpha, ne=nes)
+    Icerr = np.interp(qc,q,Iq[n1:n2,2])
 
+    sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=None, alpha=alpha, ne=nes)
 
     if args.plot:
         import matplotlib
@@ -163,15 +167,15 @@ if __name__ == "__main__":
         #snes = Slider(axnes, 'NES', 0, args.max_nes, valinit=args.nes, valstep=1)
 
         dmax = D
-        n1 = str(args.n1)
-        n2 = str(args.n2)
+        n1 = str(n1)
+        n2 = str(n2)
 
         def analyze(dmax,alpha,n1,n2):
             global sasrec
-            sasrec = saxs.Sasrec(Iq[n1:n2], dmax, qc=qc[:n2], r=None, alpha=alpha, ne=nes)
+            sasrec = saxs.Sasrec(Iq[n1:n2], dmax, qc=qc, r=None, alpha=alpha, ne=nes)
             Icinterp = np.interp(sasrec.q, sasrec.qc, np.abs(sasrec.Ic))
             res = np.log10(np.abs(sasrec.I)) - np.log10(Icinterp)
-            I_l2.set_data(sasrec.qc, sasrec.Ic)
+            I_l2.set_data(sasrec.qc[:n2], sasrec.Ic[:n2])
             Ires_l1.set_data(sasrec.q, res)
             P_l2.set_data(sasrec.r, sasrec.P)
             axrg.set_text("Rg = " + str(round(sasrec.rg,2)) + " +- " + str(round(sasrec.rgerr,2)))
@@ -287,7 +291,7 @@ if __name__ == "__main__":
         axprint = plt.axes([0.2, 0.02, 0.1, 0.04])
         print_button = Button(axprint, 'Print Values', color=axcolor, hovercolor='0.975')
 
-        def print_values(event):
+        def print_values(event=None):
             print("---------------------------------")
             print("Dmax = " + str(round(sasrec.D,2)))
             print("alpha = %.5e" % sasrec.alpha)
@@ -302,32 +306,16 @@ if __name__ == "__main__":
         axsave = plt.axes([0.35, 0.02, 0.1, 0.04])
         save_button = Button(axsave, 'Save File', color=axcolor, hovercolor='0.975')
 
-        def save_file(event):
+        def save_file(event=None):
             #sascif = saxs.Sascif(sasrec)
             #sascif.write(output+".sascif")
             #print "%s file saved" % (output+".sascif")
             n2 = int(n2_box.text)
-            np.savetxt(output+'.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr[:n2])).T,delimiter=' ',fmt='%.5e')
+            np.savetxt(output+'.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr)).T,delimiter=' ',fmt='%.5e')
             print("%s file saved" % (output+".dat"))
         save_button.on_clicked(save_file)
 
         plt.show()
 
-
-    print("---------------------------------")
-    print("Dmax = " + str(round(sasrec.D,2)))
-    print("alpha = %.5e" % sasrec.alpha)
-    print("Rg = " + str(round(sasrec.rg,2)) + " +- " + str(round(sasrec.rgerr,2)))
-    print("I(0) = " + str(round(sasrec.I0,2)) + " +- " + str(round(sasrec.I0err,2)))
-    print("Vp = " + str(round(sasrec.Vp,2)) + " +- " + str(round(sasrec.Vperr,2)))
-    print("Vp MW = " + str(round(sasrec.mwVp,2)) + " +- " + str(round(sasrec.mwVperr,2)))
-    print("Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2)))
-    print("Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2)))
-
-
-    #sascif = saxs.Sascif(sasrec)
-    #sascif.write(output+".sascif")
-    #print "%s file saved" % (output+".sascif")
-    n2 = int(n2_box.text)
-    np.savetxt(output+'.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr[:n2])).T,delimiter=' ',fmt='%.5e')
-    print("%s file saved" % (output+".dat"))
+    print_values()
+    save_file()
