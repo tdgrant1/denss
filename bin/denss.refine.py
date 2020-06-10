@@ -97,6 +97,8 @@ args.voxel = rho_voxel
 args.oversampling = rho_side/args.dmax
 args.nsamples = rho_nsamples
 
+if args.add_noise is not None:
+    args.rho_start += np.random.random(size=args.rho_start.shape)*args.add_noise
 
 if __name__ == "__main__":
 

@@ -82,7 +82,7 @@ if __name__ == "__main__":
     resi = np.argmin(y>=0.5)
     resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
     resn = round(float(1./resx),1)
-    print("Resolution: %.1f" % resn, '\u212B'.encode('utf-8'))
+    print("Resolution: %.1f" % resn, '\u212B')
 
     if args.plot:
         plt.plot(fsc[:,0],fsc[:,0]*0+0.5,'k--')
