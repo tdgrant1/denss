@@ -790,11 +790,13 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             shift = shift.astype(int)
             newrho = np.roll(np.roll(np.roll(newrho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
 
-            if j>500:
-                tmp = np.abs(newrho)
+            if rho_start is None:
+                if j>500:
+                    tmp = np.abs(newrho)
+                else:
+                    tmp = newrho
             else:
                 tmp = newrho
-
             rho_blurred = ndimage.filters.gaussian_filter(tmp,sigma=sigma,mode='wrap')
             support = np.zeros(rho.shape,dtype=bool)
             support[rho_blurred >= shrinkwrap_threshold_fraction*rho_blurred.max()] = True
