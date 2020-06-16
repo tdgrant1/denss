@@ -48,7 +48,7 @@ parser.add_argument("-f", "--file", type=str, help="Electron density filename (.
 parser.add_argument("-dq", "--dq", default=None, type=float, help="Desired q spacing (pads map with zeros)")
 parser.add_argument("-n", "--n", default=None, type=int, help="Desired number of samples (overrides --dq option)")
 parser.add_argument("--ns", default=1, type=int, help="Sampling fraction (i.e. every ns'th element, must be integer, allows for reduced sampling for speed up at cost of resolution (i.e. qmax will be smaller))")
-parser.add_argument("-t","--threshold", default=0.0, type=float, help="Minimum density threshold (sets lesser values to zero).")
+parser.add_argument("-t","--threshold", default=None, type=float, help="Minimum density threshold (sets lesser values to zero).")
 parser.add_argument("--plot_on", dest="plot", action="store_true", help="Plot the profile (requires Matplotlib, default if module exists).")
 parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not plot the profile. (Default if Matplotlib does not exist)")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
@@ -71,7 +71,8 @@ if __name__ == "__main__":
         rho = rho[:-1,:-1,:-1]
     #if nstmp%2==1: args.ns+=1
     rho = np.copy(rho[::args.ns, ::args.ns, ::args.ns])
-    rho[rho<=args.threshold] = 0
+    if args.threshold is not None:
+        rho[np.abs(rho)<=args.threshold] = 0
     halfside = side/2
     nx, ny, nz = rho.shape[0], rho.shape[1], rho.shape[2]
     n = nx

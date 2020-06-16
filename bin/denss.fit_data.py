@@ -14,6 +14,9 @@
 #    Email:  <tgrant@hwi.buffalo.edu>
 #    Copyright 2018 The Research Foundation for SUNY
 #
+#    Additional authors:
+#    Christopher Handelmann
+#
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
 #    the Free Software Foundation, either version 3 of the License, or
@@ -47,8 +50,8 @@ parser.add_argument("--version", action="version",version="%(prog)s v{version}".
 parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
 parser.add_argument("-d", "--dmax", default=100., type=float, help="Estimated maximum dimension")
 parser.add_argument("-a", "--alpha", default=0., type=float, help="Set alpha smoothing factor")
-parser.add_argument("-n1", "--n1", default=0, type=int, help="First data point to use")
-parser.add_argument("-n2", "--n2", default=-1, type=int, help="Last data point to use")
+parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use")
+parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use")
 parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional)")
 parser.add_argument("--nes", default=2, type=int, help=argparse.SUPPRESS)
 parser.add_argument("--max_dmax", default=None, type=float, help="Maximum limit for allowed Dmax values (for plotting slider)")
@@ -70,11 +73,11 @@ if __name__ == "__main__":
 
     if args.output is None:
         basename, ext = os.path.splitext(args.file)
-        output = basename + '_fit'
+        output = basename
     else:
         output = args.output
 
-    Iq = np.genfromtxt(args.file, invalid_raise = False, skip_header=args.n1,skip_footer=args.n2)#[args.n1:args.n2]
+    Iq = np.genfromtxt(args.file, invalid_raise = False)
     Iq = Iq[~np.isnan(Iq).any(axis = 1)]
     D = args.dmax
     nes = args.nes
@@ -94,19 +97,26 @@ if __name__ == "__main__":
     if args.qfile is not None:
         qc = np.loadtxt(args.qfile,usecols=(0,))
 
-    Icerr = np.interp(qc,q,Iq[:,2])
+    if args.n1 is None:
+        n1 = 0
+    if args.n2 is None:
+        n2 = len(q)
 
-    sasrec = saxs.Sasrec(Iq, D, qc=qc, r=None, alpha=alpha, ne=nes)
+    Icerr = np.interp(qc,q,Iq[n1:n2,2])
 
+    sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=None, alpha=alpha, ne=nes)
 
     if args.plot:
+        import matplotlib
+        #matplotlib.use('TkAgg')
+        matplotlib.use('Qt5Agg')
         import matplotlib.pyplot as plt
-        from matplotlib.widgets import Slider, Button, RadioButtons
+        from matplotlib.widgets import Slider, Button, RadioButtons, TextBox
 
         #fig, (axI, axP) = plt.subplots(1, 2, figsize=(12,6))
         fig = plt.figure(0, figsize=(12,6))
         axI = plt.subplot2grid((3,2), (0,0),rowspan=2)
-        axR = plt.subplot2grid((3,2), (2,0))
+        axR = plt.subplot2grid((3,2), (2,0),sharex=axI)
         axP = plt.subplot2grid((3,2), (0,1),rowspan=3)
         plt.subplots_adjust(left=0.068, bottom=0.25, right=0.98, top=0.95)
 
@@ -144,18 +154,28 @@ if __name__ == "__main__":
         axVcmw = plt.figtext(.55, .025, "Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2)))
         axlc = plt.figtext(.75, .025, "Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2)))
 
-        sdmax = Slider(axdmax, 'Dmax', 0.0, args.max_dmax, valinit=D) #, valstep=D/1000.)
-        salpha = Slider(axalpha, 'Alpha', 0.0, args.max_alpha, valinit=alpha) #, valstep=alpha/100.)
+        sdmax = Slider(axdmax, 'Dmax', 0.0, args.max_dmax, valinit=D)
+        sdmax.valtext.set_visible(False)
+        # set up ticks marks on the slider to denote the change in interaction
+        axdmax.set_xticks([0.9 * sdmax.valmax, 0.1 * sdmax.valmax]) 
+        #axdmax.xaxis.tick_top()
+        axdmax.tick_params(labelbottom=False)
+
+        salpha = Slider(axalpha, 'Alpha', 0.0, args.max_alpha, valinit=alpha)
+        salpha.valtext.set_visible(False)
+
         #snes = Slider(axnes, 'NES', 0, args.max_nes, valinit=args.nes, valstep=1)
 
-        def update(val):
-            dmax = sdmax.val
-            alpha = salpha.val
-            #nes = int(snes.val)
+        dmax = D
+        n1 = str(n1)
+        n2 = str(n2)
+
+        def analyze(dmax,alpha,n1,n2):
             global sasrec
-            sasrec = saxs.Sasrec(Iq, dmax, qc=qc, r=None, alpha=alpha, ne=nes)
-            I_l2.set_data(sasrec.qc, sasrec.Ic)
-            res = np.log10(np.abs(sasrec.I)) - np.log10(np.interp(sasrec.q, sasrec.qc, np.abs(sasrec.Ic)))
+            sasrec = saxs.Sasrec(Iq[n1:n2], dmax, qc=qc, r=None, alpha=alpha, ne=nes)
+            Icinterp = np.interp(sasrec.q, sasrec.qc, np.abs(sasrec.Ic))
+            res = np.log10(np.abs(sasrec.I)) - np.log10(Icinterp)
+            I_l2.set_data(sasrec.qc[:n2], sasrec.Ic[:n2])
             Ires_l1.set_data(sasrec.q, res)
             P_l2.set_data(sasrec.r, sasrec.P)
             axrg.set_text("Rg = " + str(round(sasrec.rg,2)) + " +- " + str(round(sasrec.rgerr,2)))
@@ -164,9 +184,98 @@ if __name__ == "__main__":
             axVpmw.set_text("Vp MW = " + str(round(sasrec.mwVp,2)) + " +- " + str(round(sasrec.mwVperr,2)))
             axVcmw.set_text("Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2)))
             axlc.set_text("Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2)))
-            #axI.set_ylim([0.9*np.min(sasrec.Ic),1.1*np.max(sasrec.Ic)])
-            #axP.set_xlim([0,1.1*np.max(sasrec.r)])
+
+        def n1_submit(text):
+            dmax = sdmax.val
+            alpha = salpha.val
+            n1 = int(text)
+            n2 = int(n2_box.text)
+            analyze(dmax,alpha,n1,n2)
             fig.canvas.draw_idle()
+
+        def n2_submit(text):
+            dmax = sdmax.val
+            alpha = salpha.val
+            n1 = int(n1_box.text)
+            n2 = int(text)
+            analyze(dmax,alpha,n1,n2)
+            fig.canvas.draw_idle()
+
+        def D_submit(text):
+            dmax = float(text)
+            alpha = salpha.val
+            n1 = int(n1_box.text)
+            n2 = int(n2_box.text)
+            analyze(dmax,alpha,n1,n2)
+            # this updates the slider value based on text box value
+            sdmax.set_val(dmax)
+            axdmax.set_xticks([0.9 * sdmax.valmax, 0.1 * sdmax.valmax])
+            fig.canvas.draw_idle()
+
+        def A_submit(text):
+            dmax = sdmax.val
+            alpha = float(text)
+            n1 = int(n1_box.text)
+            n2 = int(n2_box.text)
+            analyze(dmax,alpha,n1,n2)
+            # this updates the slider value based on text box value
+            salpha.set_val(alpha)
+            fig.canvas.draw_idle()
+
+        def update(val):
+            dmax = sdmax.val
+            alpha = salpha.val
+            n1 = int(n1_box.text)
+            n2 = int(n2_box.text)
+            analyze(dmax,alpha,n1,n2)
+            # partitions the slider, so clicking in the upper and lower range scale valmax
+            if (dmax > 0.9 * sdmax.valmax) or (dmax < 0.1 * sdmax.valmax):
+                sdmax.valmax = 2 * dmax
+                sdmax.ax.set_xlim(sdmax.valmin, sdmax.valmax)
+                axdmax.set_xticks([0.9 * sdmax.valmax, 0.1 * sdmax.valmax])
+            # partions slider as well
+            if (alpha > 0.9 * salpha.valmax) or (alpha < 0.1 * salpha.valmax):
+                salpha.valmax = 2 * alpha
+                # alpha starting at zero makes initial adjustment additive not multiplicative
+                if alpha != 0:
+                    salpha.ax.set_xlim(salpha.valmin, salpha.valmax)
+                elif alpha == 0:
+                    salpha.valmax = alpha + 10
+                    salpha.valmin = 0.0
+                    salpha.ax.set_xlim(salpha.valmin, salpha.valmax)
+
+            Dmax_box.set_val("%.4e"%dmax)
+            Alpha_box.set_val("%.4e"%alpha)
+
+            fig.canvas.draw_idle()
+
+        # making a text entry for dmax that allows for user input
+        Dvalue = "{}".format(dmax)
+        axIntDmax = plt.axes([0.45, 0.125, 0.08, 0.03])
+        Dmax_box = TextBox(axIntDmax, '', initial=Dvalue)
+        Dmax_box.on_submit(D_submit)
+
+        # making a text entry for alpha that allows for user input
+        Avalue = "{}".format(alpha)
+        axIntAlpha = plt.axes([0.45, 0.075, 0.08, 0.03])
+        Alpha_box = TextBox(axIntAlpha, '', initial=Avalue)
+        Alpha_box.on_submit(A_submit)
+
+        # making a text entry for n1 that allows for user input
+        n1value = "{}".format(n1)
+        plt.figtext(0.0085, 0.178, "First point")
+        axIntn1 = plt.axes([0.075, 0.170, 0.08, 0.03])
+        n1_box = TextBox(axIntn1, '', initial=n1)
+        n1_box.on_submit(n1_submit)
+
+        # making a text entry for n2 that allows for user input
+        n2value = "{}".format(n2)
+        plt.figtext(0.17, 0.178, "Last point")
+        axIntn2 = plt.axes([0.235, 0.170, 0.08, 0.03])
+        n2_box = TextBox(axIntn2, '', initial=n2)
+        n2_box.on_submit(n2_submit)
+
+        #here is the slider updating
         sdmax.on_changed(update)
         salpha.on_changed(update)
         #snes.on_changed(update)
@@ -182,7 +291,7 @@ if __name__ == "__main__":
         axprint = plt.axes([0.2, 0.02, 0.1, 0.04])
         print_button = Button(axprint, 'Print Values', color=axcolor, hovercolor='0.975')
 
-        def print_values(event):
+        def print_values(event=None):
             print("---------------------------------")
             print("Dmax = " + str(round(sasrec.D,2)))
             print("alpha = %.5e" % sasrec.alpha)
@@ -197,31 +306,17 @@ if __name__ == "__main__":
         axsave = plt.axes([0.35, 0.02, 0.1, 0.04])
         save_button = Button(axsave, 'Save File', color=axcolor, hovercolor='0.975')
 
-        def save_file(event):
+        def save_file(event=None):
             #sascif = saxs.Sascif(sasrec)
             #sascif.write(output+".sascif")
             #print "%s file saved" % (output+".sascif")
-            np.savetxt(output+'.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr)).T,delimiter=' ',fmt='%.5e')
-            print("%s file saved" % (output+".dat"))
+            n2 = int(n2_box.text)
+            np.savetxt(output+'_fit.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr)).T,delimiter=' ',fmt='%.5e')
+            np.savetxt(output+'_pr.dat', np.vstack((sasrec.r, sasrec.P, sasrec.Perr)).T,delimiter=' ',fmt='%.5e')
+            print("%s and %s files saved" % (output+"_fit.dat",output+"_pr.dat"))
         save_button.on_clicked(save_file)
 
         plt.show()
 
-
-    print("---------------------------------")
-    print("Dmax = " + str(round(sasrec.D,2)))
-    print("alpha = %.5e" % sasrec.alpha)
-    print("Rg = " + str(round(sasrec.rg,2)) + " +- " + str(round(sasrec.rgerr,2)))
-    print("I(0) = " + str(round(sasrec.I0,2)) + " +- " + str(round(sasrec.I0err,2)))
-    print("Vp = " + str(round(sasrec.Vp,2)) + " +- " + str(round(sasrec.Vperr,2)))
-    print("Vp MW = " + str(round(sasrec.mwVp,2)) + " +- " + str(round(sasrec.mwVperr,2)))
-    print("Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2)))
-    print("Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2)))
-
-
-    #sascif = saxs.Sascif(sasrec)
-    #sascif.write(output+".sascif")
-    #print "%s file saved" % (output+".sascif")
-
-    np.savetxt(output+'.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr)).T,delimiter=' ',fmt='%.5e')
-    print("%s file saved" % (output+".dat"))
+    print_values()
+    save_file()
