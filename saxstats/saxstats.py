@@ -1039,7 +1039,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     fit[:len(sigqdata),2] = sigqdata
     fit[:len(qbinsc),3] = qbinsc
     fit[:len(Imean),4] = Imean
-    np.savetxt(fprefix+'_map.fit', fit, delimiter=' ', fmt='%.5e',
+    np.savetxt(fprefix+'_map.fit', fit, delimiter=' ', fmt='%.5e'.encode('ascii'),
         header='q(data),I(data),error(data),q(density),I(density)')
 
     np.savetxt(fprefix+'_stats_by_step.dat',np.vstack((chi, rg, supportV)).T,
