@@ -802,8 +802,13 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         if not DENSS_GPU and j%write_freq == 0:  
             if write_xplor_format:
                 write_xplor(rhoprime/dV, side, fprefix+"_current.xplor")
-            write_mrc(rhoprime/dV, side, fprefix+"_current.mrc")          
-        rg[j] = 1 #rho2rg(rhoprime,r=r,support=support,dx=dx)
+            write_mrc(rhoprime/dV, side, fprefix+"_current.mrc")
+
+        if DENSS_GPU:
+            #havent yet updated rho2rg to work with cupy
+            rg[j] = 1.0
+        else:
+            rg[j] = rho2rg(rhoprime,r=r,support=support,dx=dx)
         newrho = myzeros_like(rho)
 
         #Error Reduction
