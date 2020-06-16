@@ -41,7 +41,7 @@ import multiprocessing
 import datetime, time
 
 import numpy as np
-from scipy import ndimage, interpolate, spatial, special, optimize
+from scipy import ndimage, interpolate, spatial, special, optimize, signal
 from functools import reduce
 
 def chi2(exp, calc, sig):
@@ -790,13 +790,11 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             shift = shift.astype(int)
             newrho = np.roll(np.roll(np.roll(newrho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
 
-            if rho_start is None:
-                if j>500:
-                    tmp = np.abs(newrho)
-                else:
-                    tmp = newrho
+            if j>500:
+                tmp = np.abs(newrho)
             else:
                 tmp = newrho
+
             rho_blurred = ndimage.filters.gaussian_filter(tmp,sigma=sigma,mode='wrap')
             support = np.zeros(rho.shape,dtype=bool)
             support[rho_blurred >= shrinkwrap_threshold_fraction*rho_blurred.max()] = True
@@ -1878,11 +1876,17 @@ class PDB(object):
             for line in f:
                 if line[0:4] != "ATOM" and line[0:4] != "HETA":
                     continue # skip other lines
-                self.atomnum[atom] = int(line[6:11])
+                try:
+                    self.atomnum[atom] = int(line[6:11])
+                except ValueError as e:
+                    self.atomnum[atom] = int(line[6:11],36)
                 self.atomname[atom] = line[13:16]
                 self.atomalt[atom] = line[16]
                 self.resname[atom] = line[17:20]
-                self.resnum[atom] = int(line[22:26])
+                try:
+                    self.resnum[atom] = int(line[22:26])
+                except ValueError as e:
+                    self.resnum[atom] = int(line[22:26],36)
                 self.chain[atom] = line[21]
                 self.coords[atom, 0] = float(line[30:38])
                 self.coords[atom, 1] = float(line[38:46])
@@ -1903,10 +1907,10 @@ class PDB(object):
         """Write PDB file format using pdb object as input."""
         records = []
         for i in range(self.natoms):
-            atomnum = '%5i' % self.atomnum[i]
+            atomnum = '%5i' % (self.atomnum[i]%99999)
             atomname = '%3s' % self.atomname[i]
             atomalt = '%1s' % self.atomalt[i]
-            resnum = '%4i' % self.resnum[i]
+            resnum = '%4i' % (self.resnum[i]%9999)
             resname = '%3s' % self.resname[i]
             chain = '%1s' % self.chain[i]
             x = '%8.3f' % self.coords[i,0]
@@ -2015,6 +2019,64 @@ def pdb2map_fastgauss(pdb,x,y,z,sigma,r=20.0):
     print()
     return values
 
+def pdb2map_multigauss(pdb,x,y,z,r=20.0):
+    """5-term gaussian sum at coordinate locations using Cromer-Mann coefficients.
+
+    This fastgauss function only calculates the values at
+    grid points near the atom for speed.
+
+    pdb - instance of PDB class (required)
+    x,y,z - meshgrids for x, y, and z (required)
+    sigma - width of Gaussian, i.e. effectively resolution
+    r - maximum distance from atom to calculate density
+    """
+    side = x[-1,0,0] - x[0,0,0]
+    halfside = side/2
+    n = x.shape[0]
+    dx = side/n
+    dV = dx**3
+    V = side**3
+    x_ = x[:,0,0]
+    shift = np.ones(3)*dx/2.
+    print("\n Read density map from PDB... ")
+    values = np.zeros(x.shape)
+    support = np.zeros(x.shape,dtype=bool)
+    for i in range(pdb.coords.shape[0]):
+        sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
+        sys.stdout.flush()
+        #this will cut out the grid points that are near the atom
+        #first, get the min and max distances for each dimension
+        #also, convert those distances to indices by dividing by dx
+        xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
+        xmin = int(np.floor((xa-r)/dx)) + n//2
+        xmax = int(np.ceil((xa+r)/dx)) + n//2
+        ymin = int(np.floor((ya-r)/dx)) + n//2
+        ymax = int(np.ceil((ya+r)/dx)) + n//2
+        zmin = int(np.floor((za-r)/dx)) + n//2
+        zmax = int(np.ceil((za+r)/dx)) + n//2
+        #handle edges
+        xmin = max([xmin,0])
+        xmax = min([xmax,n])
+        ymin = max([ymin,0])
+        ymax = min([ymax,n])
+        zmin = max([zmin,0])
+        zmax = min([zmax,n])
+        #now lets create a slice object for convenience
+        slc = np.s_[xmin:xmax,ymin:ymax,zmin:zmax]
+        nx = xmax-xmin
+        ny = ymax-ymin
+        nz = zmax-zmin
+        #now lets create a column stack of coordinates for the cropped grid
+        xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
+        dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
+        dist *= dist
+        #tmpvalues = pdb.nelectrons[i]*1./np.sqrt(2*np.pi*sigma**2) * np.exp(-dist[0]/(2*sigma**2))
+        tmpvalues = realspace_formfactor(element=pdb.atomtype[i],r=dist)
+        values[slc] += tmpvalues.reshape(nx,ny,nz)
+        support[slc] = True
+    print()
+    return values, support
+
 def pdb2map_FFT(pdb,x,y,z,radii=None,restrict=True):
     """Calculate electron density from pdb coordinates by FFT of Fs.
 
@@ -2111,6 +2173,20 @@ def formfactor(element, q=(np.arange(500)+1)/1000.):
     for i in range(4):
         ff += ffcoeff[element]['a'][i] * np.exp(-ffcoeff[element]['b'][i]*(q/(4*np.pi))**2)
     ff += ffcoeff[element]['c']
+    return ff
+
+def realspace_formfactor(element, r=(np.arange(501))/1000.):
+    """Calculate real space atomic form factors (just testing this out)"""
+    r = np.atleast_1d(r)
+    ff = np.zeros(r.shape)
+    for i in range(4):
+        ai = ffcoeff[element]['a'][i]
+        bi = ffcoeff[element]['b'][i]
+        #print i, ai, bi, ffcoeff[element]['c']
+        #print i, 4*ai * (np.pi**3/bi)**0.5
+        ff += 4*ai * (np.pi**3/bi)**0.5 * np.exp(-(2*np.pi*r)**2/bi)
+    i = np.where((r==0))
+    ff += signal.unit_impulse(r.shape, i) * ffcoeff[element]['c']
     return ff
 
 def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=True,
