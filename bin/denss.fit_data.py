@@ -106,6 +106,25 @@ if __name__ == "__main__":
 
     sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=None, alpha=alpha, ne=nes)
 
+    def print_values(event=None):
+        print("---------------------------------")
+        print("Dmax = " + str(round(sasrec.D,2)))
+        print("alpha = %.5e" % sasrec.alpha)
+        print("Rg = " + str(round(sasrec.rg,2)) + " +- " + str(round(sasrec.rgerr,2)))
+        print("I(0) = " + str(round(sasrec.I0,2)) + " +- " + str(round(sasrec.I0err,2)))
+        print("Vp = " + str(round(sasrec.Vp,2)) + " +- " + str(round(sasrec.Vperr,2)))
+        print("Vp MW = " + str(round(sasrec.mwVp,2)) + " +- " + str(round(sasrec.mwVperr,2)))
+        print("Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2)))
+        print("Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2)))
+
+    def save_file(event=None):
+        #sascif = saxs.Sascif(sasrec)
+        #sascif.write(output+".sascif")
+        #print "%s file saved" % (output+".sascif")
+        np.savetxt(output+'_fit.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr)).T,delimiter=' ',fmt='%.5e')
+        np.savetxt(output+'_pr.dat', np.vstack((sasrec.r, sasrec.P, sasrec.Perr)).T,delimiter=' ',fmt='%.5e')
+        print("%s and %s files saved" % (output+"_fit.dat",output+"_pr.dat"))
+
     if args.plot:
         import matplotlib
         #matplotlib.use('TkAgg')
@@ -291,29 +310,11 @@ if __name__ == "__main__":
         axprint = plt.axes([0.2, 0.02, 0.1, 0.04])
         print_button = Button(axprint, 'Print Values', color=axcolor, hovercolor='0.975')
 
-        def print_values(event=None):
-            print("---------------------------------")
-            print("Dmax = " + str(round(sasrec.D,2)))
-            print("alpha = %.5e" % sasrec.alpha)
-            print("Rg = " + str(round(sasrec.rg,2)) + " +- " + str(round(sasrec.rgerr,2)))
-            print("I(0) = " + str(round(sasrec.I0,2)) + " +- " + str(round(sasrec.I0err,2)))
-            print("Vp = " + str(round(sasrec.Vp,2)) + " +- " + str(round(sasrec.Vperr,2)))
-            print("Vp MW = " + str(round(sasrec.mwVp,2)) + " +- " + str(round(sasrec.mwVperr,2)))
-            print("Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2)))
-            print("Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2)))
         print_button.on_clicked(print_values)
 
         axsave = plt.axes([0.35, 0.02, 0.1, 0.04])
         save_button = Button(axsave, 'Save File', color=axcolor, hovercolor='0.975')
 
-        def save_file(event=None):
-            #sascif = saxs.Sascif(sasrec)
-            #sascif.write(output+".sascif")
-            #print "%s file saved" % (output+".sascif")
-            n2 = int(n2_box.text)
-            np.savetxt(output+'_fit.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr)).T,delimiter=' ',fmt='%.5e')
-            np.savetxt(output+'_pr.dat', np.vstack((sasrec.r, sasrec.P, sasrec.Perr)).T,delimiter=' ',fmt='%.5e')
-            print("%s and %s files saved" % (output+"_fit.dat",output+"_pr.dat"))
         save_button.on_clicked(save_file)
 
         plt.show()

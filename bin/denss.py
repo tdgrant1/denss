@@ -129,6 +129,7 @@ if __name__ == "__main__":
         enforce_connectivity_steps=args.enforce_connectivity_steps,
         cutout=args.cutout,
         quiet=args.quiet,
+        DENSS_GPU=args.DENSS_GPU,
         my_logger=my_logger)
 
     print(args.output)

@@ -102,15 +102,28 @@ if args.add_noise is not None:
 
 if __name__ == "__main__":
 
-    logging.basicConfig(filename=args.output+'.log',level=logging.INFO,filemode='w',
-        format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
-    logging.info('BEGIN')
-    logging.info('Script name: %s', sys.argv[0])
-    logging.info('DENSS Version: %s', __version__)
-    logging.info('Data filename: %s', args.file)
-    logging.info('Output prefix: %s', args.output)
-    logging.info('Mode: %s', args.mode)
-    logging.info('Starting density: %s', basename+'.mrc')
+    my_logger = logging.getLogger()
+    my_logger.setLevel(logging.DEBUG)
+
+    formatter = logging.Formatter('%(asctime)s %(message)s', '%Y-%m-%d %I:%M:%S %p')
+
+    # h1 = logging.StreamHandler(sys.stdout)
+    # h1.setLevel(logging.INFO)
+    # h1.setFormatter(formatter)
+
+    h2 = logging.FileHandler(os.path.join('.', args.output+'.log'), mode='w')
+    h2.setLevel(logging.INFO)
+    h2.setFormatter(formatter)
+
+    # my_logger.addHandler(h1)
+    my_logger.addHandler(h2)
+
+    my_logger.info('BEGIN')
+    my_logger.info('Script name: %s', sys.argv[0])
+    my_logger.info('DENSS Version: %s', __version__)
+    my_logger.info('Data filename: %s', args.file)
+    my_logger.info('Output prefix: %s', args.output)
+    my_logger.info('Mode: %s', args.mode)
 
     qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV, rho, side = saxs.denss(
         q=q,I=I,sigq=sigq,
@@ -147,7 +160,10 @@ if __name__ == "__main__":
         write_freq=args.write_freq,
         enforce_connectivity=args.enforce_connectivity,
         enforce_connectivity_steps=args.enforce_connectivity_steps,
-        cutout=args.cutout)
+        cutout=args.cutout,
+        quiet=args.quiet,
+        DENSS_GPU=args.DENSS_GPU,
+        my_logger=my_logger)
 
     print(args.output)
 

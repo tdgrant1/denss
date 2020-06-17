@@ -4,16 +4,18 @@
 #    SAXStats
 #    A collection of python functions useful for solution scattering
 #
-#    Tested using Anaconda / Python 2.7
+#    Tested using Anaconda / Python 2.7, 3.7
 #
 #    Author: Thomas D. Grant
-#    Email:  <tgrant@hwi.buffalo.edu>
-#    Copyright 2017, 2018 The Research Foundation for SUNY
+#    Email:  <tdgrant@buffalo.edu>
+#    Alt Email:  <tgrant@hwi.buffalo.edu>
+#    Copyright 2017, 2018, 2019, 2020 The Research Foundation for SUNY
 #
 #    Additional authors:
 #    Nhan D. Nguyen
 #    Jesse Hopkins
 #    Andrew Bruno
+#    Esther Gallmeier
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -47,26 +49,24 @@ import numpy as np
 from scipy import ndimage, interpolate, spatial, special, optimize, signal
 from functools import reduce
 
-
-DENSS_GPU = False
-if os.getenv('DENSS_GPU'):
-    DENSS_GPU = True
+try:
     import cupy as cp
-    print("imported cupy")
+except ImportError:
+    DENSS_GPU = False
 
-def myfftn(x): 
+def myfftn(x, DENSS_GPU=False): 
     if DENSS_GPU:
         return cp.fft.fftn(x)
     else:
         return np.fft.fftn(x)
 
-def myabs(x): 
+def myabs(x, DENSS_GPU=False): 
     if DENSS_GPU:
         return cp.abs(x)
     else: 
         return np.abs(x)
 
-def mybinmean(x,bins): 
+def mybinmean(x,bins, DENSS_GPU=False): 
     if DENSS_GPU:
         xsum = cp.bincount(bins.ravel(), x.ravel())
         xcount = cp.bincount(bins.ravel())
@@ -76,43 +76,43 @@ def mybinmean(x,bins):
         xcount = np.bincount(bins.ravel())
         return xsum/xcount
  
-def myones(x):
+def myones(x, DENSS_GPU=False):
     if DENSS_GPU:
         return cp.ones(x)
     else:
         return np.ones(x)
 
-def mysqrt(x):
+def mysqrt(x, DENSS_GPU=False):
     if DENSS_GPU:
         return cp.sqrt(x)
     else:
         return np.sqrt(x)
 
-def mysum(x): 
+def mysum(x, DENSS_GPU=False): 
     if DENSS_GPU:
         return cp.sum(x)
     else:
         return np.sum(x)
 
-def myifftn(x):
+def myifftn(x, DENSS_GPU=False):
     if DENSS_GPU:
         return cp.fft.ifftn(x)
     else:
         return np.fft.ifftn(x)
 
-def myzeros_like(x):
+def myzeros_like(x, DENSS_GPU=False):
     if DENSS_GPU:
         return cp.zeros_like(x)
     else:
         return np.zeros_like(x)
 
-def mystd(x):
+def mystd(x, DENSS_GPU=False):
     if DENSS_GPU:
         return cp.std(x)
     else:
         return np.std(x)
 
-def mymean(x):
+def mymean(x, DENSS_GPU=False):
     if DENSS_GPU:
         return cp.mean(x)
     else:
@@ -600,7 +600,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     write_xplor_format=False, write_freq=100, enforce_connectivity=True,
     enforce_connectivity_steps=[500], cutout=True, quiet=False, ncs=0,
     ncs_steps=[500],ncs_axis=1, abort_event=None, my_logger=logging.getLogger(),
-    path='.', gui=False):
+    path='.', gui=False, DENSS_GPU=False):
     """Calculate electron density from scattering data."""
     if abort_event is not None:
         if abort_event.is_set():
@@ -777,12 +777,12 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                 my_logger.info('Aborted!')
                 return []
         
-        F = myfftn(rho)
+        F = myfftn(rho, DENSS_GPU=DENSS_GPU)
 
         #APPLY RECIPROCAL SPACE RESTRAINTS
         #calculate spherical average of intensities from 3D Fs
-        I3D = myabs(F)**2
-        Imean = mybinmean(I3D, qbin_labels)
+        I3D = myabs(F, DENSS_GPU=DENSS_GPU)**2
+        Imean = mybinmean(I3D, qbin_labels, DENSS_GPU=DENSS_GPU)
         """
         if j==0:
             np.savetxt(fprefix+'_step0_saxs.dat',np.vstack((qbinsc,Imean[j],Imean[j]*.05)).T,delimiter=" ",fmt="%.5e")
@@ -791,12 +791,12 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
 
         #scale Fs to match data
         #factors = myones((len(qbins)))
-        factors = mysqrt(Idata/Imean)
+        factors = mysqrt(Idata/Imean, DENSS_GPU=DENSS_GPU)
         F *= factors[qbin_labels]
 
-        chi[j] = mysum(((Imean-Idata)/sigqdata)**2)/Imean.size
+        chi[j] = mysum(((Imean-Idata)/sigqdata)**2, DENSS_GPU=DENSS_GPU)/Imean.size
         #APPLY REAL SPACE RESTRAINTS
-        rhoprime = myifftn(F)
+        rhoprime = myifftn(F, DENSS_GPU=DENSS_GPU)
         rhoprime = rhoprime.real
 
         if not DENSS_GPU and j%write_freq == 0:  
@@ -809,7 +809,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             rg[j] = 1.0
         else:
             rg[j] = rho2rg(rhoprime,r=r,support=support,dx=dx)
-        newrho = myzeros_like(rho)
+        newrho = myzeros_like(rho, DENSS_GPU=DENSS_GPU)
 
         #Error Reduction
         newrho[support] = rhoprime[support]
@@ -817,10 +817,10 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
 
         #enforce positivity by making all negative density points zero.
         if positivity:
-            netmp = mysum(newrho)
+            netmp = mysum(newrho, DENSS_GPU=DENSS_GPU)
             newrho[newrho<0] = 0.0
-            if mysum(newrho) != 0:
-                newrho *= netmp / mysum(newrho)
+            if mysum(newrho, DENSS_GPU=DENSS_GPU) != 0:
+                newrho *= netmp / mysum(newrho, DENSS_GPU=DENSS_GPU)
 
 
         #apply non-crystallographic symmetry averaging
@@ -937,7 +937,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
 
  
 
-        supportV[j] = mysum(support)*dV
+        supportV[j] = mysum(support, DENSS_GPU=DENSS_GPU)*dV
 
         if not quiet:
             if gui:
@@ -947,7 +947,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                 sys.stdout.flush()
 
 
-        if j > 101 + shrinkwrap_minstep and mystd(chi[j-100:j]) < chi_end_fraction * mymean(chi[j-100:j]):
+        if j > 101 + shrinkwrap_minstep and mystd(chi[j-100:j], DENSS_GPU=DENSS_GPU) < chi_end_fraction * mymean(chi[j-100:j], DENSS_GPU=DENSS_GPU):
             break
     
         rho = newrho
