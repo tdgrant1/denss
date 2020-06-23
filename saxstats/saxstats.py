@@ -593,7 +593,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     limit_dmax_steps=[500], recenter=True, recenter_steps=None,
     recenter_mode="com", positivity=True, extrapolate=True, output="map",
     steps=None, seed=None,  minimum_density=None,  maximum_density=None,
-    flatten_low_density=True, rho_start=None, shrinkwrap=True,
+    flatten_low_density=True, rho_start=None, add_noise=None, shrinkwrap=True,
     shrinkwrap_sigma_start=3, shrinkwrap_sigma_end=1.5,
     shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
     shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01,
@@ -723,6 +723,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
 
     if rho_start is not None:
         rho = rho_start
+        if add_noise is not None:
+            rho += prng.random_sample(size=x.shape)*add_noise
     else:
         rho = prng.random_sample(size=x.shape) #- 0.5
 
@@ -821,7 +823,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             newrho[newrho<0] = 0.0
             if mysum(newrho, DENSS_GPU=DENSS_GPU) != 0:
                 newrho *= netmp / mysum(newrho, DENSS_GPU=DENSS_GPU)
-
 
         #apply non-crystallographic symmetry averaging
         if ncs != 0 and j in ncs_steps:
@@ -935,8 +936,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                 newrho = cp.array(newrho)
                 support = cp.array(support)
 
- 
-
         supportV[j] = mysum(support, DENSS_GPU=DENSS_GPU)*dV
 
         if not quiet:
@@ -949,7 +948,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
 
         if j > 101 + shrinkwrap_minstep and mystd(chi[j-100:j], DENSS_GPU=DENSS_GPU) < chi_end_fraction * mymean(chi[j-100:j], DENSS_GPU=DENSS_GPU):
             break
-    
+
         rho = newrho
 
     #convert back to numpy outside of for loop
@@ -1995,13 +1994,21 @@ class PDB(object):
         with open(filename) as f:
             atom = 0
             for line in f:
+                if line[0:6] == "CRYST1":
+                    cryst = line.split()
+                    self.cella = float(cryst[1])
+                    self.cellb = float(cryst[2])
+                    self.cellc = float(cryst[3])
+                    self.cellalpha = float(cryst[4])
+                    self.cellbeta = float(cryst[5])
+                    self.cellgamma = float(cryst[6])
                 if line[0:4] != "ATOM" and line[0:4] != "HETA":
                     continue # skip other lines
                 try:
                     self.atomnum[atom] = int(line[6:11])
                 except ValueError as e:
                     self.atomnum[atom] = int(line[6:11],36)
-                self.atomname[atom] = line[13:16]
+                self.atomname[atom] = line[12:16].split()[0]
                 self.atomalt[atom] = line[16]
                 self.resname[atom] = line[17:20]
                 try:
@@ -2192,8 +2199,17 @@ def pdb2map_multigauss(pdb,x,y,z,r=20.0):
         dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
         dist *= dist
         #tmpvalues = pdb.nelectrons[i]*1./np.sqrt(2*np.pi*sigma**2) * np.exp(-dist[0]/(2*sigma**2))
-        tmpvalues = realspace_formfactor(element=pdb.atomtype[i],r=dist)
-        values[slc] += tmpvalues.reshape(nx,ny,nz)
+        try:
+            element = pdb.atomtype[i]
+            ffcoeff[element]
+        except:
+            element = pdb.atomname[i][0]
+        tmpvalues = realspace_formfactor(element=element,r=dist)
+        try:
+            values[slc] += tmpvalues.reshape(nx,ny,nz)
+        except:
+            print()
+            print("Atom %d outside boundary of cell ignored."%i)
         support[slc] = True
     print()
     return values, support
