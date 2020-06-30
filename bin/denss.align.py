@@ -46,8 +46,10 @@ parser.add_argument("-en_off", "--enantiomer_off", action = "store_false", dest=
 parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB reference (default).")
 parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB reference.")
 parser.add_argument("-r", "--resolution", default=15.0, type=float, help="Desired resolution (i.e. Gaussian width sigma) of map calculated from PDB file.")
+parser.add_argument("--ignore_pdb_waters", dest="ignore_waters", action="store_true", help="Ignore waters if PDB file given.")
 parser.set_defaults(enan = True)
 parser.set_defaults(center = True)
+parser.set_defaults(ignore_waters = False)
 args = parser.parse_args()
 
 if __name__ == "__main__":
@@ -102,7 +104,7 @@ if __name__ == "__main__":
                 pdb.write(filename=refoutput)
             #use the new fastgauss function
             #refrho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution)
-            refrho = saxs.pdb2map_fastgauss(pdb,x=x,y=y,z=z,sigma=args.resolution,r=args.resolution*2)
+            refrho = saxs.pdb2map_fastgauss(pdb,x=x,y=y,z=z,sigma=args.resolution,r=args.resolution*2,ignore_waters=args.ignore_waters)
             refrho = refrho*np.sum(allrhos[0])/np.sum(refrho)
             saxs.write_mrc(refrho,sides[0],filename=refbasename+'_pdb.mrc')
         if args.ref.endswith('.mrc'):

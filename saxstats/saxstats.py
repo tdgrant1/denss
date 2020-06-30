@@ -2101,7 +2101,7 @@ def pdb2map_gauss(pdb,xyz,sigma,mode="slow",eps=1e-6):
     print()
     return values.reshape(n,n,n)
 
-def pdb2map_fastgauss(pdb,x,y,z,sigma,r=20.0):
+def pdb2map_fastgauss(pdb,x,y,z,sigma,r=20.0,ignore_waters=True):
     """Simple isotropic gaussian sum at coordinate locations.
 
     This fastgauss function only calculates the values at
@@ -2124,6 +2124,8 @@ def pdb2map_fastgauss(pdb,x,y,z,sigma,r=20.0):
     print("\n Calculate density map from PDB... ")
     values = np.zeros(x.shape)
     for i in range(pdb.coords.shape[0]):
+        if ignore_waters and pdb.resname[i]=="HOH":
+            continue
         sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
         sys.stdout.flush()
         #this will cut out the grid points that are near the atom
@@ -2157,7 +2159,7 @@ def pdb2map_fastgauss(pdb,x,y,z,sigma,r=20.0):
     print()
     return values
 
-def pdb2map_multigauss(pdb,x,y,z,r=20.0):
+def pdb2map_multigauss(pdb,x,y,z,r=20.0,ignore_waters=True):
     """5-term gaussian sum at coordinate locations using Cromer-Mann coefficients.
 
     This fastgauss function only calculates the values at
@@ -2180,6 +2182,8 @@ def pdb2map_multigauss(pdb,x,y,z,r=20.0):
     values = np.zeros(x.shape)
     support = np.zeros(x.shape,dtype=bool)
     for i in range(pdb.coords.shape[0]):
+        if ignore_waters and pdb.resname[i]=="HOH":
+            continue
         sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
         sys.stdout.flush()
         #this will cut out the grid points that are near the atom

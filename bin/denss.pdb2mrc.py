@@ -42,9 +42,11 @@ parser.add_argument("-n", "--nsamples", default=64, type=float, help="Desired nu
 parser.add_argument("-m", "--mode", default="slow", type=str, help="Mode. Either fast (Simple Gaussian sphere), slow (accurate 5-term Gaussian using Cromer-Mann coefficients), or FFT (default=slow).")
 parser.add_argument("-r", "--resolution", default=10.0, type=float, help="Desired resolution (i.e. Gaussian sphere width sigma) (default=15 angstroms)")
 parser.add_argument("--solv", default=0.334, type=float, help="Desired Solvent Density (default=0.335 e-/A^3)")
+parser.add_argument("--ignore_waters", dest="ignore_waters", action="store_true", help="Ignore waters.")
 parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB reference (default).")
 parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB reference.")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix (default=basename_pdb)")
+parser.set_defaults(ignore_waters = False)
 parser.set_defaults(center = True)
 args = parser.parse_args()
 
@@ -81,10 +83,13 @@ if __name__ == "__main__":
 
     if args.mode == "fast":
         #rho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution,mode="fast",eps=1e-6)
-        rho = saxs.pdb2map_fastgauss(pdb,x=x,y=y,z=z,sigma=args.resolution,r=args.resolution*2)
+        rho = saxs.pdb2map_fastgauss(pdb,x=x,y=y,z=z,
+                                    sigma=args.resolution,
+                                    r=args.resolution*2,
+                                    ignore_waters=args.ignore_waters)
     elif args.mode == "slow":
         #this slow mode uses the 5-term Gaussian with Cromer-Mann coefficients
-        rho, support = saxs.pdb2map_multigauss(pdb,x=x,y=y,z=z,r=3.0)
+        rho, support = saxs.pdb2map_multigauss(pdb,x=x,y=y,z=z,r=3.0,ignore_waters=args.ignore_waters)
     else:
         print("Note: Using FFT method results in severe truncation ripples in map.")
         print("This will also run a quick refinement of phases to attempt to clean this up.")
