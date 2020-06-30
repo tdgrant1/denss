@@ -1081,7 +1081,7 @@ def euler_grid_search(refrho, movrho, topn=1, abort_event=None):
     scores = np.zeros((len(phi),len(theta)))
     for p in range(len(phi)):
         for t in range(len(theta)):
-            scores[p,t] = 1/minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],refrho=np.abs(refrho),movrho=np.abs(movrho))
+            scores[p,t] = -minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],refrho=np.abs(refrho),movrho=np.abs(movrho))
 
             if abort_event is not None:
                 if abort_event.is_set():
@@ -1147,7 +1147,7 @@ def minimize_rho(refrho, movrho, T = np.zeros(6)):
         args=(np.abs(refrho),np.abs(movrho)), approx_grad=True)
     Topt = result[0]
     newrho = transform_rho(save_movrho, Topt)
-    finalscore = 1/rho_overlap_score(save_refrho,newrho)
+    finalscore = -rho_overlap_score(save_refrho,newrho)
     return newrho, finalscore
 
 def minimize_rho_score(T, refrho, movrho):
@@ -1167,8 +1167,8 @@ def rho_overlap_score(rho1,rho2):
     n=2*np.sum(np.abs(rho1*rho2))
     d=(2*np.sum(rho1**2)**0.5*np.sum(rho2**2)**0.5)
     score = n/d
-    #1/score for least squares minimization, i.e. want to minimize, not maximize score
-    return 1/score
+    #-score for least squares minimization, i.e. want to minimize, not maximize score
+    return -score
 
 def transform_rho(rho, T, order=1):
     """ Rotate and translate electron density map by T vector.
@@ -1260,7 +1260,7 @@ def principal_axis_alignment(refrho,movrho):
     enans = generate_enantiomers(movrho) #explicitly performs align2xyz()
     scores = np.zeros(enans.shape[0])
     for i in range(enans.shape[0]):
-        scores[i] = 1./rho_overlap_score(refrho,enans[i])
+        scores[i] = -rho_overlap_score(refrho,enans[i])
     movrho = enans[np.argmax(scores)]
     #now rotate movrho by the inverse of the refrho rotation
     R = np.linalg.inv(refR)
@@ -2027,15 +2027,25 @@ class PDB(object):
                     atomtype1 = atomtype[1].lower()
                     atomtype = atomtype0 + atomtype1
                 self.atomtype[atom] = atomtype
-                self.charge[atom] = line[78:80]
+                self.charge[atom] = line[78:80].strip('\n')
                 self.nelectrons[atom] = electrons.get(self.atomtype[atom].upper(),6)
                 atom += 1
+
 
     def write(self, filename):
         """Write PDB file format using pdb object as input."""
         records = []
+        anum,rc = (np.unique(self.atomnum,return_counts=True))
+        if np.any(rc>1):
+            #in case default atom numbers are repeated, just renumber them
+            self_numbering=True
+        else:
+            self_numbering=False
         for i in range(self.natoms):
-            atomnum = '%5i' % (self.atomnum[i]%99999)
+            if self_numbering:
+                atomnum = '%5i' % ((i+1)%99999)
+            else:
+                atomnum = '%5i' % (self.atomnum[i]%99999)
             atomname = '%3s' % self.atomname[i]
             atomalt = '%1s' % self.atomalt[i]
             resnum = '%4i' % (self.resnum[i]%9999)
@@ -2049,7 +2059,7 @@ class PDB(object):
             atomtype = '%2s' % self.atomtype[i]
             charge = '%2s' % self.charge[i]
             records.append(['ATOM  ' + atomnum + '  ' + atomname + ' ' + resname + ' ' + chain + resnum + '    ' + x + y + z + o + b + '          ' + atomtype + charge])
-        np.savetxt(filename, records, fmt = '%80s'.encode('ascii'))
+        np.savetxt(filename, records, fmt='%80s'.encode('ascii'))
 
 def pdb2map_gauss(pdb,xyz,sigma,mode="slow",eps=1e-6):
     """Simple isotropic gaussian sum at coordinate locations.
@@ -2064,7 +2074,7 @@ def pdb2map_gauss(pdb,xyz,sigma,mode="slow",eps=1e-6):
     #dist = spatial.distance.cdist(pdb.coords, xyz)
     #rho = np.sum(values,axis=0).reshape(n,n,n)
     #run cdist in a loop over atoms to avoid overloading memory
-    print("\n Read density map from PDB... ")
+    print("\n Calculate density map from PDB... ")
     if mode == "fast":
         if eps is None:
             eps = np.finfo('float64').eps
@@ -2111,7 +2121,7 @@ def pdb2map_fastgauss(pdb,x,y,z,sigma,r=20.0):
     x_ = x[:,0,0]
     sigma /= 4. #to make compatible with e2pdb2mrc/chimera sigma
     shift = np.ones(3)*dx/2.
-    print("\n Read density map from PDB... ")
+    print("\n Calculate density map from PDB... ")
     values = np.zeros(x.shape)
     for i in range(pdb.coords.shape[0]):
         sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
@@ -2166,7 +2176,7 @@ def pdb2map_multigauss(pdb,x,y,z,r=20.0):
     V = side**3
     x_ = x[:,0,0]
     shift = np.ones(3)*dx/2.
-    print("\n Read density map from PDB... ")
+    print("\n Calculate density map from PDB... ")
     values = np.zeros(x.shape)
     support = np.zeros(x.shape,dtype=bool)
     for i in range(pdb.coords.shape[0]):
