@@ -1181,10 +1181,9 @@ def transform_rho(rho, T, order=1):
     c_in = np.array(ndimage.measurements.center_of_mass(rho))
     c_out = np.array(rho.shape)/2.
     offset = c_in-c_out.dot(R)
+    offset += T[3:]
     rho = ndimage.interpolation.affine_transform(rho,R.T, order=order,
         offset=offset, output=np.float64, mode='wrap')
-    rho = ndimage.interpolation.shift(rho,T[3:], order=order, mode='wrap',
-        output=np.float64)
     rho *= ne_rho/np.sum(rho)
     return rho
 
