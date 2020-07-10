@@ -663,7 +663,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     qx, qy, qz = np.meshgrid(qx_,qx_,qx_,indexing='ij')
     qr = np.sqrt(qx**2+qy**2+qz**2)
     qmax = np.max(qr)
-    qstep = np.min(qr[qr>0])
+    qstep = np.min(qr[qr>0]) - 1e-8 #subtract a tiny bit to deal with floating point error
     nbins = int(qmax/qstep)
     qbins = np.linspace(0,nbins*qstep,nbins+1)
 
