@@ -161,6 +161,13 @@ def rho2rg(rho,side=None,r=None,support=None,dx=None):
     rg2 = np.sum(r[support]**2*rho[support])/np.sum(rho[support])
     rg2 = rg2 - np.linalg.norm(rhocom)**2
     rg = np.sign(rg2)*np.abs(rg2)**0.5
+    #print()
+    #print(rhocom)
+    #print(np.sum(r[support]**2*rho[support]))
+    #print(np.sum(rho[support]))
+    #print(np.sum(r[support]**2*rho[support])/np.sum(rho[support]))
+    #print(rg2)
+    #print(np.linalg.norm(rhocom)**2)
     return rg
 
 def write_mrc(rho,side,filename="map.mrc"):
@@ -740,6 +747,14 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         rho_max *= dV
         #print rho_max
 
+    #calculate the starting shrinkwrap volume as the volume of a sphere
+    #of radius Dmax, i.e. much larger than the particle size
+    swV = 4./3 * np.pi * (D)**3
+    Vsphere_Dover2 = 4./3 * np.pi * (D/1.9)**3
+    swVend = Vsphere_Dover2
+    first_time_swdensity = True
+    threshold = None
+
     my_logger.info('Maximum number of steps: %i', steps)
     my_logger.info('Grid size (voxels): %i x %i x %i', n, n, n)
     my_logger.info('Real space box width (angstroms): %3.3f', side)
@@ -820,7 +835,17 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         #enforce positivity by making all negative density points zero.
         if positivity:
             netmp = mysum(newrho, DENSS_GPU=DENSS_GPU)
-            newrho[newrho<0] = 0.0
+            #newrho[newrho<0] = 0.0
+            min_density = -0.334
+            min_nelectrons = min_density * dV
+            #print(netmp)
+            #print(rhoprime.sum())
+            #print(min_nelectrons)
+            #import matplotlib.pyplot as plt
+            #plt.hist(newrho.ravel(),bins='auto')
+            #plt.show()
+            #exit()
+            newrho[newrho<min_nelectrons] = min_nelectrons
             if mysum(newrho, DENSS_GPU=DENSS_GPU) != 0:
                 newrho *= netmp / mysum(newrho, DENSS_GPU=DENSS_GPU)
 
@@ -868,23 +893,20 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             if DENSS_GPU:
                 newrho = cp.asnumpy(newrho)
 
-            if recenter_mode == "max":
-                rhocom = np.unravel_index(newrho.argmax(), newrho.shape)
+            swN = int(swV/dV)
+            #end this stage of shrinkwrap when the volume is less than a sphere of radius D/2
+            if swV > swVend and 0==1:
+                newrho, support, threshold = shrinkwrap_by_volume(newrho,sigma=sigma,N=swN,recenter=recenter,recenter_mode=recenter_mode)
+                swV *= 0.95
+                first_time_swdensity = True
             else:
-                rhocom = np.array(ndimage.measurements.center_of_mass(newrho))
-            gridcenter = np.array(newrho.shape)/2.
-            shift = gridcenter-rhocom
-            shift = shift.astype(int)
-            newrho = np.roll(np.roll(np.roll(newrho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
-
-            if j>500:
-                tmp = np.abs(newrho)
-            else:
-                tmp = newrho
-
-            rho_blurred = ndimage.filters.gaussian_filter(tmp,sigma=sigma,mode='wrap')
-            support = np.zeros(newrho.shape,dtype=bool)
-            support[rho_blurred >= shrinkwrap_threshold_fraction*rho_blurred.max()] = True
+                if threshold is None:
+                    threshold = shrinkwrap_threshold_fraction
+                if first_time_swdensity:
+                    print()
+                    print("switched to shrinkwrap by density threshold")
+                    first_time_swdensity = False
+                newrho, support = shrinkwrap_by_density_value(newrho,sigma=sigma,threshold=threshold,recenter=recenter,recenter_mode=recenter_mode)
 
             if sigma > shrinkwrap_sigma_end:
                 sigma = shrinkwrap_sigma_decay*sigma
@@ -896,21 +918,13 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         if enforce_connectivity and j in enforce_connectivity_steps:
             if DENSS_GPU: 
                 newrho = cp.asnumpy(newrho)
-            if recenter_mode == "max":
-                rhocom = np.unravel_index(newrho.argmax(), newrho.shape)
-            else:
-                rhocom = np.array(ndimage.measurements.center_of_mass(newrho))
-
-            gridcenter = np.array(newrho.shape)/2.
-            shift = gridcenter-rhocom
-            shift = shift.astype(int)
-            newrho = np.roll(np.roll(np.roll(newrho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
 
             #first run shrinkwrap to define the features
-            tmp = np.abs(newrho)
-            rho_blurred = ndimage.filters.gaussian_filter(tmp,sigma=sigma,mode='wrap')
-            support = np.zeros(newrho.shape,dtype=bool)
-            support[rho_blurred >= shrinkwrap_threshold_fraction*rho_blurred.max()] = True
+            #end this stage of shrinkwrap when the volume is less than a sphere of radius D/2
+            if swV > swVend:
+                newrho, support, threshold = shrinkwrap_by_volume(newrho,sigma=sigma,N=swN,recenter=recenter,recenter_mode=recenter_mode)
+            else:
+                newrho, support = shrinkwrap_by_density_value(newrho,sigma=sigma,threshold=threshold,recenter=recenter,recenter_mode=recenter_mode)
 
             #label the support into separate segments based on a 3x3x3 grid
             struct = ndimage.generate_binary_structure(3, 3)
@@ -930,7 +944,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             newrho[~support] = 0
 
             #reset the support to be the entire grid again
-            support = np.ones(newrho.shape,dtype=bool)
+            #support = np.ones(newrho.shape,dtype=bool)
              
             if DENSS_GPU:
                 newrho = cp.array(newrho)
@@ -942,7 +956,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             if gui:
                 my_logger.info("% 5i % 4.2e % 3.2f       % 5i          ", j, chi[j], rg[j], supportV[j])
             else:
-                sys.stdout.write("\r% 5i % 4.2e % 3.2f       % 5i          " % (j, chi[j], rg[j], supportV[j]))
+                sys.stdout.write("\r% 5i % 4.2e % 3.2f       % .6f          " % (j, chi[j], rg[j], supportV[j]/V))
                 sys.stdout.flush()
 
 
@@ -1058,6 +1072,81 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     sigq /= scale_factor
 
     return qdata, Idata, sigqdata, qbinsc, Imean, chi, rg, supportV, rho, side
+
+def shrinkwrap_by_density_value(rho,sigma,threshold,recenter=True,recenter_mode="com"):
+    """Create support using shrinkwrap method based on threshold as fraction of maximum density
+
+    rho - electron density; numpy array
+    sigma - sigma, in pixels, for gaussian filter
+    threshold - fraction of maximum gaussian filtered density (0 to 1)
+    recenter - boolean, whether or not to recenter the density prior to calculating support
+    recenter_mode - either com (center of mass) or max (maximum density value)
+    """
+    if recenter:
+        if recenter_mode == "max":
+            rhocom = np.unravel_index(rho.argmax(), rho.shape)
+        else:
+            rhocom = np.array(ndimage.measurements.center_of_mass(rho))
+        gridcenter = np.array(rho.shape)/2.
+        shift = gridcenter-rhocom
+        shift = shift.astype(int)
+        rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
+
+    tmp = np.abs(rho)
+
+    rho_blurred = ndimage.filters.gaussian_filter(tmp,sigma=sigma,mode='wrap')
+    support = np.zeros(rho.shape,dtype=bool)
+    support[rho_blurred >= threshold*rho_blurred.max()] = True
+
+    return rho, support
+
+def shrinkwrap_by_volume(rho,sigma,N,recenter=True,recenter_mode="com"):
+    """Create support using shrinkwrap method based on threshold as fraction of maximum density
+
+    rho - electron density; numpy array
+    sigma - sigma, in pixels, for gaussian filter
+    N - set the threshold such that N voxels are in the support (must precalculate this based on volume)
+    recenter - boolean, whether or not to recenter the density prior to calculating support
+    recenter_mode - either com (center of mass) or max (maximum density value)
+    """
+    if recenter:
+        if recenter_mode == "max":
+            rhocom = np.unravel_index(rho.argmax(), rho.shape)
+        else:
+            rhocom = np.array(ndimage.measurements.center_of_mass(rho))
+        gridcenter = np.array(rho.shape)/2.
+        shift = gridcenter-rhocom
+        shift = shift.astype(int)
+        rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
+
+    tmp = np.abs(rho)
+
+    rho_blurred = ndimage.filters.gaussian_filter(tmp,sigma=sigma,mode='wrap')
+    #grab the N largest values of the array
+    idx = largest_indices(rho_blurred, N)
+    support = np.zeros(rho.shape,dtype=bool)
+    #support[rho_blurred >= threshold] = True
+    support[idx] = True
+    #now, calculate the threshold that would correspond to the by_density_value method
+    threshold = np.min(rho_blurred[idx])/rho_blurred.max()
+
+    #write_mrc(tmp,480.0,'tmp.mrc')
+    #write_mrc(rho_blurred,480.0,'rho_blurred.mrc')
+    #write_mrc(support*1.0,480.0,'support.mrc')
+
+    return rho, support, threshold
+
+def ecdf(x):
+    """convenience function for computing the empirical CDF"""
+    n = x.size
+    vals, counts = np.unique(x, return_counts=True)
+    ecdf = np.cumsum(counts).astype(np.float64)
+    ecdf /= ecdf[-1]
+    return np.vstack((vals, ecdf)).T
+
+def find_nearest_i(array,value):
+    """Return the index of the array item nearest to specified value"""
+    return (np.abs(array-value)).argmin()
 
 def center_rho_roll(rho):
     """Move electron density map so its center of mass aligns with the center of the grid"""
