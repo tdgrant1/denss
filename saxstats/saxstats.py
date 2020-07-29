@@ -161,13 +161,15 @@ def rho2rg(rho,side=None,r=None,support=None,dx=None):
     rg2 = np.sum(r[support]**2*rho[support])/np.sum(rho[support])
     rg2 = rg2 - np.linalg.norm(rhocom)**2
     rg = np.sign(rg2)*np.abs(rg2)**0.5
-    #print()
-    #print(rhocom)
-    #print(np.sum(r[support]**2*rho[support]))
-    #print(np.sum(rho[support]))
-    #print(np.sum(r[support]**2*rho[support])/np.sum(rho[support]))
-    #print(rg2)
-    #print(np.linalg.norm(rhocom)**2)
+    #rho2 = center_rho_roll(rho)
+    #rg2 = np.sum(rho2*r**2)/np.sum(rho2)
+    #rg2 = np.sum((rho)*r**2)/np.sum(rho) - (np.sum((rho)*r)/np.sum(rho))**2
+    #if rg2 < 0:
+    #    print()
+    #    print(np.sum(rho*r**2)/np.sum(rho))
+    #    print((np.sum(rho*r)/np.sum(rho))**2)
+    #    exit()
+    #rg = rg2**0.5
     return rg
 
 def write_mrc(rho,side,filename="map.mrc"):
@@ -750,10 +752,15 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     #calculate the starting shrinkwrap volume as the volume of a sphere
     #of radius Dmax, i.e. much larger than the particle size
     swV = 4./3 * np.pi * (D)**3
-    Vsphere_Dover2 = 4./3 * np.pi * (D/1.9)**3
+    Vsphere_Dover2 = 4./3 * np.pi * (D/2.0)**3
     swVend = Vsphere_Dover2
+    swVend = 5.e5
     first_time_swdensity = True
     threshold = None
+    erode = False
+    smooth = False
+    mean_filter = True
+    gaussian_filter = False
 
     my_logger.info('Maximum number of steps: %i', steps)
     my_logger.info('Grid size (voxels): %i x %i x %i', n, n, n)
@@ -796,10 +803,16 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         
         F = myfftn(rho, DENSS_GPU=DENSS_GPU)
 
+        #sometimes, when using denss.refine.py with non-random starting rho,
+        #the resulting Fs result in zeros in some locations
+        #here just make those values to be 1e-16 to be non-zero
+        F[np.abs(F)==0] = 1e-16
+
         #APPLY RECIPROCAL SPACE RESTRAINTS
         #calculate spherical average of intensities from 3D Fs
         I3D = myabs(F, DENSS_GPU=DENSS_GPU)**2
         Imean = mybinmean(I3D, qbin_labels, DENSS_GPU=DENSS_GPU)
+
         """
         if j==0:
             np.savetxt(fprefix+'_step0_saxs.dat',np.vstack((qbinsc,Imean[j],Imean[j]*.05)).T,delimiter=" ",fmt="%.5e")
@@ -889,13 +902,22 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                 newrho = cp.array(newrho)
                 support = cp.array(support)
 
+        if smooth and j%100==1: #and j in mean_filter_steps:
+            #write_mrc(newrho,side,'prefilter_step%d.mrc'%j)
+            if mean_filter:
+                newrho = ndimage.filters.uniform_filter(newrho,size=2,mode='wrap')
+            elif gaussian_filter:
+                newrho = ndimage.filters.gaussian_filter(newrho,sigma=3.0,mode='wrap')
+            #write_mrc(newrho,side,'postfilter_step%d.mrc'%j)
+            #if j>100: exit()
+
         if shrinkwrap and j >= shrinkwrap_minstep and j%shrinkwrap_iter==1:
             if DENSS_GPU:
                 newrho = cp.asnumpy(newrho)
 
             swN = int(swV/dV)
             #end this stage of shrinkwrap when the volume is less than a sphere of radius D/2
-            if swV > swVend and 0==1:
+            if swV > swVend:
                 newrho, support, threshold = shrinkwrap_by_volume(newrho,sigma=sigma,N=swN,recenter=recenter,recenter_mode=recenter_mode)
                 swV *= 0.95
                 first_time_swdensity = True
@@ -904,9 +926,11 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                     threshold = shrinkwrap_threshold_fraction
                 if first_time_swdensity:
                     print()
-                    print("switched to shrinkwrap by density threshold")
+                    print("switched to shrinkwrap by density threshold = %.4f" %threshold)
                     first_time_swdensity = False
-                newrho, support = shrinkwrap_by_density_value(newrho,sigma=sigma,threshold=threshold,recenter=recenter,recenter_mode=recenter_mode)
+                #newrho, support = shrinkwrap_by_density_value(newrho,sigma=sigma,threshold=threshold,recenter=recenter,recenter_mode=recenter_mode)
+                newrho, support = shrinkwrap_by_density_value(newrho,sigma=sigma,threshold=threshold,previous_support=support,erode=erode,erosion_width=2,recenter=recenter,recenter_mode=recenter_mode)
+                erode = True
 
             if sigma > shrinkwrap_sigma_end:
                 sigma = shrinkwrap_sigma_decay*sigma
@@ -924,7 +948,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             if swV > swVend:
                 newrho, support, threshold = shrinkwrap_by_volume(newrho,sigma=sigma,N=swN,recenter=recenter,recenter_mode=recenter_mode)
             else:
-                newrho, support = shrinkwrap_by_density_value(newrho,sigma=sigma,threshold=threshold,recenter=recenter,recenter_mode=recenter_mode)
+                #newrho, support = shrinkwrap_by_density_value(newrho,sigma=sigma,threshold=threshold,recenter=recenter,recenter_mode=recenter_mode)
+                newrho, support = shrinkwrap_by_density_value(newrho,sigma=sigma,threshold=threshold,previous_support=support,erode=False,erosion_width=2,recenter=recenter,recenter_mode=recenter_mode)
 
             #label the support into separate segments based on a 3x3x3 grid
             struct = ndimage.generate_binary_structure(3, 3)
@@ -1071,9 +1096,10 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     I /= scale_factor
     sigq /= scale_factor
 
+    print(sigma)
     return qdata, Idata, sigqdata, qbinsc, Imean, chi, rg, supportV, rho, side
 
-def shrinkwrap_by_density_value(rho,sigma,threshold,recenter=True,recenter_mode="com"):
+def shrinkwrap_by_density_value(rho,sigma,threshold,previous_support=None,erode=True,erosion_width=3,recenter=True,recenter_mode="com"):
     """Create support using shrinkwrap method based on threshold as fraction of maximum density
 
     rho - electron density; numpy array
@@ -1092,11 +1118,20 @@ def shrinkwrap_by_density_value(rho,sigma,threshold,recenter=True,recenter_mode=
         shift = shift.astype(int)
         rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
 
-    tmp = np.abs(rho)
+    #tmp = np.abs(rho)
+    tmp = rho
 
-    rho_blurred = ndimage.filters.gaussian_filter(tmp,sigma=sigma,mode='wrap')
+    if erode:
+        eroded = ndimage.binary_erosion(previous_support,np.ones((erosion_width,erosion_width,erosion_width)))
+
+    #rho_blurred = ndimage.filters.gaussian_filter(tmp,sigma=sigma,mode='wrap')
+    rho_blurred = np.abs(ndimage.filters.gaussian_filter(tmp,sigma=sigma,mode='wrap'))
+
     support = np.zeros(rho.shape,dtype=bool)
     support[rho_blurred >= threshold*rho_blurred.max()] = True
+
+    if erode:
+        support[eroded] = True
 
     return rho, support
 
@@ -1119,9 +1154,12 @@ def shrinkwrap_by_volume(rho,sigma,N,recenter=True,recenter_mode="com"):
         shift = shift.astype(int)
         rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
 
-    tmp = np.abs(rho)
+    #tmp = np.abs(rho)
+    tmp = rho
 
-    rho_blurred = ndimage.filters.gaussian_filter(tmp,sigma=sigma,mode='wrap')
+    #rho_blurred = ndimage.filters.gaussian_filter(tmp,sigma=sigma,mode='wrap')
+    rho_blurred = np.abs(ndimage.filters.gaussian_filter(tmp,sigma=sigma,mode='wrap'))
+
     #grab the N largest values of the array
     idx = largest_indices(rho_blurred, N)
     support = np.zeros(rho.shape,dtype=bool)
@@ -1129,10 +1167,6 @@ def shrinkwrap_by_volume(rho,sigma,N,recenter=True,recenter_mode="com"):
     support[idx] = True
     #now, calculate the threshold that would correspond to the by_density_value method
     threshold = np.min(rho_blurred[idx])/rho_blurred.max()
-
-    #write_mrc(tmp,480.0,'tmp.mrc')
-    #write_mrc(rho_blurred,480.0,'rho_blurred.mrc')
-    #write_mrc(support*1.0,480.0,'support.mrc')
 
     return rho, support, threshold
 
@@ -2060,12 +2094,14 @@ class Sasrec(object):
 
 class PDB(object):
     """Load pdb file."""
-    def __init__(self, filename):
+    def __init__(self, filename, ignore_waters=False):
         self.natoms = 0
         with open(filename) as f:
             for line in f:
                 if line[0:4] != "ATOM" and line[0:4] != "HETA":
                     continue # skip other lines
+                if ignore_waters and ((line[17:20]=="HOH") or (line[17:20]=="TIP")):
+                    continue
                 self.natoms += 1
         self.atomnum = np.zeros((self.natoms),dtype=int)
         self.atomname = np.zeros((self.natoms),dtype=np.dtype((np.str,3)))
@@ -2096,6 +2132,8 @@ class PDB(object):
                     self.atomnum[atom] = int(line[6:11])
                 except ValueError as e:
                     self.atomnum[atom] = int(line[6:11],36)
+                if ignore_waters and ((line[17:20]=="HOH") or (line[17:20]=="TIP")):
+                    continue
                 self.atomname[atom] = line[12:16].split()[0]
                 self.atomalt[atom] = line[16]
                 self.resname[atom] = line[17:20]
@@ -2119,6 +2157,50 @@ class PDB(object):
                 self.nelectrons[atom] = electrons.get(self.atomtype[atom].upper(),6)
                 atom += 1
 
+    def remove_waters(self):
+        idx = np.where((self.resname=="HOH") | (self.resname=="TIP"))
+        self.remove_atoms_from_object(idx)
+
+    def remove_by_atomtype(self, atomtype):
+        idx = np.where((self.atomtype==atomtype))
+        self.remove_atoms_from_object(idx)
+
+    def remove_by_atomname(self, atomname):
+        idx = np.where((self.atomname==atomname))
+        self.remove_atoms_from_object(idx)
+
+    def remove_by_atomnum(self, atomnum):
+        idx = np.where((self.atomnum==atomnum))
+        self.remove_atoms_from_object(idx)
+
+    def remove_by_resname(self, resname):
+        idx = np.where((self.resname==resname))
+        self.remove_atoms_from_object(idx)
+
+    def remove_by_resnum(self, resnum):
+        idx = np.where((self.resnum==resnum))
+        self.remove_atoms_from_object(idx)
+
+    def remove_by_chain(self, chain):
+        idx = np.where((self.chain==chain))
+        self.remove_atoms_from_object(idx)
+
+    def remove_atoms_from_object(self, idx):
+        mask = np.ones(self.natoms, dtype=bool)
+        mask[idx] = False
+        self.atomnum = self.atomnum[mask]
+        self.atomname = self.atomname[mask]
+        self.atomalt = self.atomalt[mask]
+        self.resname = self.resname[mask]
+        self.resnum = self.resnum[mask]
+        self.chain = self.chain[mask]
+        self.coords = self.coords[mask]
+        self.occupancy = self.occupancy[mask]
+        self.b = self.b[mask]
+        self.atomtype = self.atomtype[mask]
+        self.charge = self.charge[mask]
+        self.nelectrons = self.nelectrons[mask]
+        self.natoms = len(self.atomnum)
 
     def write(self, filename):
         """Write PDB file format using pdb object as input."""
