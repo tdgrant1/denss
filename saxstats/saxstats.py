@@ -754,12 +754,12 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     swV = 4./3 * np.pi * (D)**3
     Vsphere_Dover2 = 4./3 * np.pi * (D/2.0)**3
     swVend = Vsphere_Dover2
-    swVend = 5.e5
+    swVend = 1e24
     first_time_swdensity = True
-    threshold = None
+    threshold = shrinkwrap_threshold_fraction
     erode = False
     smooth = False
-    mean_filter = True
+    mean_filter = False
     gaussian_filter = False
 
     my_logger.info('Maximum number of steps: %i', steps)
@@ -1204,7 +1204,8 @@ def euler_grid_search(refrho, movrho, topn=1, abort_event=None):
     scores = np.zeros((len(phi),len(theta)))
     for p in range(len(phi)):
         for t in range(len(theta)):
-            scores[p,t] = -minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],refrho=np.abs(refrho),movrho=np.abs(movrho))
+            #scores[p,t] = -minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],refrho=np.abs(refrho),movrho=np.abs(movrho))
+            scores[p,t] = -minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],refrho=refrho,movrho=movrho)
 
             if abort_event is not None:
                 if abort_event.is_set():
@@ -1267,7 +1268,8 @@ def minimize_rho(refrho, movrho, T = np.zeros(6)):
     save_refrho = np.copy(refrho)
     result = optimize.fmin_l_bfgs_b(minimize_rho_score, T, factr= 0.1,
         maxiter=100, maxfun=200, epsilon=0.05,
-        args=(np.abs(refrho),np.abs(movrho)), approx_grad=True)
+        #args=(np.abs(refrho),np.abs(movrho)), approx_grad=True)
+        args=(refrho,movrho), approx_grad=True)
     Topt = result[0]
     newrho = transform_rho(save_movrho, Topt)
     finalscore = -rho_overlap_score(save_refrho,newrho)
