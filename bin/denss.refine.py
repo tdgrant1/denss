@@ -137,7 +137,6 @@ if __name__ == "__main__":
         recenter_steps=args.recenter_steps,
         recenter_mode=args.recenter_mode,
         positivity=args.positivity,
-        flatten_low_density=args.flatten_low_density,
         minimum_density=args.minimum_density,
         maximum_density=args.maximum_density,
         rho_start=args.rho_start,
@@ -149,6 +148,7 @@ if __name__ == "__main__":
         ncs_axis=args.ncs_axis,
         seed=args.seed,
         shrinkwrap=args.shrinkwrap,
+        shrinkwrap_old_method=args.shrinkwrap_old_method,
         shrinkwrap_sigma_start=args.shrinkwrap_sigma_start,
         shrinkwrap_sigma_end=args.shrinkwrap_sigma_end,
         shrinkwrap_sigma_decay=args.shrinkwrap_sigma_decay,
@@ -190,8 +190,8 @@ if __name__ == "__main__":
         handles,labels = ax0.get_legend_handles_labels()
         handles = [handles[2], handles[0], handles[1]]
         labels = [labels[2], labels[0], labels[1]]
-        ymin = np.min(np.hstack((I,Idata,Imean)))
-        ymax = np.max(np.hstack((I,Idata,Imean)))
+        min = np.min(np.hstack((I[q<=qdata[-1]],Idata,Imean)))
+        ymax = np.max(np.hstack((I[q<=qdata[-1]],Idata,Imean)))
         ax0.set_ylim([0.5*ymin,1.5*ymax])
         ax0.legend(handles,labels)
         ax0.semilogy()

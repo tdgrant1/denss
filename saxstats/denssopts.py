@@ -25,36 +25,36 @@ def parse_arguments(parser,gnomdmax=None):
     parser.add_argument("-s", "--steps", default=None, help="Maximum number of steps (iterations)")
     parser.add_argument("-ncs", "--ncs", default=0, type=int, help="Rotational symmetry")
     parser.add_argument("-ncs_steps","--ncs_steps", default=[3000,5000,7000,9000], type=int, nargs='+', help="List of steps for applying NCS averaging (default=3000,5000,7000,9000)")
-    parser.add_argument("-ncs_axis", "--ncs_axis", default=1, type=int, help="Rotational symmetry axis (options: 1, 2, or 3 corresponding to xyz principal axes)")
-    parser.add_argument("-o", "--output", default=None, help="Output map filename")
+    parser.add_argument("-ncs_axis", "--ncs_axis", default=1, type=int, help="Rotational symmetry axis (options: 1, 2, or 3 corresponding to (long,medium,short) principal axes)")
+    parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
     parser.add_argument("-m", "--mode", default="SLOW", type=str, help="Mode. F(AST) sets default options to run quickly for simple particle shapes. S(LOW) useful for more complex molecules. M(EMBRANE) mode allows for negative contrast. (default SLOW)")
     parser.add_argument("--seed", default=None, help="Random seed to initialize the map")
-    parser.add_argument("-ld_on","--limit_dmax_on", dest="limit_dmax", action="store_true", help="Limit electron density to sphere of radius 0.6*Dmax from center of object.")
+    parser.add_argument("-ld","-ld_on","--limit_dmax_on", dest="limit_dmax", action="store_true", help="Limit electron density to sphere of radius 0.6*Dmax from center of object.")
     parser.add_argument("-ld_off","--limit_dmax_off", dest="limit_dmax", action="store_false", help="Do not limit electron density to sphere of radius 0.6*Dmax from center of object. (default)")
     parser.add_argument("-ld_steps","--limit_dmax_steps", default=None, type=int, nargs='+', help="List of steps for limiting density to sphere of Dmax (default=500)")
-    parser.add_argument("-rc_on", "--recenter_on", dest="recenter", action="store_true", help="Recenter electron density when updating support. (default)")
+    parser.add_argument("-rc","-rc_on", "--recenter_on", dest="recenter", action="store_true", help="Recenter electron density when updating support. (default)")
     parser.add_argument("-rc_off", "--recenter_off", dest="recenter", action="store_false", help="Do not recenter electron density when updating support.")
     parser.add_argument("-rc_steps", "--recenter_steps", default=None, type=int, nargs='+', help="List of steps to recenter electron density.")
     parser.add_argument("-rc_mode", "--recenter_mode", default="com", type=str, help="Recenter based on either center of mass (com, default) or maximum density value (max)")
-    parser.add_argument("-p_on","--positivity_on", dest="positivity", action="store_true", help="Enforce positivity restraint inside support. (default)")
+    parser.add_argument("-p","-p_on","--positivity_on", dest="positivity", action="store_true", help="Enforce positivity restraint inside support. (default)")
     parser.add_argument("-p_off","--positivity_off", dest="positivity", action="store_false", help="Do not enforce positivity restraint inside support.")
-    parser.add_argument("-fld_on","--flatten_low_density_on", dest="flatten_low_density", action="store_true", help="Density values near zero (.01 e-/A3) will be set to zero. (default)")
-    parser.add_argument("-fld_off","--flatten_low_density_off", dest="flatten_low_density", action="store_false", help="Density values near zero (.01 e-/A3) will be not set to zero.")
     parser.add_argument("-min","--minimum_density", default=None, type=float, help="Minimum density value in e-/angstrom^3 (must also set --ne to be meaningful)")
     parser.add_argument("-max","--maximum_density", default=None, type=float, help="Maximum density value in e-/angstrom^3 (must also set --ne to be meaningful)")
     parser.add_argument("-rho", "--rho_start", default=None, type=str, help="Starting electron density map filename (for use in denss.refine.py only)")
     parser.add_argument("--add_noise", default=None, type=float, help="Add noise to starting density map. Uniformly distributed random density is added to each voxel, by default from 0 to 1. The argument is a scale factor to multiply this by.")
-    parser.add_argument("-e_on","--extrapolate_on", dest="extrapolate", action="store_true", help="Extrapolate data by Porod law to high resolution limit of voxels. (default)")
+    parser.add_argument("-e","-e_on","--extrapolate_on", dest="extrapolate", action="store_true", help="Extrapolate data by Porod law to high resolution limit of voxels. (default)")
     parser.add_argument("-e_off","--extrapolate_off", dest="extrapolate", action="store_false", help="Do not extrapolate data by Porod law to high resolution limit of voxels.")
-    parser.add_argument("-sw_on","--shrinkwrap_on", dest="shrinkwrap", action="store_true", help="Turn shrinkwrap on (default)")
+    parser.add_argument("-sw","-sw_on","--shrinkwrap_on", dest="shrinkwrap", action="store_true", help="Turn shrinkwrap on (default)")
     parser.add_argument("-sw_off","--shrinkwrap_off", dest="shrinkwrap", action="store_false", help="Turn shrinkwrap off")
-    parser.add_argument("-sw_start","--shrinkwrap_sigma_start", default=3, type=float, help="Starting sigma for Gaussian blurring, in voxels")
-    parser.add_argument("-sw_end","--shrinkwrap_sigma_end", default=1.5, type=float, help="Ending sigma for Gaussian blurring, in voxels")
+    parser.add_argument("-sw_om","-sw_old","-sw_om_on","--shrinkwrap_old_method_on", dest="shrinkwrap_old_method", action="store_true", help="Use the old method of shrinkwrap.")
+    parser.add_argument("-sw_om_off","--shrinkwrap_old_method_off", dest="shrinkwrap_old_method", action="store_false", help="Use the new method of shrinkwrap (default).")
+    parser.add_argument("-sw_start","--shrinkwrap_sigma_start", default=None, type=float, help="Starting sigma for Gaussian blurring, in voxels")
+    parser.add_argument("-sw_end","--shrinkwrap_sigma_end", default=None, type=float, help="Ending sigma for Gaussian blurring, in voxels")
     parser.add_argument("-sw_decay","--shrinkwrap_sigma_decay", default=0.99, type=float, help="Rate of decay of sigma, fraction")
-    parser.add_argument("-sw_threshold","--shrinkwrap_threshold_fraction", default=0.20, type=float, help="Minimum threshold defining support, in fraction of maximum density")
+    parser.add_argument("-sw_threshold","--shrinkwrap_threshold_fraction", default=None, type=float, help="Minimum threshold defining support, in fraction of maximum density")
     parser.add_argument("-sw_iter","--shrinkwrap_iter", default=20, type=int, help="Number of iterations between updating support with shrinkwrap")
     parser.add_argument("-sw_minstep","--shrinkwrap_minstep", default=None, type=int, help="First step to begin shrinkwrap")
-    parser.add_argument("-ec_on","--enforce_connectivity_on", dest="enforce_connectivity", action="store_true", help="Enforce connectivity of support, i.e. remove extra blobs (default)")
+    parser.add_argument("-ec","-ec_on","--enforce_connectivity_on", dest="enforce_connectivity", action="store_true", help="Enforce connectivity of support, i.e. remove extra blobs (default)")
     parser.add_argument("-ec_off","--enforce_connectivity_off", dest="enforce_connectivity", action="store_false", help="Do not enforce connectivity of support")
     parser.add_argument("-ec_steps","--enforce_connectivity_steps", default=None, type=int, nargs='+', help="List of steps to enforce connectivity")
     parser.add_argument("-cef", "--chi_end_fraction", default=0.001, type=float, help="Convergence criterion. Minimum threshold of chi2 std dev, as a fraction of the median chi2 of last 100 steps.")
@@ -69,9 +69,9 @@ def parse_arguments(parser,gnomdmax=None):
     parser.add_argument("-gpu", "--gpu", dest="DENSS_GPU", action="store_true", help="Use GPU acceleration (requires CuPy). (default False)")
     parser.set_defaults(limit_dmax=False)
     parser.set_defaults(shrinkwrap=True)
+    parser.set_defaults(shrinkwrap_old_method=False)
     parser.set_defaults(recenter=True)
-    parser.set_defaults(positivity=True)
-    parser.set_defaults(flatten_low_density=False)
+    parser.set_defaults(positivity=None)
     parser.set_defaults(extrapolate=True)
     parser.set_defaults(enforce_connectivity=True)
     parser.set_defaults(cutout=False)
@@ -98,39 +98,78 @@ def parse_arguments(parser,gnomdmax=None):
                "has been re-enabled until a bug fix is released. ")
         args.extrapolate = True
 
-    #for FAST or SLOW modes, set some default values for a few options
-    if args.mode[0].upper() == "F":
-        args.mode = "FAST"
-        nsamples = 32
-        shrinkwrap_minstep = 1000
-        enforce_connectivity_steps = [2000]
-        recenter_steps = list(range(501,2502,500))
-    elif args.mode[0].upper() == "S":
-        args.mode = "SLOW"
-        nsamples = 64
-        shrinkwrap_minstep = 5000
-        enforce_connectivity_steps = [6000]
-        recenter_steps = list(range(501,8002,500))
-    elif args.mode[0].upper() == "M":
-        args.mode = "MEMBRANE"
-        nsamples = 64
-        args.positivity = False
-        shrinkwrap_minstep = 0
-        shrinkwrap_threshold_fraction = 0.1
-        enforce_connectivity_steps = [300]
-        recenter_steps = list(range(501,8002,500))
+    shrinkwrap_sigma_start = 3.0
+    shrinkwrap_sigma_end = 1.5
+    shrinkwrap_threshold_fraction = 0.2
+    positivity = True
+
+    if args.shrinkwrap_old_method:
+        #for FAST or SLOW modes, set some default values for a few options
+        if args.mode[0].upper() == "F":
+            args.mode = "FAST"
+            nsamples = 32
+            shrinkwrap_minstep = 1000
+            enforce_connectivity_steps = [2000]
+            recenter_steps = list(range(501,2502,500))
+        elif args.mode[0].upper() == "S":
+            args.mode = "SLOW"
+            nsamples = 64
+            shrinkwrap_minstep = 5000
+            enforce_connectivity_steps = [6000]
+            recenter_steps = list(range(501,8002,500))
+        elif args.mode[0].upper() == "M":
+            args.mode = "MEMBRANE"
+            nsamples = 64
+            positivity = False
+            shrinkwrap_minstep = 0
+            enforce_connectivity_steps = [300]
+            recenter_steps = list(range(501,8002,500))
+        else:
+            args.mode = "None"
     else:
-        args.mode = "None"
+        #for FAST or SLOW modes, set some default values for a few options
+        if args.mode[0].upper() == "F":
+            args.mode = "FAST"
+            nsamples = 32
+            shrinkwrap_minstep = 1000
+            enforce_connectivity_steps = [2000]
+            recenter_steps = list(range(501,2502,500))
+        elif args.mode[0].upper() == "S":
+            args.mode = "SLOW"
+            nsamples = 64
+            shrinkwrap_minstep = 5000
+            enforce_connectivity_steps = [6000]
+            recenter_steps = list(range(501,8002,500))
+        elif args.mode[0].upper() == "M":
+            args.mode = "MEMBRANE"
+            nsamples = 64
+            positivity = False
+            shrinkwrap_minstep = 0
+            shrinkwrap_sigma_start = 6.0
+            shrinkwrap_sigma_end = 3.0
+            enforce_connectivity_steps = [300, 500, 1000]
+            recenter_steps = list(range(501,8002,500))
+        else:
+            args.mode = "None"
 
     #allow user to explicitly modify those values by resetting them here to the user defined values
     if args.nsamples is not None:
         nsamples = args.nsamples
+
+    if args.positivity is not None:
+        positivity = args.positivity
 
     if args.shrinkwrap_minstep is not None:
         shrinkwrap_minstep = args.shrinkwrap_minstep
 
     if args.shrinkwrap_threshold_fraction is not None:
         shrinkwrap_threshold_fraction = args.shrinkwrap_threshold_fraction
+
+    if args.shrinkwrap_sigma_start is not None:
+        shrinkwrap_sigma_start = args.shrinkwrap_sigma_start
+
+    if args.shrinkwrap_sigma_end is not None:
+        shrinkwrap_sigma_end = args.shrinkwrap_sigma_end
 
     if args.enforce_connectivity_steps is not None:
         enforce_connectivity_steps = args.enforce_connectivity_steps
@@ -168,8 +207,11 @@ def parse_arguments(parser,gnomdmax=None):
 
     #now recollect all the edited options back into args
     args.nsamples = nsamples
+    args.positivity = positivity
     args.shrinkwrap_minstep = shrinkwrap_minstep
     args.shrinkwrap_threshold_fraction = shrinkwrap_threshold_fraction
+    args.shrinkwrap_sigma_start = shrinkwrap_sigma_start
+    args.shrinkwrap_sigma_end = shrinkwrap_sigma_end
     args.enforce_connectivity_steps = enforce_connectivity_steps
     args.recenter_steps = recenter_steps
     args.limit_dmax_steps = limit_dmax_steps

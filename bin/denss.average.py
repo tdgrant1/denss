@@ -88,7 +88,7 @@ if __name__ == "__main__":
         fscs.append(saxs.calc_fsc(rhos[map],average_rho,side))
     fscs = np.array(fscs)
     fsc = np.mean(fscs,axis=0)
-    np.savetxt(args.output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC")
+    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC")
     x = np.linspace(fsc[0,0],fsc[-1,0],100)
     y = np.interp(x, fsc[:,0], fsc[:,1])
     resi = np.argmin(y>=0.5)

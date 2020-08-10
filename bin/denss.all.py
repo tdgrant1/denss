@@ -324,7 +324,7 @@ if __name__ == "__main__":
     if superargs.plot:
         import matplotlib.pyplot as plt
         plt.plot(fsc[:,0],fsc[:,0]*0+0.5,'k--')
-        for i in range(superargs.nmaps):
+        for i in range(len(aligned)):
             plt.plot(fscs[i,:,0],fscs[i,:,1],'k--',alpha=0.1)
         plt.plot(fsc[:,0],fsc[:,1],'bo-')
         #plt.plot(x,y,'k-')
