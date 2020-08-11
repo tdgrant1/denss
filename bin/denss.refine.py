@@ -190,7 +190,7 @@ if __name__ == "__main__":
         handles,labels = ax0.get_legend_handles_labels()
         handles = [handles[2], handles[0], handles[1]]
         labels = [labels[2], labels[0], labels[1]]
-        min = np.min(np.hstack((I[q<=qdata[-1]],Idata,Imean)))
+        ymin = np.min(np.hstack((I[q<=qdata[-1]],Idata,Imean)))
         ymax = np.max(np.hstack((I[q<=qdata[-1]],Idata,Imean)))
         ax0.set_ylim([0.5*ymin,1.5*ymax])
         ax0.legend(handles,labels)
