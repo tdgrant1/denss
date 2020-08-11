@@ -264,6 +264,7 @@ if __name__ == "__main__":
         print(" Generating reference...")
         try:
             refrho = saxs.binary_average(allrhos, superargs.cores)
+            saxs.write_mrc(refrho, sides[0], output+"_reference.mrc")
         except KeyboardInterrupt:
             sys.exit(1)
 
@@ -298,7 +299,7 @@ if __name__ == "__main__":
     superlogger.info('Standard deviation of the scores: %.3f', std)
     superlogger.info('Total number of input maps for alignment: %i',allrhos.shape[0])
     superlogger.info('Number of aligned maps accepted: %i', aligned.shape[0])
-    superlogger.info('Correlation score between average and reference: %.3f', 1/saxs.rho_overlap_score(average_rho, refrho))
+    superlogger.info('Correlation score between average and reference: %.3f', -saxs.rho_overlap_score(average_rho, refrho))
     saxs.write_mrc(average_rho, sides[0], output+'_avg.mrc')
 
     """
