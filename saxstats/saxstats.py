@@ -611,35 +611,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
 
     D = dmax
 
-    my_logger.info('q range of input data: %3.3f < q < %3.3f', q.min(), q.max())
-    my_logger.info('Maximum dimension: %3.3f', D)
-    my_logger.info('Sampling ratio: %3.3f', oversampling)
-    my_logger.info('Requested real space voxel size: %3.3f', voxel)
-    my_logger.info('Number of electrons: %3.3f', ne)
-    my_logger.info('Limit Dmax: %s', limit_dmax)
-    my_logger.info('Limit Dmax Steps: %s', limit_dmax_steps)
-    my_logger.info('Recenter: %s', recenter)
-    my_logger.info('Recenter Steps: %s', recenter_steps)
-    my_logger.info('Recenter Mode: %s', recenter_mode)
-    my_logger.info('NCS: %s', ncs)
-    my_logger.info('NCS Steps: %s', ncs_steps)
-    my_logger.info('NCS Axis: %s', ncs_axis)
-    my_logger.info('Positivity: %s', positivity)
-    my_logger.info('Minimum Density: %s', minimum_density)
-    my_logger.info('Maximum Density: %s', maximum_density)
-    my_logger.info('Extrapolate high q: %s', extrapolate)
-    my_logger.info('Shrinkwrap: %s', shrinkwrap)
-    my_logger.info('Shrinkwrap Old Method: %s', shrinkwrap_old_method)
-    my_logger.info('Shrinkwrap sigma start: %s', shrinkwrap_sigma_start)
-    my_logger.info('Shrinkwrap sigma end: %s', shrinkwrap_sigma_end)
-    my_logger.info('Shrinkwrap sigma decay: %s', shrinkwrap_sigma_decay)
-    my_logger.info('Shrinkwrap threshold fraction: %s', shrinkwrap_threshold_fraction)
-    my_logger.info('Shrinkwrap iterations: %s', shrinkwrap_iter)
-    my_logger.info('Shrinkwrap starting step: %s', shrinkwrap_minstep)
-    my_logger.info('Enforce connectivity: %s', enforce_connectivity)
-    my_logger.info('Enforce connectivity steps: %s', enforce_connectivity_steps)
-    my_logger.info('Chi2 end fraction: %3.3e', chi_end_fraction)
-
     #Initialize variables
 
     side = oversampling*D
@@ -764,6 +735,36 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         erode = True
         erosion_width = 5
 
+    my_logger.info('q range of input data: %3.3f < q < %3.3f', q.min(), q.max())
+    my_logger.info('Maximum dimension: %3.3f', D)
+    my_logger.info('Sampling ratio: %3.3f', oversampling)
+    my_logger.info('Requested real space voxel size: %3.3f', voxel)
+    my_logger.info('Number of electrons: %3.3f', ne)
+    my_logger.info('Limit Dmax: %s', limit_dmax)
+    my_logger.info('Limit Dmax Steps: %s', limit_dmax_steps)
+    my_logger.info('Recenter: %s', recenter)
+    my_logger.info('Recenter Steps: %s', recenter_steps)
+    my_logger.info('Recenter Mode: %s', recenter_mode)
+    my_logger.info('NCS: %s', ncs)
+    my_logger.info('NCS Steps: %s', ncs_steps)
+    my_logger.info('NCS Axis: %s', ncs_axis)
+    my_logger.info('Positivity: %s', positivity)
+    my_logger.info('Minimum Density: %s', minimum_density)
+    my_logger.info('Maximum Density: %s', maximum_density)
+    my_logger.info('Extrapolate high q: %s', extrapolate)
+    my_logger.info('Shrinkwrap: %s', shrinkwrap)
+    my_logger.info('Shrinkwrap Old Method: %s', shrinkwrap_old_method)
+    my_logger.info('Shrinkwrap sigma start (angstroms): %s', shrinkwrap_sigma_start*dx)
+    my_logger.info('Shrinkwrap sigma end (angstroms): %s', shrinkwrap_sigma_end*dx)
+    my_logger.info('Shrinkwrap sigma start (voxels): %s', shrinkwrap_sigma_start)
+    my_logger.info('Shrinkwrap sigma end (voxels): %s', shrinkwrap_sigma_end)
+    my_logger.info('Shrinkwrap sigma decay: %s', shrinkwrap_sigma_decay)
+    my_logger.info('Shrinkwrap threshold fraction: %s', shrinkwrap_threshold_fraction)
+    my_logger.info('Shrinkwrap iterations: %s', shrinkwrap_iter)
+    my_logger.info('Shrinkwrap starting step: %s', shrinkwrap_minstep)
+    my_logger.info('Enforce connectivity: %s', enforce_connectivity)
+    my_logger.info('Enforce connectivity steps: %s', enforce_connectivity_steps)
+    my_logger.info('Chi2 end fraction: %3.3e', chi_end_fraction)
     my_logger.info('Maximum number of steps: %i', steps)
     my_logger.info('Grid size (voxels): %i x %i x %i', n, n, n)
     my_logger.info('Real space box width (angstroms): %3.3f', side)
@@ -777,6 +778,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     my_logger.info('Number of q shells: %i', nbins)
     my_logger.info('Width of q shells (angstroms^(-1)): %3.3f', qstep)
     my_logger.info('Random seed: %i', seed)
+
     if not quiet:
         if gui:
             my_logger.info("\n Step     Chi2     Rg    Support Volume")

@@ -103,6 +103,10 @@ del args.mode
 del args.resolution
 del args.center
 del args.force_run
+del args.shrinkwrap_sigma_start_in_A
+del args.shrinkwrap_sigma_end_in_A
+del args.shrinkwrap_sigma_start_in_vox
+del args.shrinkwrap_sigma_end_in_vox
 
 def multi_denss(niter, **kwargs):
     try:

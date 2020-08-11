@@ -48,8 +48,10 @@ def parse_arguments(parser,gnomdmax=None):
     parser.add_argument("-sw_off","--shrinkwrap_off", dest="shrinkwrap", action="store_false", help="Turn shrinkwrap off")
     parser.add_argument("-sw_om","-sw_old","-sw_om_on","--shrinkwrap_old_method_on", dest="shrinkwrap_old_method", action="store_true", help="Use the old method of shrinkwrap.")
     parser.add_argument("-sw_om_off","--shrinkwrap_old_method_off", dest="shrinkwrap_old_method", action="store_false", help="Use the new method of shrinkwrap (default).")
-    parser.add_argument("-sw_start","--shrinkwrap_sigma_start", default=None, type=float, help="Starting sigma for Gaussian blurring, in voxels")
-    parser.add_argument("-sw_end","--shrinkwrap_sigma_end", default=None, type=float, help="Ending sigma for Gaussian blurring, in voxels")
+    parser.add_argument("-sw_start","--shrinkwrap_sigma_start_in_A", default=None, type=float, help="Starting sigma for Gaussian blurring, in angstroms")
+    parser.add_argument("-sw_end","--shrinkwrap_sigma_end_in_A", default=None, type=float, help="Ending sigma for Gaussian blurring, in angstroms")
+    parser.add_argument("-sw_start_vox","--shrinkwrap_sigma_start_in_vox", default=None, type=float, help="Starting sigma for Gaussian blurring, in voxels")
+    parser.add_argument("-sw_end_vox","--shrinkwrap_sigma_end_in_vox", default=None, type=float, help="Ending sigma for Gaussian blurring, in voxels")
     parser.add_argument("-sw_decay","--shrinkwrap_sigma_decay", default=0.99, type=float, help="Rate of decay of sigma, fraction")
     parser.add_argument("-sw_threshold","--shrinkwrap_threshold_fraction", default=None, type=float, help="Minimum threshold defining support, in fraction of maximum density")
     parser.add_argument("-sw_iter","--shrinkwrap_iter", default=20, type=int, help="Number of iterations between updating support with shrinkwrap")
@@ -98,8 +100,29 @@ def parse_arguments(parser,gnomdmax=None):
                "has been re-enabled until a bug fix is released. ")
         args.extrapolate = True
 
-    shrinkwrap_sigma_start = 3.0
-    shrinkwrap_sigma_end = 1.5
+    if args.dmax is not None and args.dmax >= 0:
+        dmax = args.dmax
+    elif gnomdmax is not None:
+        dmax = gnomdmax
+    else:
+        dmax = 100.0
+
+    #old default sw_start was 3.0
+    #however, in cases where the voxel size is smaller than default,
+    #e.g. increasing nsamples, shrinkwrap works differently since sigma
+    #is then smaller (in angstroms). We will instead base sigma on
+    #physical dimension in angstroms, rather than number of voxels.
+    #We will do this by basing sigma on particle size (dmax), rather than 
+    #resolution of the grid. 
+    #since defaults work well, we'll start there. The parameters
+    #defining voxel size are the grid size / nsamples (dmax*oversampling/nsamples)
+    #so define sw_start as (voxsize*3) = (3*D/64) * 3, since those are the defaults that work well
+    #later we need to convert this physical size into a voxel size (since 
+    #ndimage.gaussian_filter works based on number of pixels)
+
+    #some defaults:
+    shrinkwrap_sigma_start_in_A = (3.0 * dmax / 64.0) * 3.0
+    shrinkwrap_sigma_end_in_A = (3.0 * dmax / 64.0) * 1.5
     shrinkwrap_threshold_fraction = 0.2
     positivity = True
 
@@ -145,8 +168,8 @@ def parse_arguments(parser,gnomdmax=None):
             nsamples = 64
             positivity = False
             shrinkwrap_minstep = 0
-            shrinkwrap_sigma_start = 6.0
-            shrinkwrap_sigma_end = 3.0
+            shrinkwrap_sigma_start_in_A *= 2.0
+            shrinkwrap_sigma_end_in_A *= 2.0
             enforce_connectivity_steps = [300, 500, 1000]
             recenter_steps = list(range(501,8002,500))
         else:
@@ -155,6 +178,13 @@ def parse_arguments(parser,gnomdmax=None):
     #allow user to explicitly modify those values by resetting them here to the user defined values
     if args.nsamples is not None:
         nsamples = args.nsamples
+
+    if args.voxel is None and nsamples is None:
+        voxel = 5.
+    elif args.voxel is None and nsamples is not None:
+        voxel = dmax * args.oversampling / nsamples
+    else:
+        voxel = args.voxel
 
     if args.positivity is not None:
         positivity = args.positivity
@@ -165,11 +195,23 @@ def parse_arguments(parser,gnomdmax=None):
     if args.shrinkwrap_threshold_fraction is not None:
         shrinkwrap_threshold_fraction = args.shrinkwrap_threshold_fraction
 
-    if args.shrinkwrap_sigma_start is not None:
-        shrinkwrap_sigma_start = args.shrinkwrap_sigma_start
+    #allow user to input sigma as angstroms or voxels
+    if args.shrinkwrap_sigma_start_in_A is not None:
+        shrinkwrap_sigma_start_in_A = args.shrinkwrap_sigma_start_in_A
+    elif args.shrinkwrap_sigma_start_in_vox is not None:
+        #if voxel option is set, for now convert to angstroms, 
+        #then later convert everything back to voxels
+        shrinkwrap_sigma_start_in_A = args.shrinkwrap_sigma_start_in_vox * voxel
 
-    if args.shrinkwrap_sigma_end is not None:
-        shrinkwrap_sigma_end = args.shrinkwrap_sigma_end
+    if args.shrinkwrap_sigma_end_in_A is not None:
+        shrinkwrap_sigma_end_in_A = args.shrinkwrap_sigma_end_in_A
+    elif args.shrinkwrap_sigma_end_in_vox is not None:
+        shrinkwrap_sigma_end_in_A = args.shrinkwrap_sigma_end_in_vox * voxel
+
+    #as mentioned above, now that we have the voxel size, we need to convert
+    #the shrinkwrap sigma values to voxels, rather than physical distance
+    shrinkwrap_sigma_start_in_vox = shrinkwrap_sigma_start_in_A / voxel
+    shrinkwrap_sigma_end_in_vox = shrinkwrap_sigma_end_in_A / voxel
 
     if args.enforce_connectivity_steps is not None:
         enforce_connectivity_steps = args.enforce_connectivity_steps
@@ -191,27 +233,13 @@ def parse_arguments(parser,gnomdmax=None):
     if args.steps is not None:
         steps = args.steps
 
-    if args.dmax is not None and args.dmax >= 0:
-        dmax = args.dmax
-    elif gnomdmax is not None:
-        dmax = gnomdmax
-    else:
-        dmax = 100.0
-
-    if args.voxel is None and nsamples is None:
-        voxel = 5.
-    elif args.voxel is None and nsamples is not None:
-        voxel = dmax * args.oversampling / nsamples
-    else:
-        voxel = args.voxel
-
     #now recollect all the edited options back into args
     args.nsamples = nsamples
     args.positivity = positivity
     args.shrinkwrap_minstep = shrinkwrap_minstep
     args.shrinkwrap_threshold_fraction = shrinkwrap_threshold_fraction
-    args.shrinkwrap_sigma_start = shrinkwrap_sigma_start
-    args.shrinkwrap_sigma_end = shrinkwrap_sigma_end
+    args.shrinkwrap_sigma_start = shrinkwrap_sigma_start_in_vox
+    args.shrinkwrap_sigma_end = shrinkwrap_sigma_end_in_vox
     args.enforce_connectivity_steps = enforce_connectivity_steps
     args.recenter_steps = recenter_steps
     args.limit_dmax_steps = limit_dmax_steps
