@@ -82,6 +82,12 @@ def myones(x, DENSS_GPU=False):
     else:
         return np.ones(x)
 
+def myzeros(x, DENSS_GPU=False):
+    if DENSS_GPU:
+        return cp.zeros(x)
+    else:
+        return np.zeros(x)
+
 def mysqrt(x, DENSS_GPU=False):
     if DENSS_GPU:
         return cp.sqrt(x)
@@ -843,7 +849,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             rg[j] = 1.0
         else:
             rg[j] = rho2rg(rhoprime,r=r,support=support,dx=dx)
-        newrho = np.zeros(rho.shape)
+
+        newrho = myzeros(rho.shape, DENSS_GPU=DENSS_GPU)
 
         #Error Reduction
         newrho[support] = rhoprime[support]
