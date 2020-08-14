@@ -48,6 +48,7 @@ if __name__ == "__main__":
     print(" Grid size:   %i x %i x %i" % (rho.shape[0],rho.shape[1],rho.shape[2]))
     print(" Side length: %f x %f x %f" % (a,b,c))
     print(" Voxel size:  %f x %f x %f" % (vx, vy, vz))
+    print(" Voxel volume: %f" % (vx*vy*vz))
     print(" Total number of electrons:  %f" % (rho.sum()*vx*vy*vz))
 
 

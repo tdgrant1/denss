@@ -122,9 +122,10 @@ if __name__ == "__main__":
     #now that we're in density, rather than total e-, must also multiply by total volume
     #won't keep this in the args.ne condition since we want to at least rescale to the 
     #original total number of electrons even if args.ne is not given
-    rho *= ne/np.sum(rho) * dV
+    rho *= ne/np.sum(rho) #total number of electrons
+    rho /= dV #convert to density
 
-    print("Final number of electrons:", np.sum(rho)/dV)
+    print("Final number of electrons:", np.sum(rho)*dV)
 
     saxs.write_mrc(rho,(a,b,c),filename=output+'.mrc')
 
