@@ -7,17 +7,33 @@ If you use DENSS in your work, please cite:
 Grant, Thomas D. (2018). Ab initio electron density determination directly from
 solution scattering data. Nature Methods. http://dx.doi.org/10.1038/nmeth.4581.
 
-#### [DENSS.org (tdgrant.com/denss)](https://www.tdgrant.com/denss)
-DENSS.org is the official home of DENSS. Packed with detailed instructions
-for installing and running DENSS on your own computer. It also contains
-useful tips and best practices.
+#### [(tdgrant.com/denss)](https://www.tdgrant.com/denss)
+tdgrant.com/denss is the official home of DENSS. Packed with detailed instructions for installing and running DENSS on your own computer. 
+It also contains useful tips and best practices.
 
 #### DENSSWeb server: [denss.ccr.buffalo.edu](https://denss.ccr.buffalo.edu)
 Try out DENSS without installing the code using the DENSSWeb server to
-perform simple online calculations suitable for most cases. (N is limited
-to 32 samples for efficiency to allow many users to try it out). For more
-complex particle shapes, install DENSS and EMAN2 (see below). Thanks to
+perform simple online calculations suitable for most cases. Thanks to
 Andrew Bruno and the CCR for DENSSWeb!
+
+#### New DENSS version 1.6.0 released
+Shrinkwrap in DENSS has been updated to be more robust, particularly for 
+particles with negative contrast used in MEMBRANE mode. Several bug fixes.
+
+#### New algorithm for denss.pdb2mrc.py
+A new, faster and more accurate method for calculating density from PDB files
+is included. This method calculates density from atomic coordinates in real
+space as a 4-term Gaussian summation using Cromer-Mann coefficients.
+
+#### DENSS now updated for GPU acceleration with CUDA
+A new --gpu option when running denss.py v1.5.0+ with NVIDIA CUDA capable 
+graphics cards is available. Tests show this option speeds DENSS up by
+more than 20x compared to CPU-only. Requires CuPy to be installed. 
+Will attempt to update this in the future for more GPUs.
+
+#### DENSS is now python3 compatible!
+DENSS has been updated to support python 3 in addition to python 2.
+I will attempt to maintain python 2 support for as long as possible.
 
 #### New MEMBRANE mode
 DENSS now has a new mode for membrane proteins. Membrane proteins are often
