@@ -48,7 +48,7 @@ except ImportError:
 parser = argparse.ArgumentParser(description="A tool for fitting solution scattering data with smooth function based on Moore's algorithm for fitting a trigonometric series.", formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
 parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
-parser.add_argument("-d", "--dmax", default=100., type=float, help="Estimated maximum dimension")
+parser.add_argument("-d", "--dmax", default=None, type=float, help="Estimated maximum dimension")
 parser.add_argument("-a", "--alpha", default=0., type=float, help="Set alpha smoothing factor")
 parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use")
 parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use")
@@ -79,8 +79,12 @@ if __name__ == "__main__":
 
     Iq = np.genfromtxt(args.file, invalid_raise = False)
     Iq = Iq[~np.isnan(Iq).any(axis = 1)]
-    D = args.dmax
     nes = args.nes
+    if args.dmax is None:
+        #estimate dmax directly from data
+        D, sasrec = saxs.estimate_dmax(Iq,clean_up=True)
+    else:
+        D = args.dmax
 
     if args.max_dmax is None:
         args.max_dmax = 2.*D
@@ -88,8 +92,10 @@ if __name__ == "__main__":
         args.max_alpha = 10.
 
     q = Iq[:,0]
-    qmin = np.min(q[0])
-    dq = q[1] - q[0]
+    #create a calculated q range for Sasrec
+    qmax = q.max()
+    qmin = q.min()
+    dq = (qmax-qmin)/(q.size-1)
     nq = int(qmin/dq)
     qc = np.concatenate(([0.0],np.arange(nq)*dq+(qmin-nq*dq),q))
     #Icerr = np.concatenate((np.ones(nq+1)*Iq[0,2],Iq[:,2]))
@@ -106,22 +112,33 @@ if __name__ == "__main__":
 
     sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=None, alpha=alpha, ne=nes)
 
+    def store_parameters_as_string(event=None):
+        param_str = ("Parameter Values:\n"
+        "Dmax  = {dmax:.5e}\n"
+        "alpha = {alpha:.5e}\n"
+        "Rg    = {rg:.5e} +- {rgerr:.5e}\n"
+        "I(0)  = {I0:.5e} +- {I0err:.5e}\n"
+        "Vp    = {Vp:.5e} +- {Vperr:.5e}\n"
+        "MW_Vp = {mwVp:.5e} +- {mwVperr:.5e}\n"
+        "MW_Vc = {mwVc:.5e} +- {mwVcerr:.5e}\n"
+        "Lc    = {lc:.5e} +- {lcerr:.5e}\n"
+        ).format(dmax=sasrec.D,alpha=sasrec.alpha,rg=sasrec.rg,rgerr=sasrec.rgerr,
+            I0=sasrec.I0,I0err=sasrec.I0err,Vp=sasrec.Vp,Vperr=sasrec.Vperr,
+            mwVp=sasrec.mwVp,mwVperr=sasrec.mwVperr,mwVc=sasrec.mwVc,mwVcerr=sasrec.mwVcerr,
+            lc=sasrec.lc,lcerr=sasrec.lcerr)
+        return param_str
+
     def print_values(event=None):
         print("---------------------------------")
-        print("Dmax = " + str(round(sasrec.D,2)))
-        print("alpha = %.5e" % sasrec.alpha)
-        print("Rg = " + str(round(sasrec.rg,2)) + " +- " + str(round(sasrec.rgerr,2)))
-        print("I(0) = " + str(round(sasrec.I0,2)) + " +- " + str(round(sasrec.I0err,2)))
-        print("Vp = " + str(round(sasrec.Vp,2)) + " +- " + str(round(sasrec.Vperr,2)))
-        print("Vp MW = " + str(round(sasrec.mwVp,2)) + " +- " + str(round(sasrec.mwVperr,2)))
-        print("Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2)))
-        print("Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2)))
+        param_str = store_parameters_as_string()
+        print(param_str)
 
     def save_file(event=None):
         #sascif = saxs.Sascif(sasrec)
         #sascif.write(output+".sascif")
         #print "%s file saved" % (output+".sascif")
-        np.savetxt(output+'_fit.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr)).T,delimiter=' ',fmt='%.5e')
+        param_str = store_parameters_as_string()
+        np.savetxt(output+'_fit.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr)).T,delimiter=' ',fmt='%.5e',header=param_str)
         np.savetxt(output+'_pr.dat', np.vstack((sasrec.r, sasrec.P, sasrec.Perr)).T,delimiter=' ',fmt='%.5e')
         print("%s and %s files saved" % (output+"_fit.dat",output+"_pr.dat"))
 

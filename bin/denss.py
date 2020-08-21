@@ -41,11 +41,13 @@ try:
 except ImportError:
     matplotlib_found = False
 
+"""
 #have to run parser twice, first just to get filename for loadProfile
 #then have to run it after deciding what the correct dmax should be
 #so that the voxel size, box size, nsamples, etc are set correctly
 initparser = argparse.ArgumentParser(description=" DENSS: DENsity from Solution Scattering.\n A tool for calculating an electron density map from solution scattering data", formatter_class=argparse.RawTextHelpFormatter)
 initargs = dopts.parse_arguments(initparser, gnomdmax=None)
+
 
 q, I, sigq, dmax, isout = saxs.loadProfile(initargs.file, units=initargs.units)
 
@@ -62,12 +64,15 @@ if not initargs.force_run:
         print("rerun with the --force_run option.")
         sys.exit()
 
-
 if dmax <= 0:
     dmax = None
 
 parser = argparse.ArgumentParser(description="DENSS: DENsity from Solution Scattering.\n A tool for calculating an electron density map from solution scattering data", formatter_class=argparse.RawTextHelpFormatter)
 args = dopts.parse_arguments(parser, gnomdmax=dmax)
+"""
+
+parser = argparse.ArgumentParser(description="DENSS: DENsity from Solution Scattering.\n A tool for calculating an electron density map from solution scattering data", formatter_class=argparse.RawTextHelpFormatter)
+args, q, I, sigq, dmax = dopts.parse_arguments(parser)
 
 if __name__ == "__main__":
     my_logger = logging.getLogger()

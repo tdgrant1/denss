@@ -46,7 +46,7 @@ import multiprocessing
 import datetime, time
 
 import numpy as np
-from scipy import ndimage, interpolate, spatial, special, optimize, signal
+from scipy import ndimage, interpolate, spatial, special, optimize, signal, stats
 from functools import reduce
 
 try:
@@ -570,12 +570,103 @@ def loadDatFile(filename):
 
     return q, i, err, results
 
+def loadFitFile(filename):
+    ''' Loads a Primus .dat format file. Taken from the BioXTAS RAW software package,
+    used with permission under the GPL license.'''
+
+    iq_pattern = re.compile('\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s*')
+
+    i = []
+    q = []
+    err = []
+
+    with open(filename) as f:
+        lines = f.readlines()
+
+    comment = ''
+    line = lines[0]
+    j=0
+    while line.split() and line.split()[0].strip()[0] == '#':
+        comment = comment+line
+        j = j+1
+        line = lines[j]
+
+    fileHeader = {'comment':comment}
+    parameters = {'filename' : os.path.split(filename)[1],
+                  'counters' : fileHeader}
+
+    if comment.find('model_intensity') > -1:
+        #FoXS file with a fit! has four data columns
+        is_foxs_fit=True
+        imodel = []
+    else:
+        is_foxs_fit = False
+
+    for line in lines:
+        iq_match = iq_pattern.match(line)
+
+        if iq_match:
+            if not is_foxs_fit:
+                found = iq_match.group().split()
+                q.append(float(found[0]))
+                i.append(float(found[1]))
+                err.append(float(found[2]))
+            else:
+                found = line.split()
+                q.append(float(found[0]))
+                i.append(float(found[1]))
+                imodel.append(float(found[2]))
+                err.append(float(found[3]))
+
+    i = np.array(i)
+    q = np.array(q)
+    err = np.array(err)
+
+    if is_foxs_fit:
+        i = np.array(imodel)
+
+    #If this is a _fit.dat file from DENSS, grab the header values.
+    header = []
+    for j in range(len(lines)):
+        if '# Parameter Values:' in lines[j]:
+            header = lines[j+1:j+9]
+
+    hdict = None
+    results = {}
+
+    if len(header)>0:
+        hdr_str = '{'
+        for each_line in header:
+            line = each_line.split()
+            hdr_str=hdr_str + "\""+line[1]+"\""+":"+line[3]+","
+        hdr_str = hdr_str.rstrip(',')+"}"
+        try:
+            hdict = dict(json.loads(hdr_str))
+        except Exception:
+            hdict = {}
+
+    if hdict:
+        for each in hdict.keys():
+            if each != 'filename':
+                results[each] = hdict[each]
+
+    if 'analysis' in results:
+        if 'GNOM' in results['analysis']:
+            results = results['analysis']['GNOM']
+
+    print(results)
+
+    return q, i, err, results
+
 def loadProfile(fname, units="a"):
     """Determines which loading function to run, and then runs it."""
 
     if os.path.splitext(fname)[1] == '.out':
         q, I, Ierr, results = loadOutFile(fname)
         isout = True
+    elif "_fit.dat" in fname:
+        q, I, Ierr, results = loadFitFile(fname)
+        isout = False
     else:
         q, I, Ierr, results = loadDatFile(fname)
         isout = False
@@ -594,6 +685,99 @@ def loadProfile(fname, units="a"):
         print("Angular units converted from 1/nm to 1/angstrom")
 
     return q, I, Ierr, dmax, isout
+
+def check_if_raw_data(Iq):
+    """Check if an I(q) profile is a smooth fitted profile, or raw data.
+
+    Iq - N x 3 numpy array, where N is the number of data  points, and the
+        three columns are q, I, error.
+
+    This performs a very simple check. It simply checks if there exists
+    a q = 0 term. The Iq profile given should be first cleaned up by
+    clean_up_data() function, which will remove I=0 and sig=0 data points.
+    """
+    #first, check if there is a q=0 value.
+    if min(Iq[:,0]) > 1e-8:
+        #allow for some floating point error
+        return True
+    else:
+        return False
+
+def clean_up_data(Iq):
+    """Do a quick cleanup by removing zero intensities and zero errors.
+
+    Iq - N x 3 numpy array, where N is the number of data  points, and the
+    three columns are q, I, error.
+    """
+    return Iq[(~np.isclose(Iq[:,1],0))&(~np.isclose(Iq[:,2],0))]
+
+def calc_rg_I0_by_guinier(Iq,nb=None,ne=None):
+    """calculate Rg, I(0) by fitting Guinier equation to data.
+    Use only desired q range in input arrays."""
+    if nb is None:
+        nb = 0
+    if ne is None:
+        ne = Iq.shape[0]
+    m, b = stats.linregress(Iq[nb:ne,0]**2,np.log(Iq[nb:ne,1]))[:2]
+    rg = (-3*m)**(0.5)
+    I0 = np.exp(b)
+    return rg, I0
+
+def estimate_dmax(Iq,dmax=None,clean_up=True):
+    """Attempt to roughly estimate Dmax directly from data."""
+    #first, clean up the data
+    if clean_up:
+        Iq = clean_up_data(Iq)
+    q = Iq[:,0]
+    I = Iq[:,1]
+    if dmax is None:
+        #first, estimate a very rough rg from the first 20 data points
+        nmax = 20
+        rg, I0 = calc_rg_I0_by_guinier(Iq,ne=nmax)
+        #next, dmax is roughly 3.5*rg for most particles
+        #so calculate P(r) using a larger dmax, say twice as large, so 7*rg
+        D = 7*rg
+    else:
+        #allow user to give an initial estimate of Dmax
+        #multiply by 2 to allow for enough large r values
+        D = 2*dmax
+    #create a calculated q range for Sasrec
+    qmin = np.min(q)
+    dq = (q.max()-q.min())/(q.size-1)
+    nq = int(qmin/dq)
+    qc = np.concatenate(([0.0],np.arange(nq)*dq+(qmin-nq*dq),q))
+    #run Sasrec to perform IFT
+    sasrec = Sasrec(Iq, D, qc=qc, alpha=0.0)
+    #now filter the P(r) curve for estimating Dmax better
+    r, Pfilt, sigrfilt = filter_P(sasrec.r, sasrec.P, sasrec.Perr, qmax=Iq[:,0].max())
+    #estimate D as the first position where P becomes less than 0.01*P.max(), after P.max()
+    Pargmax = Pfilt.argmax()
+    D_idx = np.where((Pfilt[Pargmax:]<(0.001*Pfilt.max())))[0][0] + Pargmax
+    D = r[D_idx]
+    return D, sasrec
+
+def filter_P(r,P,sigr=None,qmax=0.5,cutoff=0.75,qmin=0.0,cutoffmin=1.25):
+    """Filter P(r) and sigr of oscillations."""
+    npts = len(r)
+    dr = (r.max()-r.min())/(r.size-1)
+    fs = 1./dr
+    nyq = fs*0.5
+    fc = (cutoff*qmax/(2*np.pi))/nyq
+    ntaps = npts//3
+    if ntaps%2==0:
+        ntaps -=1
+    b = signal.firwin(ntaps, fc, window='hann')
+    if qmin>0.0:
+        fcmin = (cutoffmin*qmin/(2*np.pi))/nyq
+        b = sigmal.firwin(ntaps, [fcmin,fc],pass_zero=False, window='hann')
+    a = np.array([1])
+    Pfilt = signal.filtfilt(b,a,P,padlen=len(r)-1)
+    r = np.arange(npts)/fs
+    if sigr is not None:
+        sigrfilt = signal.filtfilt(b, a, sigr)/(2*np.pi)
+        return r, Pfilt, sigrfilt
+    else:
+        return r, Pfilt
 
 def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False,
     limit_dmax_steps=[500], recenter=True, recenter_steps=None,
@@ -1703,6 +1887,8 @@ class Sasrec(object):
         #self.In = 0.5*optimize.nnls(self.C, self.Y)[0]
         self.Inerr = 0.5*(np.diagonal(self.Cinv))**(0.5)
         self.Ic = self.Ish2Iq(Ish=self.In,D=self.D,q=self.qc)[:,1]
+        #try and rougly estimate missing error bars for the calculated intensities
+        self.Icerr = np.interp(self.qc, self.q, self.Ierr)
         self.P = self.Ish2P(self.In,self.D,self.r)
         self.Perr = self.Perrf(r=self.r, D=self.D, Sn=self.S[self.Ni[:, None], self.ri], Sm=self.S[self.Mi[:, None], self.ri], Cinv=self.Cinv)
         self.I0 = self.Ish2I0(self.In,self.D)

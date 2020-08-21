@@ -12,6 +12,9 @@ try:
 except ImportError:
     matplotlib_found = False
 
+import numpy as np
+from . import saxstats as saxs
+
 def parse_arguments(parser,gnomdmax=None):
 
     parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
@@ -100,12 +103,43 @@ def parse_arguments(parser,gnomdmax=None):
                "has been re-enabled until a bug fix is released. ")
         args.extrapolate = True
 
+    q, I, sigq, file_dmax, isout = saxs.loadProfile(args.file, units=args.units)
+    Iq = np.zeros((q.size,3))
+    Iq[:,0] = q
+    Iq[:,1] = I
+    Iq[:,2] = sigq
+
+    Iq = saxs.clean_up_data(Iq)
+    raw_data = saxs.check_if_raw_data(Iq)
+    #now that we've cleaned up the data, reset the q, I, sigq arrays
+    q = Iq[:,0]
+    I = Iq[:,1]
+    sigq = Iq[:,2]
+
     if args.dmax is not None and args.dmax >= 0:
         dmax = args.dmax
-    elif gnomdmax is not None:
-        dmax = gnomdmax
+    elif file_dmax == -1:
+        #if dmax from loadProfile() is -1, then dmax was not able
+        #to be extracted from the file
+        #in that case, estimate dmax directly from the data
+        dmax, sasrec = saxs.estimate_dmax(Iq)
     else:
-        dmax = 100.0
+        dmax = file_dmax
+
+    if raw_data:
+        #in case a user gives raw experimental data, first, fit the data
+        #using Sasrec and dmax
+        #create a calculated q range for Sasrec
+        qmin = np.min(q)
+        qmax = np.max(q)
+        dq = (qmax-qmin)/(q.size-1)
+        nq = int(qmin/dq)
+        qc = np.concatenate(([0.0],np.arange(nq)*dq+(qmin-nq*dq),q))
+        sasrec = saxs.Sasrec(Iq, dmax, qc=qc)
+        #now, set the Iq values to be the new fitted q values
+        q = sasrec.qc
+        I = sasrec.Ic
+        sigq = sasrec.Icerr
 
     #old default sw_start was 3.0
     #however, in cases where the voxel size is smaller than default,
@@ -246,4 +280,4 @@ def parse_arguments(parser,gnomdmax=None):
     args.dmax = dmax
     args.voxel = voxel
 
-    return args
+    return args, q, I, sigq, dmax
