@@ -15,7 +15,7 @@ except ImportError:
 import numpy as np
 from . import saxstats as saxs
 
-def parse_arguments(parser,gnomdmax=None):
+def parse_arguments(parser):
 
     parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
     parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
@@ -70,7 +70,6 @@ def parse_arguments(parser,gnomdmax=None):
     parser.add_argument("--plot_on", dest="plot", action="store_true", help="Create simple plots of results (requires Matplotlib, default if module exists).")
     parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not create simple plots of results. (Default if Matplotlib does not exist)")
     parser.add_argument("-q", "--quiet", action="store_true", help="Do not display running statistics. (default False)")
-    parser.add_argument("--force_run", action="store_true", help="Force denss to run even if q=0 does not exist. (default False)")
     parser.add_argument("-gpu", "--gpu", dest="DENSS_GPU", action="store_true", help="Use GPU acceleration (requires CuPy). (default False)")
     parser.set_defaults(limit_dmax=False)
     parser.set_defaults(shrinkwrap=True)
@@ -81,7 +80,6 @@ def parse_arguments(parser,gnomdmax=None):
     parser.set_defaults(enforce_connectivity=True)
     parser.set_defaults(cutout=False)
     parser.set_defaults(quiet = False)
-    parser.set_defaults(force_run = False)
     parser.set_defaults(DENSS_GPU = False)
     if matplotlib_found:
         parser.set_defaults(plot=True)
@@ -279,5 +277,8 @@ def parse_arguments(parser,gnomdmax=None):
     args.limit_dmax_steps = limit_dmax_steps
     args.dmax = dmax
     args.voxel = voxel
+    args.q = q
+    args.I = I
+    args.sigq = sigq
 
-    return args, q, I, sigq, dmax
+    return args

@@ -41,38 +41,8 @@ try:
 except ImportError:
     matplotlib_found = False
 
-"""
-#have to run parser twice, first just to get filename for loadProfile
-#then have to run it after deciding what the correct dmax should be
-#so that the voxel size, box size, nsamples, etc are set correctly
-initparser = argparse.ArgumentParser(description=" DENSS: DENsity from Solution Scattering.\n A tool for calculating an electron density map from solution scattering data", formatter_class=argparse.RawTextHelpFormatter)
-initargs = dopts.parse_arguments(initparser, gnomdmax=None)
-
-
-q, I, sigq, dmax, isout = saxs.loadProfile(initargs.file, units=initargs.units)
-
-if not initargs.force_run:
-    if min(q) != 0.0:
-        print("CAUTION: Minimum q value = %f " % min(q))
-        print("is not 0.0. It is STRONGLY recommended to include")
-        print("I(q=0) in your given scattering profile. You can use")
-        print("denss.fit_data.py to calculate a scattering profile fit")
-        print("which will include I(q=0), or you can also use the GNOM")
-        print("program from ATSAS to create a .out file.")
-        print()
-        print("If you are positive you would like to continue, ")
-        print("rerun with the --force_run option.")
-        sys.exit()
-
-if dmax <= 0:
-    dmax = None
-
 parser = argparse.ArgumentParser(description="DENSS: DENsity from Solution Scattering.\n A tool for calculating an electron density map from solution scattering data", formatter_class=argparse.RawTextHelpFormatter)
-args = dopts.parse_arguments(parser, gnomdmax=dmax)
-"""
-
-parser = argparse.ArgumentParser(description="DENSS: DENsity from Solution Scattering.\n A tool for calculating an electron density map from solution scattering data", formatter_class=argparse.RawTextHelpFormatter)
-args, q, I, sigq, dmax = dopts.parse_arguments(parser)
+args = dopts.parse_arguments(parser)
 
 if __name__ == "__main__":
     my_logger = logging.getLogger()
@@ -99,7 +69,9 @@ if __name__ == "__main__":
     my_logger.info('Mode: %s', args.mode)
 
     qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV, rho, side = saxs.denss(
-        q=q,I=I,sigq=sigq,
+        q=args.q,
+        I=args.I,
+        sigq=args.sigq,
         dmax=args.dmax,
         ne=args.ne,
         voxel=args.voxel,
@@ -137,18 +109,13 @@ if __name__ == "__main__":
         DENSS_GPU=args.DENSS_GPU,
         my_logger=my_logger)
 
-    print(args.output)
-
-    fit = np.zeros(( len(qbinsc),5 ))
-    fit[:len(qdata),0] = qdata
-    fit[:len(Idata),1] = Idata
-    fit[:len(sigqdata),2] = sigqdata
-    fit[:len(qbinsc),3] = qbinsc
-    fit[:len(Imean),4] = Imean
-    # np.savetxt(args.output+'_map.fit',fit,delimiter=' ',fmt='%.5e', header='q(data),I(data),error(data),q(density),I(density)')
-    # np.savetxt(args.output+'_stats_by_step.dat',np.vstack((chis, rg, supportV)).T,delimiter=" ",fmt="%.5e",header='Chi2 Rg SupportVolume')
+    print("\n%s"%args.output)
 
     if args.plot and matplotlib_found:
+        q = args.q
+        I = args.I
+        sigq = args.sigq
+
         f = plt.figure(figsize=[6,6])
         gs = gridspec.GridSpec(2, 1, height_ratios=[3,1])
 

@@ -43,40 +43,6 @@ import saxstats.denssopts as dopts
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 
-#have to run parser twice, first just to get filename for loadProfile
-#then have to run it after deciding what the correct dmax should be
-#so that the voxel size, box size, nsamples, etc are set correctly
-initparser = argparse.ArgumentParser(description="Generate, align, and average many electron density maps from solution scattering data.", formatter_class=argparse.RawTextHelpFormatter)
-initparser.add_argument("-nm", "--nmaps",default = 20,type =int, help="Number of maps to be generated (default 20)")
-initparser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
-initparser.add_argument("-en_on", "--enantiomer_on", action = "store_true", dest="enan", help="Generate and select best enantiomers (default). ")
-initparser.add_argument("-en_off", "--enantiomer_off", action = "store_false", dest="enan", help="Do not generate and select best enantiomers.")
-initparser.add_argument("-ref", "--ref", default=None, type=str, help="Input reference model (.mrc or .pdb file, optional).")
-initparser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center reference PDB map.")
-initparser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center reference PDB map (default).")
-initparser.add_argument("-r", "--resolution", default=15.0, type=float, help="Resolution of map calculated from reference PDB file (default 15 angstroms).")
-initparser.set_defaults(enan = True)
-initparser.set_defaults(center = True)
-initargs = dopts.parse_arguments(initparser, gnomdmax=None)
-
-q, I, sigq, dmax, isout = saxs.loadProfile(initargs.file, units=initargs.units)
-
-if not initargs.force_run:
-    if min(q) != 0.0:
-        print("CAUTION: Minimum q value = %f " % min(q))
-        print("is not 0.0. It is STRONGLY recommended to include")
-        print("I(q=0) in your given scattering profile. You can use")
-        print("denss.fit_data.py to calculate a scattering profile fit")
-        print("which will include I(q=0), or you can also use the GNOM")
-        print("program from ATSAS to create a .out file.")
-        print()
-        print("If you are positive you would like to continue, ")
-        print("rerun with the --force_run option.")
-        sys.exit()
-
-if dmax <= 0:
-    dmax = None
-
 parser = argparse.ArgumentParser()
 parser.add_argument("-nm", "--nmaps",default = 20,type =int, help="Number of maps to be generated (default 20)")
 parser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
@@ -88,8 +54,11 @@ parser.add_argument("-c_off", "--center_off", dest="center", action="store_false
 parser.add_argument("-r", "--resolution", default=15.0, type=float, help="Resolution of map calculated from reference PDB file (default 15 angstroms).")
 parser.set_defaults(enan = True)
 parser.set_defaults(center = True)
-superargs = dopts.parse_arguments(parser, gnomdmax=dmax)
+superargs = dopts.parse_arguments(parser)
 
+#these are arguments specifically for the denss() function
+#it cannot contain keyword arguments that are not listed
+#in the denss() function, so remove any of those here
 args = copy.copy(superargs)
 del args.units
 del args.cores
@@ -102,7 +71,6 @@ del args.nsamples
 del args.mode
 del args.resolution
 del args.center
-del args.force_run
 del args.shrinkwrap_sigma_start_in_A
 del args.shrinkwrap_sigma_end_in_A
 del args.shrinkwrap_sigma_start_in_vox
@@ -185,7 +153,7 @@ if __name__ == "__main__":
     superlogger.info('Data filename: %s', superargs.file)
     superlogger.info('Enantiomer selection: %r', superargs.enan)
 
-    denss_inputs = {'I':I,'sigq':sigq,'q':q}
+    denss_inputs = {'I':superargs.I,'sigq':superargs.sigq,'q':superargs.q}
 
     for arg in vars(args):
         denss_inputs[arg]= getattr(args, arg)
