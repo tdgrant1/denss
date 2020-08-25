@@ -654,8 +654,6 @@ def loadFitFile(filename):
         if 'GNOM' in results['analysis']:
             results = results['analysis']['GNOM']
 
-    print(results)
-
     return q, i, err, results
 
 def loadProfile(fname, units="a"):
