@@ -16,6 +16,17 @@ Try out DENSS without installing the code using the DENSSWeb server to
 perform simple online calculations suitable for most cases. Thanks to
 Andrew Bruno and the CCR for DENSSWeb!
 
+#### New automatic Dmax estimation and fitting from RAW data
+When provided raw experimental data, DENSS will now automatically estimate
+the maximum dimension and fit the profile with a smooth curve. This uses
+the same algorithm used in denss.fit_data.py for fitting. Additionally,
+denss.fit_data.py now outputs a *_fit.dat file with header information
+including the Dmax. denss.py can now take this *_fit.dat as input and
+read the Dmax value directly from the header, thus removing the need
+to expressly set the -d option for .dat files in denss.py. Users are
+still advised to manually run denss.fit_data.py to ensure quality Dmax 
+and fits are obtained. These features are available in version 1.6.1.
+
 #### New DENSS version 1.6.0 released
 Shrinkwrap in DENSS has been updated to be more robust, particularly for 
 particles with negative contrast used in MEMBRANE mode. Several bug fixes.
