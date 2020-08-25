@@ -187,6 +187,8 @@ if __name__ == "__main__":
         plt.savefig(args.output+'_fit.png',dpi=150)
         plt.close()
 
+
+        """
         plt.plot(chis[chis>0])
         plt.xlabel('Step')
         plt.ylabel('$\chi^2$')
@@ -208,6 +210,50 @@ if __name__ == "__main__":
         plt.semilogy()
         plt.tight_layout()
         plt.savefig(args.output+'_supportV.png',dpi=150)
+        plt.close()
+        """
+
+        fig, host = plt.subplots(nrows=1, ncols=1)
+
+        par1 = host.twinx()
+        par2 = host.twinx()
+
+        #host.set_xlim(0, 2)
+        #host.set_ylim(0, 1.05*chis.max())
+        #par1.set_ylim(0, 4)
+        #par2.set_ylim(1, 65)
+
+        host.set_xlabel('Step')
+        host.set_ylabel('$\chi^2$')
+        par1.set_ylabel('Rg')
+        par2.set_ylabel('Support Volume')
+
+        color1 = plt.cm.viridis(0)
+        color2 = plt.cm.viridis(0.5)
+        color3 = plt.cm.viridis(.9)
+
+        p1, = host.plot(chis[chis>0], color=color1,label="$\chi^2$")
+        p2, = par1.plot(rg[rg!=0], color=color2, label="Rg")
+        p3, = par2.plot(supportV[supportV>0], color=color3, label="Support Volume")
+
+        host.semilogy()
+        par2.semilogy()
+
+        lns = [p1, p2, p3]
+        host.legend(handles=lns, loc='best')
+
+        # right, left, top, bottom
+        par2.spines['right'].set_position(('outward', 60))      
+        # no x-ticks                 
+        #par2.xaxis.set_ticks([])
+        # Sometimes handy, same for xaxis
+        #par2.yaxis.set_ticks_position('right')
+
+        host.yaxis.label.set_color(p1.get_color())
+        par1.yaxis.label.set_color(p2.get_color())
+        par2.yaxis.label.set_color(p3.get_color())
+
+        plt.savefig(args.output+'_stats_by_step.png', bbox_inches='tight',dpi=300)
         plt.close()
 
     logging.info('END')
