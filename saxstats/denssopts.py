@@ -164,20 +164,23 @@ def parse_arguments(parser):
             args.mode = "FAST"
             nsamples = 32
             shrinkwrap_minstep = 1000
-            enforce_connectivity_steps = [2000]
+            ec_steps_to_add = np.array([1000])
+            enforce_connectivity_steps = shrinkwrap_minstep + ec_steps_to_add
             recenter_steps = list(range(501,2502,500))
         elif args.mode[0].upper() == "S":
             args.mode = "SLOW"
             nsamples = 64
             shrinkwrap_minstep = 5000
-            enforce_connectivity_steps = [6000]
+            ec_steps_to_add = np.array([1000])
+            enforce_connectivity_steps = shrinkwrap_minstep + ec_steps_to_add
             recenter_steps = list(range(501,8002,500))
         elif args.mode[0].upper() == "M":
             args.mode = "MEMBRANE"
             nsamples = 64
             positivity = False
             shrinkwrap_minstep = 0
-            enforce_connectivity_steps = [300]
+            ec_steps_to_add = np.array([300])
+            enforce_connectivity_steps = shrinkwrap_minstep + ec_steps_to_add
             recenter_steps = list(range(501,8002,500))
         else:
             args.mode = "None"
@@ -187,13 +190,15 @@ def parse_arguments(parser):
             args.mode = "FAST"
             nsamples = 32
             shrinkwrap_minstep = 1000
-            enforce_connectivity_steps = [2000]
+            ec_steps_to_add = np.array([1000])
+            enforce_connectivity_steps = shrinkwrap_minstep + ec_steps_to_add
             recenter_steps = list(range(501,2502,500))
         elif args.mode[0].upper() == "S":
             args.mode = "SLOW"
             nsamples = 64
-            shrinkwrap_minstep = 5000
-            enforce_connectivity_steps = [6000]
+            shrinkwrap_minstep = 1000
+            ec_steps_to_add = np.array([1000])
+            enforce_connectivity_steps = shrinkwrap_minstep + ec_steps_to_add
             recenter_steps = list(range(501,8002,500))
         elif args.mode[0].upper() == "M":
             args.mode = "MEMBRANE"
@@ -202,7 +207,8 @@ def parse_arguments(parser):
             shrinkwrap_minstep = 0
             shrinkwrap_sigma_start_in_A *= 2.0
             shrinkwrap_sigma_end_in_A *= 2.0
-            enforce_connectivity_steps = [300, 500, 1000]
+            ec_steps_to_add = np.array([300, 500, 1000])
+            enforce_connectivity_steps = shrinkwrap_minstep + ec_steps_to_add
             recenter_steps = list(range(501,8002,500))
         else:
             args.mode = "None"
@@ -223,6 +229,9 @@ def parse_arguments(parser):
 
     if args.shrinkwrap_minstep is not None:
         shrinkwrap_minstep = args.shrinkwrap_minstep
+        #adjust ec_steps if minstep is given by user by default
+        #ec_steps will be overwritten later if user defined
+        enforce_connectivity_steps = shrinkwrap_minstep + ec_steps_to_add
 
     if args.shrinkwrap_threshold_fraction is not None:
         shrinkwrap_threshold_fraction = args.shrinkwrap_threshold_fraction
@@ -247,8 +256,8 @@ def parse_arguments(parser):
 
     if args.enforce_connectivity_steps is not None:
         enforce_connectivity_steps = args.enforce_connectivity_steps
-    if not isinstance(enforce_connectivity_steps, list):
-        enforce_connectivity_steps = [ enforce_connectivity_steps ]
+    if not isinstance(enforce_connectivity_steps, np.ndarray):
+        enforce_connectivity_steps = np.asarray(enforce_connectivity_steps)
 
     if args.recenter_steps is not None:
         recenter_steps = args.recenter_steps
