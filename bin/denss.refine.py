@@ -108,6 +108,7 @@ if __name__ == "__main__":
         voxel=args.voxel,
         oversampling=args.oversampling,
         rho_start=args.rho_start,
+        add_noise=args.add_noise,
         limit_dmax=args.limit_dmax,
         limit_dmax_steps=args.limit_dmax_steps,
         recenter=args.recenter,
