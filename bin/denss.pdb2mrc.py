@@ -40,8 +40,8 @@ parser.add_argument("-s", "--side", default=300., type=float, help="Desired leng
 parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired voxel size (default=None)")
 parser.add_argument("-n", "--nsamples", default=64, type=float, help="Desired number of samples per axis (default=64)")
 parser.add_argument("-m", "--mode", default="slow", type=str, help="Mode. Either fast (Simple Gaussian sphere), slow (accurate 5-term Gaussian using Cromer-Mann coefficients), or FFT (default=slow).")
-parser.add_argument("-r", "--resolution", default=10.0, type=float, help="Desired resolution (i.e. Gaussian sphere width sigma) (default=15 angstroms)")
-parser.add_argument("--solv", default=0.334, type=float, help="Desired Solvent Density (default=0.335 e-/A^3)")
+parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (i.e. Gaussian sphere width sigma) (default=15 angstroms)")
+parser.add_argument("--solv", default=0.334, type=float, help="Desired Solvent Density (default=0.334 e-/A^3)")
 parser.add_argument("--ignore_waters", dest="ignore_waters", action="store_true", help="Ignore waters.")
 parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB reference (default).")
 parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB reference.")
@@ -83,19 +83,27 @@ if __name__ == "__main__":
 
     if args.mode == "fast":
         #rho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution,mode="fast",eps=1e-6)
+        if args.resolution is None:
+            #if no resolution is given, set it to be 3x the voxel size
+            resolution = 3*dx
         rho = saxs.pdb2map_fastgauss(pdb,x=x,y=y,z=z,
-                                    sigma=args.resolution,
-                                    r=args.resolution*2,
+                                    sigma=resolution,
+                                    r=resolution*2,
                                     ignore_waters=args.ignore_waters)
     elif args.mode == "slow":
         #this slow mode uses the 5-term Gaussian with Cromer-Mann coefficients
-        rho, support = saxs.pdb2map_multigauss(pdb,x=x,y=y,z=z,r=3.0,ignore_waters=args.ignore_waters)
+        if args.resolution is None:
+            #for slow mode, set resolution to be zero as this will then just
+            #be equivalent to no B-factor, using just the atomic form factor
+            resolution = 3*dx
+        rho, support = saxs.pdb2map_multigauss(pdb,x=x,y=y,z=z,resolution=resolution,ignore_waters=args.ignore_waters)
     else:
         print("Note: Using FFT method results in severe truncation ripples in map.")
         print("This will also run a quick refinement of phases to attempt to clean this up.")
         rho, support = saxs.pdb2map_FFT(pdb,x=x,y=y,z=z,radii=None)
         rho = saxs.denss_3DFs(rho_start=rho,dmax=side,voxel=dx,oversampling=1.,shrinkwrap=False,support=support)
     print()
+
     #subtract solvent density value
     #first, identify which voxels have particle
     support = np.zeros(rho.shape,dtype=bool)
@@ -104,7 +112,8 @@ if __name__ == "__main__":
     #this becomes important for estimating solvent content
     support[rho>0.0001*rho.max()] = True
     rho[~support] = 0
-    #scale map to total number of electrons
+    #scale map to total number of electrons while still in vacuum
+    #to adjust for some small fraction of electrons just flattened
     rho *= np.sum(pdb.nelectrons) / rho.sum()
     #convert total electron count to density
     rho /= dV

@@ -100,6 +100,11 @@ if __name__ == "__main__":
     #create an array labeling each voxel according to which qbin it belongs
     qbin_labels = np.searchsorted(qbins,qr,"right")
     qbin_labels -= 1
+
+    #assume rho is given as electron density, not electron count
+    #convert from density to electron count for FFT calculation
+    rho *= dV
+
     #create list of qbin indices just in region of data for later F scaling
     qbin_args = np.copy(qbinsc)
     F = np.fft.fftn(rho)

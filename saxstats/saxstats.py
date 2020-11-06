@@ -847,7 +847,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         Idata = np.concatenate((Idata,Iextend[1:]))
 
     #create list of qbin indices just in region of data for later F scaling
-    qbin_args = np.in1d(qbinsc,qdata,assume_unique=True)   
+    qbin_args = np.in1d(qbinsc,qdata,assume_unique=True)
     sigqdata = np.interp(qdata,q,sigq)
 
     scale_factor = ne**2 / Idata[0]
@@ -1016,7 +1016,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         factors = mysqrt(Idata/Imean, DENSS_GPU=DENSS_GPU)
         F *= factors[qbin_labels]
 
-        chi[j] = mysum(((Imean-Idata)/sigqdata)**2, DENSS_GPU=DENSS_GPU)/Imean.size
+        chi[j] = mysum(((Imean-Idata)/sigqdata)**2, DENSS_GPU=DENSS_GPU)/Idata.size
         #APPLY REAL SPACE RESTRAINTS
         rhoprime = myifftn(F, DENSS_GPU=DENSS_GPU)
         rhoprime = rhoprime.real
@@ -2523,7 +2523,7 @@ def pdb2map_fastgauss(pdb,x,y,z,sigma,r=20.0,ignore_waters=True):
     print()
     return values
 
-def pdb2map_multigauss(pdb,x,y,z,r=20.0,ignore_waters=True):
+def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
     """5-term gaussian sum at coordinate locations using Cromer-Mann coefficients.
 
     This fastgauss function only calculates the values at
@@ -2532,7 +2532,9 @@ def pdb2map_multigauss(pdb,x,y,z,r=20.0,ignore_waters=True):
     pdb - instance of PDB class (required)
     x,y,z - meshgrids for x, y, and z (required)
     sigma - width of Gaussian, i.e. effectively resolution
-    r - maximum distance from atom to calculate density
+    cutoff - maximum distance from atom to calculate density
+    resolution - desired resolution of density map, calculated as a B-factor
+    corresonding to atomic displacement equal to resolution.
     """
     side = x[-1,0,0] - x[0,0,0]
     halfside = side/2
@@ -2545,6 +2547,10 @@ def pdb2map_multigauss(pdb,x,y,z,r=20.0,ignore_waters=True):
     print("\n Calculate density map from PDB... ")
     values = np.zeros(x.shape)
     support = np.zeros(x.shape,dtype=bool)
+    cutoff = max(cutoff,2*resolution)
+    #convert resolution to B-factor for form factor calculation
+    #set resolution equal to atomic displacement
+    B = u2B(resolution)
     for i in range(pdb.coords.shape[0]):
         if ignore_waters and pdb.resname[i]=="HOH":
             continue
@@ -2554,12 +2560,12 @@ def pdb2map_multigauss(pdb,x,y,z,r=20.0,ignore_waters=True):
         #first, get the min and max distances for each dimension
         #also, convert those distances to indices by dividing by dx
         xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
-        xmin = int(np.floor((xa-r)/dx)) + n//2
-        xmax = int(np.ceil((xa+r)/dx)) + n//2
-        ymin = int(np.floor((ya-r)/dx)) + n//2
-        ymax = int(np.ceil((ya+r)/dx)) + n//2
-        zmin = int(np.floor((za-r)/dx)) + n//2
-        zmax = int(np.ceil((za+r)/dx)) + n//2
+        xmin = int(np.floor((xa-cutoff)/dx)) + n//2
+        xmax = int(np.ceil((xa+cutoff)/dx)) + n//2
+        ymin = int(np.floor((ya-cutoff)/dx)) + n//2
+        ymax = int(np.ceil((ya+cutoff)/dx)) + n//2
+        zmin = int(np.floor((za-cutoff)/dx)) + n//2
+        zmax = int(np.ceil((za+cutoff)/dx)) + n//2
         #handle edges
         xmin = max([xmin,0])
         xmax = min([xmax,n])
@@ -2582,7 +2588,10 @@ def pdb2map_multigauss(pdb,x,y,z,r=20.0,ignore_waters=True):
             ffcoeff[element]
         except:
             element = pdb.atomname[i][0]
-        tmpvalues = realspace_formfactor(element=element,r=dist)
+
+        tmpvalues = realspace_formfactor(element=element,r=dist,B=B)
+        #rescale total number of electrons by expected number of electrons
+        tmpvalues *= electrons[element] / np.sum(tmpvalues)
         try:
             values[slc] += tmpvalues.reshape(nx,ny,nz)
         except:
@@ -2690,16 +2699,30 @@ def formfactor(element, q=(np.arange(500)+1)/1000.):
     ff += ffcoeff[element]['c']
     return ff
 
-def realspace_formfactor(element, r=(np.arange(501))/1000.):
-    """Calculate real space atomic form factors (just testing this out)"""
+def u2B(u):
+    """Calculate B-factor from atomic displacement, u"""
+    return 8 * np.pi**2 * u**2
+
+def B2u(B):
+    """Calculate atomic displacement, u, from B-factor"""
+    return (B/(8*np.pi**2))**0.5
+
+def realspace_formfactor(element, r=(np.arange(501))/1000., B=0.0):
+    """Calculate real space atomic form factors"""
     r = np.atleast_1d(r)
     ff = np.zeros(r.shape)
     for i in range(4):
         ai = ffcoeff[element]['a'][i]
         bi = ffcoeff[element]['b'][i]
-        #print i, ai, bi, ffcoeff[element]['c']
-        #print i, 4*ai * (np.pi**3/bi)**0.5
-        ff += 4*ai * (np.pi**3/bi)**0.5 * np.exp(-(2*np.pi*r)**2/bi)
+        #the form factor equation in the next line was taken from a publication
+        #but it ended up being incorrect. Maybe they defined a parameter differently
+        #ff += 4*ai * (np.pi**3/bi)**0.5 * np.exp(-(2*np.pi*r)**2/bi)
+        #the form factor in the next line is correct, based on an analytical Fourier
+        #tranform of the form factor in reciprocal space
+        #ff += 2*(2/bi)**0.5*np.pi * ai * np.exp(-(2*np.pi*r)**2/bi)
+        #the form factor in the next line additionally accounts for a B-factor
+        #ff += 2*(6)**0.5 * np.pi * ai * np.exp(-3*(2*np.pi*r)**2/(3*bi+8*(np.pi*u)**2)) / (3*bi+8*(np.pi*u)**2)**0.5
+        ff += 2*(6)**0.5 * np.pi * ai * np.exp(-3*(2*np.pi*r)**2/(3*bi+B)) / (3*bi+B)**0.5
     i = np.where((r==0))
     ff += signal.unit_impulse(r.shape, i) * ffcoeff[element]['c']
     return ff
