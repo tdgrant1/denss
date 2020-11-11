@@ -127,6 +127,7 @@ if __name__ == "__main__":
         print(" Generating reference...")
         try:
             refrho = saxs.binary_average(allrhos, args.cores)
+            saxs.write_mrc(refrho, sides[0], output+"_reference.mrc")
         except KeyboardInterrupt:
             sys.exit(1)
 
@@ -162,7 +163,7 @@ if __name__ == "__main__":
     logging.info('Standard deviation of the scores: %.3f', std)
     logging.info('Total number of input maps for alignment: %i',allrhos.shape[0])
     logging.info('Number of aligned maps accepted: %i', aligned.shape[0])
-    logging.info('Correlation score between average and reference: %.3f', 1/saxs.rho_overlap_score(average_rho, refrho))
+    logging.info('Correlation score between average and reference: %.3f', -saxs.rho_overlap_score(average_rho, refrho))
     saxs.write_mrc(average_rho, sides[0], output+'_avg.mrc')
     logging.info('END')
 
@@ -185,9 +186,9 @@ if __name__ == "__main__":
     resi = np.argmin(y>=0.5)
     resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
     resn = round(float(1./resx),1)
-    print("Resolution: %.1f" % resn, '\u212B')
+    print("Resolution: %.1f A" % resn)
 
-    logging.info('Resolution: %.1f '+ '\u212B', resn )
+    logging.info('Resolution: %.1f A', resn )
     logging.info('END')
 
 

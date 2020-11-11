@@ -1683,15 +1683,16 @@ def select_best_enantiomers(rhos, refrho=None, cores=1, avg_queue=None,
         #this way the final rotation is defined by the optimized score, not
         #by the inverse refrho xyz alignment, which appears to suffer from
         #interpolation artifacts
-        xyz_rho = align2xyz(rhos[i])
-        enans = generate_enantiomers(xyz_rho)
+        #xyz_rho = align2xyz(rhos[i])
+        c_rho = center_rho(rhos[i])
+        enans = generate_enantiomers(c_rho) #xyz_rho)
         #now rotate rho by the inverse of the refrho rotation for each enantiomer
-        R = np.linalg.inv(refR)
-        c_in = np.array(ndimage.measurements.center_of_mass(rhos[i]))
-        c_out = np.array(rhos[i].shape)/2.
-        offset = c_in-c_out.dot(R)
+        #R = np.linalg.inv(refR)
+        #c_in = np.array(ndimage.measurements.center_of_mass(rhos[i]))
+        #c_out = np.array(rhos[i].shape)/2.
+        #offset = c_in-c_out.dot(R)
         for j in range(len(enans)):
-            enans[j] = ndimage.interpolation.affine_transform(enans[j],R.T,order=3,offset=offset,mode='wrap')
+        #    enans[j] = ndimage.interpolation.affine_transform(enans[j],R.T,order=3,offset=offset,mode='wrap')
             enans[j] = ndimage.interpolation.shift(enans[j],-refshift,order=3,mode='wrap')
         #now minimize each enan around the original refrho location
 

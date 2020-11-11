@@ -291,7 +291,7 @@ if __name__ == "__main__":
     resn = round(float(1./resx),1)
     print("Resolution: %.1f A" % resn)
 
-    superlogger.info('Resolution: %.1f ', resn )
+    superlogger.info('Resolution: %.1f A', resn )
     superlogger.info('END')
 
     if superargs.plot:
