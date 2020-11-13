@@ -86,6 +86,8 @@ if __name__ == "__main__":
         if args.resolution is None:
             #if no resolution is given, set it to be 3x the voxel size
             resolution = 3*dx
+        else:
+            resolution = args.resolution
         rho = saxs.pdb2map_fastgauss(pdb,x=x,y=y,z=z,
                                     sigma=resolution,
                                     r=resolution*2,
@@ -96,6 +98,8 @@ if __name__ == "__main__":
             #for slow mode, set resolution to be zero as this will then just
             #be equivalent to no B-factor, using just the atomic form factor
             resolution = 3*dx
+        else:
+            resolution = args.resolution
         rho, support = saxs.pdb2map_multigauss(pdb,x=x,y=y,z=z,resolution=resolution,ignore_waters=args.ignore_waters)
     else:
         print("Note: Using FFT method results in severe truncation ripples in map.")
