@@ -1655,6 +1655,33 @@ def align(refrho, movrho, abort_event=None):
 
     return movrho, score
 
+def select_best_enantiomer(refrho, rho, abort_event=None):
+    """ Generate, align and select the enantiomer that best fits the reference map."""
+    #translate refrho to center in case not already centered
+    #just use roll to approximate translation to avoid interpolation, since
+    #fine adjustments and interpolation will happen during alignment step
+    c_refrho = center_rho_roll(refrho)
+    #center rho in case it is not centered. use roll to get approximate location
+    #and avoid interpolation
+    c_rho = center_rho_roll(rho)
+    #generate an array of the enantiomers
+    enans = generate_enantiomers(c_rho)
+    #allow for abort
+    if abort_event is not None:
+        if abort_event.is_set():
+            return None, None
+
+    #align each enantiomer and store the aligned maps and scores in results list
+    results = [align(c_refrho, enan, abort_event=abort_event) for
+                enan in enans]
+
+    #now select the best enantiomer
+    enans = np.array([results[k][0] for k in range(len(results))])
+    enans_scores = np.array([results[k][1] for k in range(len(results))])
+    best_i = np.argmax(enans_scores)
+    best_enan, best_score = enans[best_i], enans_scores[best_i]
+    return best_enan, best_score
+
 def select_best_enantiomers(rhos, refrho=None, cores=1, avg_queue=None,
     abort_event=None, single_proc=False):
     """ Select the best enantiomer from each map in the set (or a single map).
@@ -1663,65 +1690,27 @@ def select_best_enantiomers(rhos, refrho=None, cores=1, avg_queue=None,
         By default, refrho will be set to the first map."""
     if rhos.ndim == 3:
         rhos = rhos[np.newaxis,...]
-    #can't have nested parallel jobs, so run enantiomer selection
-    #in parallel, but run each map in a loop
     if refrho is None:
         refrho = rhos[0]
-    xyz_refrho, refR, refshift = align2xyz(refrho, return_transform=True)
-    scores = np.zeros(rhos.shape[0])
-    for i in range(rhos.shape[0]):
-        if abort_event is not None:
-            if abort_event.is_set():
-                return None, None
-        if avg_queue is not None:
-            avg_queue.put_nowait('Selecting enantiomer for model {}\n'.format(i+1))
-        #align rho to xyz and generate the enantiomers, then shift/rotate each enan
-        #by inverse of refrho, then perform minimization around the original refrho location,
-        #and select the best enantiomer from that set,
-        #rather than doing the minimization around the xyz_refrho location
-        #and then shifting the final best enan back.
-        #this way the final rotation is defined by the optimized score, not
-        #by the inverse refrho xyz alignment, which appears to suffer from
-        #interpolation artifacts
-        #xyz_rho = align2xyz(rhos[i])
-        c_rho = center_rho(rhos[i])
-        enans = generate_enantiomers(c_rho) #xyz_rho)
-        #now rotate rho by the inverse of the refrho rotation for each enantiomer
-        #R = np.linalg.inv(refR)
-        #c_in = np.array(ndimage.measurements.center_of_mass(rhos[i]))
-        #c_out = np.array(rhos[i].shape)/2.
-        #offset = c_in-c_out.dot(R)
-        for j in range(len(enans)):
-        #    enans[j] = ndimage.interpolation.affine_transform(enans[j],R.T,order=3,offset=offset,mode='wrap')
-            enans[j] = ndimage.interpolation.shift(enans[j],-refshift,order=3,mode='wrap')
-        #now minimize each enan around the original refrho location
 
-        if not single_proc:
-            pool = multiprocessing.Pool(cores)
-            try:
-                mapfunc = partial(align, refrho)
-                results = pool.map(mapfunc, enans)
-                pool.close()
-                pool.join()
-            except KeyboardInterrupt:
-                pool.terminate()
-                pool.close()
-                raise
+    #in parallel, select the best enantiomer for each rho
+    if not single_proc:
+        pool = multiprocessing.Pool(cores)
+        try:
+            mapfunc = partial(select_best_enantiomer, refrho)
+            results = pool.map(mapfunc, rhos)
+            pool.close()
+            pool.join()
+        except KeyboardInterrupt:
+            pool.terminate()
+            pool.close()
+            raise
+        best_enans = np.array([results[k][0] for k in range(len(results))])
+        best_scores = np.array([results[k][1] for k in range(len(results))])
+    else:
+        best_enans, best_scores = select_best_enantiomer(refrho, rhos[0], abort_event=abort_event)
 
-        else:
-            results = [align(refrho, enan, abort_event=abort_event) for
-                enan in enans]
-
-        #now select the best enantiomer and set it as the new rhos[i]
-        enans = np.array([results[k][0] for k in range(len(results))])
-        enans_scores = np.array([results[k][1] for k in range(len(results))])
-
-        best_i = np.argmax(enans_scores)
-        rhos[i], scores[i] = enans[best_i], enans_scores[best_i]
-        if avg_queue is not None:
-            avg_queue.put_nowait('Best enantiomer for model {} has score {}\n'.format(i+1, round(scores[i],3)))
-
-    return rhos, scores
+    return best_enans, best_scores
 
 def align_multiple(refrho, rhos, cores=1, abort_event=None, single_proc=False):
     """ Align multiple (or a single) maps to the reference."""
