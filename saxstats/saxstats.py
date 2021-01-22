@@ -128,26 +128,6 @@ def chi2(exp, calc, sig):
     """Return the chi2 discrepancy between experimental and calculated data"""
     return np.sum(np.square(exp - calc) / np.square(sig))
 
-def center_rho(rho, centering="com", return_shift=False):
-    """Move electron density map so its center of mass aligns with the center of the grid
-
-    centering - which part of the density to center on. By default, center on the
-                center of mass ("com"). Can also center on maximum density value ("max").
-    """
-    ne_rho= np.sum((rho))
-    if centering == "max":
-        rhocom = np.unravel_index(rho.argmax(), rho.shape)
-    else:
-        rhocom = np.array(ndimage.measurements.center_of_mass(rho))
-    gridcenter = np.array(rho.shape)/2.
-    shift = gridcenter-rhocom
-    rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
-    rho = rho*ne_rho/np.sum(rho)
-    if return_shift:
-        return rho, shift
-    else:
-        return rho
-
 def rho2rg(rho,side=None,r=None,support=None,dx=None):
     """Calculate radius of gyration from an electron density map."""
     if side is None and r is None:
@@ -1366,7 +1346,27 @@ def find_nearest_i(array,value):
     """Return the index of the array item nearest to specified value"""
     return (np.abs(array-value)).argmin()
 
-def center_rho_roll(rho, recenter_mode="com"):
+def center_rho(rho, centering="com", return_shift=False):
+    """Move electron density map so its center of mass aligns with the center of the grid
+
+    centering - which part of the density to center on. By default, center on the
+                center of mass ("com"). Can also center on maximum density value ("max").
+    """
+    ne_rho= np.sum((rho))
+    if centering == "max":
+        rhocom = np.unravel_index(rho.argmax(), rho.shape)
+    else:
+        rhocom = np.array(ndimage.measurements.center_of_mass(rho))
+    gridcenter = np.array(rho.shape)/2.
+    shift = gridcenter-rhocom
+    rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
+    rho = rho*ne_rho/np.sum(rho)
+    if return_shift:
+        return rho, shift
+    else:
+        return rho
+
+def center_rho_roll(rho, recenter_mode="com", return_shift=False):
     """Move electron density map so its center of mass aligns with the center of the grid
 
     rho - electron density array
@@ -1380,7 +1380,10 @@ def center_rho_roll(rho, recenter_mode="com"):
     shift = gridcenter-rhocom
     shift = shift.astype(int)
     rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
-    return rho
+    if return_shift:
+        return rho, shift
+    else:
+        return rho
 
 def euler_grid_search(refrho, movrho, topn=1, abort_event=None):
     """Simple grid search on uniformly sampled sphere to optimize alignment.
@@ -1422,14 +1425,17 @@ def largest_indices(a, n):
     indices = indices[np.argsort(-flat[indices])]
     return np.unravel_index(indices, a.shape)
 
-def coarse_then_fine_alignment(refrho, movrho, topn=1,
+def coarse_then_fine_alignment(refrho, movrho, coarse=True, topn=1,
     abort_event=None):
     """Course alignment followed by fine alignment.
         Select the topn candidates from the grid search
         and minimize each, selecting the best fine alignment.
         """
-    movrhos, scores = euler_grid_search(refrho, movrho, topn=topn,
-        abort_event=abort_event)
+    if coarse:
+        movrhos, scores = euler_grid_search(refrho, movrho, topn=topn,
+            abort_event=abort_event)
+    else:
+        movrhos = movrho[np.newaxis,...]
 
     if abort_event is not None:
         if abort_event.is_set():
@@ -1571,7 +1577,7 @@ def principal_axis_alignment(refrho,movrho):
     #align movrho to xyz too
     #check for best enantiomer, eigh is ambiguous in sign
     movrho = align2xyz(movrho)
-    enans = generate_enantiomers(movrho) #explicitly performs align2xyz()
+    enans = generate_enantiomers(movrho)
     scores = np.zeros(enans.shape[0])
     for i in range(enans.shape[0]):
         scores[i] = -rho_overlap_score(refrho,enans[i])
@@ -1621,25 +1627,13 @@ def align2xyz(rho, return_transform=False):
 
 def generate_enantiomers(rho):
     """ Generate all enantiomers of given density map.
-        Output maps are flipped over x,y,z,xy,yz,zx, and xyz, respectively.
-        Assumes rho is prealigned to xyz.
+        Output maps are original, and flipped over x.
         """
     rho_xflip = rho[::-1,:,:]
-    """
-    rho_yflip = rho[:,::-1,:]
-    rho_zflip = rho[:,:,::-1]
-    rho_xyflip = rho_xflip[:,::-1,:]
-    rho_yzflip = rho_yflip[:,:,::-1]
-    rho_zxflip = rho_zflip[::-1,:,:]
-    rho_xyzflip = rho_xyflip[:,:,::-1]
-    enans = np.array([rho,rho_xflip,rho_yflip,rho_zflip,
-                      rho_xyflip,rho_yzflip,rho_zxflip,
-                      rho_xyzflip])
-    """
     enans = np.array([rho,rho_xflip])
     return enans
 
-def align(refrho, movrho, abort_event=None):
+def align(refrho, movrho, coarse=True, abort_event=None):
     """ Align second electron density map to the first."""
     if abort_event is not None:
         if abort_event.is_set():
@@ -1647,7 +1641,7 @@ def align(refrho, movrho, abort_event=None):
 
     ne_rho = np.sum((movrho))
     #movrho, score = minimize_rho(refrho, movrho)
-    movrho, score = coarse_then_fine_alignment(refrho, movrho, topn=5,
+    movrho, score = coarse_then_fine_alignment(refrho, movrho, coarse=coarse, topn=5,
         abort_event=abort_event)
 
     if movrho is not None:
@@ -1717,12 +1711,14 @@ def align_multiple(refrho, rhos, cores=1, abort_event=None, single_proc=False):
     if rhos.ndim == 3:
         rhos = rhos[np.newaxis,...]
     #first, center all the rhos, then shift them to where refrho is
-    cen_refrho, refshift = center_rho(refrho, return_shift=True)
+    cen_refrho, refshift = center_rho_roll(refrho, return_shift=True)
+    shift = -refshift
     for i in range(rhos.shape[0]):
-        rhos[i] = center_rho(rhos[i])
+        rhos[i] = center_rho_roll(rhos[i])
         ne_rho = np.sum(rhos[i])
         #now shift each rho back to where refrho was originally
-        rhos[i] = ndimage.interpolation.shift(rhos[i],-refshift,order=3,mode='wrap')
+        #rhos[i] = ndimage.interpolation.shift(rhos[i],-refshift,order=3,mode='wrap')
+        rhos[i] = np.roll(np.roll(np.roll(rhos[i], shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
         rhos[i] *= ne_rho/np.sum(rhos[i])
 
     if abort_event is not None:
@@ -1740,7 +1736,6 @@ def align_multiple(refrho, rhos, cores=1, abort_event=None, single_proc=False):
             pool.terminate()
             pool.close()
             raise
-
     else:
         results = [align(refrho, rho, abort_event=abort_event) for rho in rhos]
 
@@ -1757,10 +1752,10 @@ def average_two(rho1, rho2, abort_event=None):
 
 def multi_average_two(niter, **kwargs):
     """ Wrapper script for averaging two maps for multiprocessing."""
-    kwargs['rho1']=kwargs['rho1'][niter]
-    kwargs['rho2']=kwargs['rho2'][niter]
+    #kwargs['rho1']=kwargs['rho1'][niter]
+    #kwargs['rho2']=kwargs['rho2'][niter]
     time.sleep(1)
-    return average_two(**kwargs)
+    return average_two(kwargs['rho1'][niter],kwargs['rho2'][niter],abort_event=kwargs['abort_event'])
 
 def average_pairs(rhos, cores=1, abort_event=None, single_proc=False):
     """ Average pairs of electron density maps, second half to first half."""
@@ -1778,7 +1773,6 @@ def average_pairs(rhos, cores=1, abort_event=None, single_proc=False):
             pool.terminate()
             pool.close()
             raise
-
     else:
         average_rhos = [multi_average_two(niter, **rho_args) for niter in
             range(rhos.shape[0]//2)]
@@ -1789,12 +1783,14 @@ def binary_average(rhos, cores=1, abort_event=None, single_proc=False):
     """ Generate a reference electron density map using binary averaging."""
     twos = 2**np.arange(20)
     nmaps = np.max(twos[twos<=rhos.shape[0]])
+    #eight maps should be enough for the reference
+    nmaps = np.max([nmaps,8])
     levels = int(np.log2(nmaps))-1
     rhos = rhos[:nmaps]
     for level in range(levels):
-         rhos = average_pairs(rhos, cores, abort_event=abort_event,
+        rhos = average_pairs(rhos, cores, abort_event=abort_event,
             single_proc=single_proc)
-    refrho = center_rho(rhos[0])
+    refrho = center_rho_roll(rhos[0])
     return refrho
 
 def calc_fsc(rho1, rho2, side):
