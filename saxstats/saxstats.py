@@ -1670,7 +1670,10 @@ def select_best_enantiomer(refrho, rho, abort_event=None):
                 enan in enans]
 
     #now select the best enantiomer
-    enans = np.array([results[k][0] for k in range(len(results))])
+    #rather than return the aligned and therefore interpolated enantiomer,
+    #instead just return the original enantiomer, flipped from the original map
+    #then no interpolation has taken place. So just dont overwrite enans essentially.
+    #enans = np.array([results[k][0] for k in range(len(results))])
     enans_scores = np.array([results[k][1] for k in range(len(results))])
     best_i = np.argmax(enans_scores)
     best_enan, best_score = enans[best_i], enans_scores[best_i]

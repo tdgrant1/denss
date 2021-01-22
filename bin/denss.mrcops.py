@@ -44,6 +44,7 @@ parser.add_argument("-n", "--n", default=None, type=int, help="Desired number of
 parser.add_argument("-s", "--side", default=None, type=float, help="Desired length of side of map (creates cubic map by padding with zeros or clipping, after any resampling)")
 parser.add_argument("-t","--threshold", default=None, type=float, help="Minimum density threshold (given as e-/A^3; sets lesser values to zero).")
 parser.add_argument("-ne","--ne", default=None, type=float, help="Desired number of electrons in map.")
+parser.add_argument("-zflip","--zflip", action="store_true", help="Generate the enantiomer by flipping map over Z axis.")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
 args = parser.parse_args()
 
@@ -124,6 +125,9 @@ if __name__ == "__main__":
     #original total number of electrons even if args.ne is not given
     rho *= ne/np.sum(rho) #total number of electrons
     rho /= dV #convert to density
+
+    if args.zflip:
+        rho = rho[:,:,::-1]
 
     print("Final number of electrons:", np.sum(rho)*dV)
 
