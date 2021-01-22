@@ -903,6 +903,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         erode = True
         erosion_width = 5
 
+    #charge flipping parameter
+    delta = 0.05 
+
     my_logger.info('q range of input data: %3.3f < q < %3.3f', q.min(), q.max())
     my_logger.info('Maximum dimension: %3.3f', D)
     my_logger.info('Sampling ratio: %3.3f', oversampling)
@@ -1017,6 +1020,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         #Error Reduction
         newrho[support] = rhoprime[support]
         newrho[~support] = 0.0
+
+        #Charge Flipping
+        #newrho[newrho<delta*newrho.max()] *= -1
 
         #enforce positivity by making all negative density points zero.
         if positivity:
