@@ -1483,10 +1483,17 @@ def minimize_rho_score(T, refrho, movrho):
     score = rho_overlap_score(refrho,newrho)
     return score
 
-def rho_overlap_score(rho1,rho2):
+def rho_overlap_score(rho1,rho2, threshold=None):
     """Scoring function for superposition of electron density maps."""
-    n=2*np.sum(np.abs(rho1*rho2))
-    d=(2*np.sum(rho1**2)**0.5*np.sum(rho2**2)**0.5)
+    if threshold is None:
+        n=2*np.sum(np.abs(rho1*rho2))
+        d=(2*np.sum(rho1**2)**0.5*np.sum(rho2**2)**0.5)
+    else:
+        #if there's a threshold, base it on only one map, then use
+        #those indices for both maps to ensure the same pixels are compared
+        idx = np.where(np.abs(rho1)>threshold*np.abs(rho1).max())
+        n=2*np.sum(np.abs(rho1[idx]*rho2[idx]))
+        d=(2*np.sum(rho1[idx]**2)**0.5*np.sum(rho2[idx]**2)**0.5)
     score = n/d
     #-score for least squares minimization, i.e. want to minimize, not maximize score
     return -score
@@ -1627,10 +1634,10 @@ def align2xyz(rho, return_transform=False):
 
 def generate_enantiomers(rho):
     """ Generate all enantiomers of given density map.
-        Output maps are original, and flipped over x.
+        Output maps are original, and flipped over z.
         """
-    rho_xflip = rho[::-1,:,:]
-    enans = np.array([rho,rho_xflip])
+    rho_zflip = rho[:,:,::-1]
+    enans = np.array([rho,rho_zflip])
     return enans
 
 def align(refrho, movrho, coarse=True, abort_event=None):
@@ -1641,7 +1648,7 @@ def align(refrho, movrho, coarse=True, abort_event=None):
 
     ne_rho = np.sum((movrho))
     #movrho, score = minimize_rho(refrho, movrho)
-    movrho, score = coarse_then_fine_alignment(refrho, movrho, coarse=coarse, topn=5,
+    movrho, score = coarse_then_fine_alignment(refrho=refrho, movrho=movrho, coarse=coarse, topn=5,
         abort_event=abort_event)
 
     if movrho is not None:
@@ -1666,8 +1673,7 @@ def select_best_enantiomer(refrho, rho, abort_event=None):
             return None, None
 
     #align each enantiomer and store the aligned maps and scores in results list
-    results = [align(c_refrho, enan, abort_event=abort_event) for
-                enan in enans]
+    results = [align(c_refrho, enan, abort_event=abort_event) for enan in enans]
 
     #now select the best enantiomer
     #rather than return the aligned and therefore interpolated enantiomer,
@@ -1705,7 +1711,7 @@ def select_best_enantiomers(rhos, refrho=None, cores=1, avg_queue=None,
         best_enans = np.array([results[k][0] for k in range(len(results))])
         best_scores = np.array([results[k][1] for k in range(len(results))])
     else:
-        best_enans, best_scores = select_best_enantiomer(refrho, rhos[0], abort_event=abort_event)
+        best_enans, best_scores = select_best_enantiomer(refrho=refrho, rho=rhos[0], abort_event=abort_event)
 
     return best_enans, best_scores
 
