@@ -51,8 +51,9 @@ from functools import reduce
 
 try:
     import cupy as cp
+    CUPY_LOADED = True
 except ImportError:
-    DENSS_GPU = False
+    CUPY_LOADED = False
 
 def myfftn(x, DENSS_GPU=False): 
     if DENSS_GPU:
@@ -775,6 +776,11 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             my_logger.info('Aborted!')
             return []
 
+    if DENSS_GPU and CUPY_LOADED:
+        DENSS_GPU = True
+    else:
+        DENSS_GPU = False
+
     fprefix = os.path.join(path, output)
 
     D = dmax
@@ -1102,7 +1108,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                 support = cp.array(support)
 
         #run erode when shrinkwrap is run
-        if erode and j >= shrinkwrap_minstep and j%shrinkwrap_iter==1:
+        if erode and j > shrinkwrap_minstep and j%shrinkwrap_iter==1:
             if DENSS_GPU:
                 newrho = cp.asnumpy(newrho)
 
