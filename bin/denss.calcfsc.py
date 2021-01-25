@@ -75,7 +75,7 @@ if __name__ == "__main__":
 
     fsc = saxs.calc_fsc(rho,refrho,side)
 
-    np.savetxt(output+'.dat', fsc, delimiter=' ', fmt='% .5e')
+    np.savetxt(output+'.dat', fsc, delimiter=' ', fmt='% .5e', header="1/resolution, FSC; Resolution=%.1f A" % resn)
 
     x = np.linspace(fsc[0,0],fsc[-1,0],100)
     y = np.interp(x, fsc[:,0], fsc[:,1])
