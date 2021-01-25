@@ -778,7 +778,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
 
     if DENSS_GPU and CUPY_LOADED:
         DENSS_GPU = True
-    else:
+    elif DENSS_GPU:
+        print("GPU option set, but CuPy failed to load")
         DENSS_GPU = False
 
     fprefix = os.path.join(path, output)
