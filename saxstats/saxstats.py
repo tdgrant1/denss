@@ -1086,6 +1086,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             if DENSS_GPU:
                 newrho = cp.asnumpy(newrho)
                 if j > shrinkwrap_minstep+1:
+                    support = cp.asnumpy(support)
                     rg[j] = rho2rg(newrho,r=r,support=support,dx=dx)
 
             if shrinkwrap_old_method:
