@@ -132,7 +132,8 @@ if __name__ == "__main__":
     for i in range(nmaps):
         if nmaps > 1:
             basename, ext = os.path.splitext(args.files[i])
-            ioutput = output+"_"+basename+"_aligned"
+            refbasename, refext = os.path.splitext(args.ref)
+            ioutput = output+"_"+basename+"_to_"+refbasename
         else:
             ioutput = output
         saxs.write_mrc(aligned[i], sides[0], ioutput+'.mrc')
