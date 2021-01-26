@@ -1015,7 +1015,13 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
 
         if DENSS_GPU:
             #havent yet updated rho2rg to work with cupy
-            rg[j] = 1.0
+            try:
+                rg[j] = rg[j-1]
+                #also, for now, at least we can calculate rg
+                #when running shrinkwrap, since we have
+                #to move to the cpu for numpy anyways there.
+            except:
+                rg[j] = 1.0
         else:
             rg[j] = rho2rg(rhoprime,r=r,support=support,dx=dx)
 
@@ -1079,6 +1085,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         if shrinkwrap and j >= shrinkwrap_minstep and j%shrinkwrap_iter==1:
             if DENSS_GPU:
                 newrho = cp.asnumpy(newrho)
+                rg[j] = rho2rg(newho,r=r,support=support,dx=dx)
 
             if shrinkwrap_old_method:
                 #run the old method
