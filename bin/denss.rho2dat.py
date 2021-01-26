@@ -51,6 +51,7 @@ parser.add_argument("--ns", default=1, type=int, help="Sampling fraction (i.e. e
 parser.add_argument("-t","--threshold", default=None, type=float, help="Minimum density threshold (sets lesser values to zero).")
 parser.add_argument("--plot_on", dest="plot", action="store_true", help="Plot the profile (requires Matplotlib, default if module exists).")
 parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not plot the profile. (Default if Matplotlib does not exist)")
+parser.add_argument("--save_mrc", action="store_true", help="Save the modified MRC file.")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
 if matplotlib_found:
     parser.set_defaults(plot=True)
@@ -160,7 +161,8 @@ if __name__ == "__main__":
         a = n//2-n_orig//2
         b = n//2+n_orig//2
         rho_pad[a:b,a:b,a:b] = rho
-        F = np.fft.fftn(rho_pad)
+        rho = np.copy(rho_pad)
+        F = np.fft.fftn(rho)
         I3D = np.abs(F)**2
         Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
 
@@ -175,6 +177,9 @@ if __name__ == "__main__":
     Iq = np.vstack((qbinsc, Imean, Imean*.03)).T
 
     np.savetxt(output+'.dat', Iq, delimiter=' ', fmt='% .16e')
+
+    if args.save_mrc:
+        saxs.write_mrc(rho, side, output+'_mod.mrc')
 
     if args.plot:
         print('Actual dq = %.4f' % (2*np.pi/side))
