@@ -130,11 +130,14 @@ if __name__ == "__main__":
         sys.exit(1)
 
     for i in range(nmaps):
-        basename, ext = os.path.splitext(args.files[i])
-        output = basename+"_aligned"
-        saxs.write_mrc(aligned[i], sides[0], output+'.mrc')
-        print("%s.mrc written. Score = %0.3f" % (output,scores[i]))
-        logging.info('Correlation score to reference: %s.mrc %.3f', output, scores[i])
+        if nmaps > 1:
+            basename, ext = os.path.splitext(args.files[i])
+            ioutput = output+"_"+basename+"_aligned"
+        else:
+            ioutput = output
+        saxs.write_mrc(aligned[i], sides[0], ioutput+'.mrc')
+        print("%s.mrc written. Score = %0.3f" % (ioutput,scores[i]))
+        logging.info('Correlation score to reference: %s.mrc %.3f', ioutput, scores[i])
 
     logging.info('END')
 
