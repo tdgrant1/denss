@@ -460,12 +460,15 @@ def loadOutFile(filename):
                 'chisq'     : chisq         #Actual chi squared value
                     }
 
+    #Jreg and Jerr are the raw data on the qfull axis
     Jerr = np.array(Jerr)
     prepend = np.zeros((len(Ireg)-len(Jerr)))
     prepend += np.mean(Jerr[:10])
     Jerr = np.concatenate((prepend,Jerr))
+    Jreg = np.array(Jreg)
+    Jreg = np.concatenate((prepend*0,Jreg))
 
-    return np.array(qfull), np.array(Ireg), Jerr, results
+    return np.array(qfull), np.array(Ireg), Jerr, Jreg, results
 
 def loadDatFile(filename):
     ''' Loads a Primus .dat format file. Taken from the BioXTAS RAW software package,
@@ -549,10 +552,10 @@ def loadDatFile(filename):
         if 'GNOM' in results['analysis']:
             results = results['analysis']['GNOM']
 
-    return q, i, err, results
+    return q, i, err, i, results
 
 def loadFitFile(filename):
-    ''' Loads a Primus .dat format file. Taken from the BioXTAS RAW software package,
+    ''' Loads a four column .fit format file (q, I, err, fit). Taken from the BioXTAS RAW software package,
     used with permission under the GPL license.'''
 
     iq_pattern = re.compile('\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s*')
@@ -576,35 +579,91 @@ def loadFitFile(filename):
     parameters = {'filename' : os.path.split(filename)[1],
                   'counters' : fileHeader}
 
-    if comment.find('model_intensity') > -1:
-        #FoXS file with a fit! has four data columns
-        is_foxs_fit=True
-        imodel = []
-    else:
-        is_foxs_fit = False
+    imodel = []
 
     for line in lines:
         iq_match = iq_pattern.match(line)
 
         if iq_match:
-            if not is_foxs_fit:
-                found = iq_match.group().split()
-                q.append(float(found[0]))
-                i.append(float(found[1]))
-                err.append(float(found[2]))
-            else:
-                found = line.split()
-                q.append(float(found[0]))
-                i.append(float(found[1]))
-                imodel.append(float(found[2]))
-                err.append(float(found[3]))
+            found = line.split()
+            q.append(float(found[0]))
+            i.append(float(found[1]))
+            err.append(float(found[2]))
+            imodel.append(float(found[3]))
 
     i = np.array(i)
     q = np.array(q)
     err = np.array(err)
+    ifit = np.array(imodel)
 
-    if is_foxs_fit:
-        i = np.array(imodel)
+    #If this is a _fit.dat or .fit file from DENSS, grab the header values.
+    header = []
+    for j in range(len(lines)):
+        if '# Parameter Values:' in lines[j]:
+            header = lines[j+1:j+9]
+
+    hdict = None
+    results = {}
+
+    if len(header)>0:
+        hdr_str = '{'
+        for each_line in header:
+            line = each_line.split()
+            hdr_str=hdr_str + "\""+line[1]+"\""+":"+line[3]+","
+        hdr_str = hdr_str.rstrip(',')+"}"
+        try:
+            hdict = dict(json.loads(hdr_str))
+        except Exception:
+            hdict = {}
+
+    if hdict:
+        for each in hdict.keys():
+            if each != 'filename':
+                results[each] = hdict[each]
+
+    if 'analysis' in results:
+        if 'GNOM' in results['analysis']:
+            results = results['analysis']['GNOM']
+
+    return q, i, err, ifit, results
+
+def loadOldFitFile(filename):
+    ''' Loads a old denss _fit.dat format file. Taken from the BioXTAS RAW software package,
+    used with permission under the GPL license.'''
+
+    iq_pattern = re.compile('\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s*')
+
+    i = []
+    q = []
+    err = []
+
+    with open(filename) as f:
+        lines = f.readlines()
+
+    comment = ''
+    line = lines[0]
+    j=0
+    while line.split() and line.split()[0].strip()[0] == '#':
+        comment = comment+line
+        j = j+1
+        line = lines[j]
+
+    fileHeader = {'comment':comment}
+    parameters = {'filename' : os.path.split(filename)[1],
+                  'counters' : fileHeader}
+
+    for line in lines:
+        iq_match = iq_pattern.match(line)
+
+        if iq_match:
+            found = iq_match.group().split()
+            q.append(float(found[0]))
+            i.append(float(found[1]))
+            err.append(float(found[2]))
+
+    i = np.array(i)
+    q = np.array(q)
+    err = np.array(err)
 
     #If this is a _fit.dat file from DENSS, grab the header values.
     header = []
@@ -635,20 +694,25 @@ def loadFitFile(filename):
         if 'GNOM' in results['analysis']:
             results = results['analysis']['GNOM']
 
-    return q, i, err, results
+    #just return i for ifit to be consistent with other functions' output
+    return q, i, err, i, results
 
 def loadProfile(fname, units="a"):
     """Determines which loading function to run, and then runs it."""
 
     if os.path.splitext(fname)[1] == '.out':
-        q, I, Ierr, results = loadOutFile(fname)
-        isout = True
+        q, I, Ierr, Ifit, results = loadOutFile(fname)
+        isfit = True
+    elif os.path.splitext(fname)[1] == '.fit':
+        q, I, Ierr, Ifit, results = loadFitFile(fname)
+        isfit = False
     elif "_fit.dat" in fname:
-        q, I, Ierr, results = loadFitFile(fname)
-        isout = False
+        q, I, Ierr, Ifit, results = loadOldFitFile(fname)
+        isfit = False
     else:
-        q, I, Ierr, results = loadDatFile(fname)
-        isout = False
+        #Ifit here is just I, since it's just a data file
+        q, I, Ierr, Ifit, results = loadDatFile(fname)
+        isfit = False
 
     keys = {key.lower().strip().translate(str.maketrans('','', '_ ')): key for key in list(results.keys())}
 
@@ -663,7 +727,7 @@ def loadProfile(fname, units="a"):
         dmax *= 10
         print("Angular units converted from 1/nm to 1/angstrom")
 
-    return q, I, Ierr, dmax, isout
+    return q, I, Ierr, Ifit, dmax, isfit
 
 def check_if_raw_data(Iq):
     """Check if an I(q) profile is a smooth fitted profile, or raw data.
@@ -835,6 +899,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
 
     #create list of qbin indices just in region of data for later F scaling
     qbin_args = np.in1d(qbinsc,qdata,assume_unique=True)
+    qba = np.copy(qbin_args) #just for brevity when using it later
     sigqdata = np.interp(qdata,q,sigq)
 
     scale_factor = ne**2 / Idata[0]
@@ -909,9 +974,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     else:
         erode = True
         erosion_width = 5
-
-    #charge flipping parameter
-    delta = 0.05 
 
     my_logger.info('q range of input data: %3.3f < q < %3.3f', q.min(), q.max())
     my_logger.info('Maximum dimension: %3.3f', D)
@@ -1006,7 +1068,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         factors = mysqrt(Idata/Imean, DENSS_GPU=DENSS_GPU)
         F *= factors[qbin_labels]
 
-        chi[j] = mysum(((Imean-Idata)/sigqdata)**2, DENSS_GPU=DENSS_GPU)/Idata.size
+        chi[j] = mysum(((Imean[qba]-Idata[qba])/sigqdata[qba])**2, DENSS_GPU=DENSS_GPU)/Idata[qba].size
         #APPLY REAL SPACE RESTRAINTS
         rhoprime = myifftn(F, DENSS_GPU=DENSS_GPU)
         rhoprime = rhoprime.real
@@ -1033,9 +1095,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         #Error Reduction
         newrho[support] = rhoprime[support]
         newrho[~support] = 0.0
-
-        #Charge Flipping
-        #newrho[newrho<delta*newrho.max()] *= -1
 
         #enforce positivity by making all negative density points zero.
         if positivity:
@@ -1127,6 +1186,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         if erode and j > shrinkwrap_minstep and j%shrinkwrap_iter==1:
             if DENSS_GPU:
                 newrho = cp.asnumpy(newrho)
+                support = cp.asnumpy(support)
 
             #eroded is the region of the support _not_ including the boundary pixels
             #so it is the entire interior. erode_region is _just_ the boundary pixels
@@ -1926,7 +1986,6 @@ class Sasrec(object):
         self.lc = self.Ish2lc(self.In,self.D)
         self.lcerr = self.lcerrf(self.In,self.D,self.Cinv)
 
-
     def shannon_channels(self, D, qmax=0.5, qmin=0.0):
         """Return the number of Shannon channels given a q range and maximum particle dimension"""
         width = np.pi / D
@@ -2604,7 +2663,19 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
             element = pdb.atomtype[i]
             ffcoeff[element]
         except:
-            element = pdb.atomname[i][0]
+            try:
+                element = pdb.atomname[i][0].upper()+pdb.atomname[i][1].lower()
+                ffcoeff[element]
+            except:
+                try:
+                    element = pdb.atomname[i][0]
+                    ffcoeff[element]
+                except:
+                    print("Atom type %s or name not recognized for atom # %s"
+                           % (pdb.atomtype[i], 
+                              pdb.atomname[i][0].upper()+pdb.atomname[i][1].lower(),
+                              i))
+                    print("Using default form factor for Carbon")
 
         tmpvalues = realspace_formfactor(element=element,r=dist,B=B)
         #rescale total number of electrons by expected number of electrons

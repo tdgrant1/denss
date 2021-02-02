@@ -80,6 +80,7 @@ if __name__ == "__main__":
     Iq = np.genfromtxt(args.file, invalid_raise = False, usecols=(0,1,2))
     Iq = Iq[~np.isnan(Iq).any(axis = 1)]
     nes = args.nes
+
     if args.dmax is None:
         #estimate dmax directly from data
         D, sasrec = saxs.estimate_dmax(Iq,clean_up=True)
@@ -138,9 +139,14 @@ if __name__ == "__main__":
         #sascif.write(output+".sascif")
         #print "%s file saved" % (output+".sascif")
         param_str = store_parameters_as_string()
-        np.savetxt(output+'_fit.dat', np.vstack((sasrec.qc, sasrec.Ic, Icerr)).T,delimiter=' ',fmt='%.5e',header=param_str)
+        #add column headers to param_str for output
+        param_str += 'q, I, error, fit'
+        #quick, interpolate the raw data, sasrec.I, to the new qc values, but be sure to 
+        #put zeros in for the q values not measured behind the beamstop
+        Iinterp = np.interp(sasrec.qc, sasrec.q, sasrec.I, left=0.0, right=0.0)
+        np.savetxt(output+'.fit', np.vstack((sasrec.qc, Iinterp, Icerr, sasrec.Ic)).T,delimiter=' ',fmt='%.5e',header=param_str)
         np.savetxt(output+'_pr.dat', np.vstack((sasrec.r, sasrec.P, sasrec.Perr)).T,delimiter=' ',fmt='%.5e')
-        print("%s and %s files saved" % (output+"_fit.dat",output+"_pr.dat"))
+        print("%s and %s files saved" % (output+".fit",output+"_pr.dat"))
 
     if args.plot:
         import matplotlib

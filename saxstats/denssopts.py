@@ -15,6 +15,22 @@ except ImportError:
 import numpy as np
 from . import saxstats as saxs
 
+def store_parameters_as_string(sasrec):
+    param_str = ("Parameter Values:\n"
+    "Dmax  = {dmax:.5e}\n"
+    "alpha = {alpha:.5e}\n"
+    "Rg    = {rg:.5e} +- {rgerr:.5e}\n"
+    "I(0)  = {I0:.5e} +- {I0err:.5e}\n"
+    "Vp    = {Vp:.5e} +- {Vperr:.5e}\n"
+    "MW_Vp = {mwVp:.5e} +- {mwVperr:.5e}\n"
+    "MW_Vc = {mwVc:.5e} +- {mwVcerr:.5e}\n"
+    "Lc    = {lc:.5e} +- {lcerr:.5e}\n"
+    ).format(dmax=sasrec.D,alpha=sasrec.alpha,rg=sasrec.rg,rgerr=sasrec.rgerr,
+        I0=sasrec.I0,I0err=sasrec.I0err,Vp=sasrec.Vp,Vperr=sasrec.Vperr,
+        mwVp=sasrec.mwVp,mwVperr=sasrec.mwVperr,mwVc=sasrec.mwVc,mwVcerr=sasrec.mwVcerr,
+        lc=sasrec.lc,lcerr=sasrec.lcerr)
+    return param_str
+
 def parse_arguments(parser):
 
     parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
@@ -32,7 +48,7 @@ def parse_arguments(parser):
     parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
     parser.add_argument("-m", "--mode", default="SLOW", type=str, help="Mode. F(AST) sets default options to run quickly for simple particle shapes. S(LOW) useful for more complex molecules. M(EMBRANE) mode allows for negative contrast. (default SLOW)")
     parser.add_argument("--seed", default=None, help="Random seed to initialize the map")
-    parser.add_argument("-ld","-ld_on","--limit_dmax_on", dest="limit_dmax", action="store_true", help="Limit electron density to sphere of radius 0.6*Dmax from center of object.")
+    parser.add_argument("-ld_on","-ld_on","--limit_dmax_on", dest="limit_dmax", action="store_true", help="Limit electron density to sphere of radius 0.6*Dmax from center of object.")
     parser.add_argument("-ld_off","--limit_dmax_off", dest="limit_dmax", action="store_false", help="Do not limit electron density to sphere of radius 0.6*Dmax from center of object. (default)")
     parser.add_argument("-ld_steps","--limit_dmax_steps", default=None, type=int, nargs='+', help="List of steps for limiting density to sphere of Dmax (default=500)")
     parser.add_argument("-rc","-rc_on", "--recenter_on", dest="recenter", action="store_true", help="Recenter electron density when updating support. (default)")
@@ -101,14 +117,19 @@ def parse_arguments(parser):
                "has been re-enabled until a bug fix is released. ")
         args.extrapolate = True
 
-    q, I, sigq, file_dmax, isout = saxs.loadProfile(args.file, units=args.units)
+    q, I, sigq, Ifit, file_dmax, isout = saxs.loadProfile(args.file, units=args.units)
     Iq = np.zeros((q.size,3))
+    #for denss, I is actually the fit, since we want the smooth data
+    #for reconstructions
+    #also store the raw data for plotting
     Iq[:,0] = q
-    Iq[:,1] = I
+    Iq[:,1] = Ifit
     Iq[:,2] = sigq
+    qraw = np.copy(q)
+    Iraw = np.copy(I)
 
     Iq = saxs.clean_up_data(Iq)
-    raw_data = saxs.check_if_raw_data(Iq)
+    is_raw_data = saxs.check_if_raw_data(Iq)
     #now that we've cleaned up the data, reset the q, I, sigq arrays
     q = Iq[:,0]
     I = Iq[:,1]
@@ -124,7 +145,7 @@ def parse_arguments(parser):
     else:
         dmax = file_dmax
 
-    if raw_data:
+    if is_raw_data:
         #in case a user gives raw experimental data, first, fit the data
         #using Sasrec and dmax
         #create a calculated q range for Sasrec
@@ -138,6 +159,15 @@ def parse_arguments(parser):
         q = sasrec.qc
         I = sasrec.Ic
         sigq = sasrec.Icerr
+
+        #save fit, just like from denss.fit_data.py
+        param_str = store_parameters_as_string(sasrec)
+        #add column headers to param_str for output
+        param_str += 'q, I, error, fit'
+        #quick, interpolate the raw data, sasrec.I, to the new qc values, but be sure to 
+        #put zeros in for the q values not measured behind the beamstop
+        Iinterp = np.interp(sasrec.qc, sasrec.q, sasrec.I, left=0.0, right=0.0)
+        np.savetxt(args.output+'.fit', np.vstack((sasrec.qc, Iinterp, sasrec.Icerr, sasrec.Ic)).T,delimiter=' ',fmt='%.5e',header=param_str)
 
     #old default sw_start was 3.0
     #however, in cases where the voxel size is smaller than default,
@@ -289,5 +319,7 @@ def parse_arguments(parser):
     args.q = q
     args.I = I
     args.sigq = sigq
+    args.qraw = qraw
+    args.Iraw = Iraw
 
     return args

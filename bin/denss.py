@@ -112,6 +112,8 @@ if __name__ == "__main__":
     print("\n%s"%args.output)
 
     if args.plot and matplotlib_found:
+        qraw = args.qraw
+        Iraw = args.Iraw
         q = args.q
         I = args.I
         sigq = args.sigq
@@ -121,29 +123,34 @@ if __name__ == "__main__":
 
         ax0 = plt.subplot(gs[0])
         #handle sigq values whose error bounds would go negative and be missing on the log scale
-        sigq2 = np.copy(sigq)
-        sigq2[sigq>I] = I[sigq>I]*.999
-        ax0.errorbar(q[q<=qdata[-1]], I[q<=qdata[-1]], fmt='k-', yerr=[sigq2[q<=qdata[-1]],sigq[q<=qdata[-1]]], capsize=0, elinewidth=0.1, ecolor=cc.to_rgba('0',alpha=0.5),label='Supplied Data')
-        ax0.plot(qdata, Idata, 'bo',alpha=0.5,label='Interpolated Data')
-        ax0.plot(qbinsc,Imean,'r.',label='Scattering from Density')
+        #sigq2 = np.copy(sigq)
+        #sigq2[sigq>I] = I[sigq>I]*.999
+        sigq2 = np.interp(qraw, q, sigq)
+        sigq2[sigq2>Iraw] = Iraw[sigq2>Iraw]*.999
+        #ax0.errorbar(q, I, fmt='k-', yerr=[sigq2[q<=q[-1]],sigq[q<=q[-1]]], capsize=0, elinewidth=0.1, ecolor=cc.to_rgba('0',alpha=0.5),label='Supplied Data')
+        #ax0.plot(q, I, 'k.',alpha=0.1,mec='none',label='Raw Data')
+        ax0.errorbar(qraw, Iraw, fmt='k.', yerr=sigq2, mec='none', mew=0, ms=3, alpha=0.3, capsize=0, elinewidth=0.1, ecolor=cc.to_rgba('0',alpha=0.5),label='Supplied Data')
+        ax0.plot(q, I, 'k--',alpha=0.7,lw=1,label='Supplied Fit')
+        ax0.plot(qdata[qdata<=q[-1]], Idata[qdata<=q[-1]], 'bo',alpha=0.5,label='Interpolated')
+        ax0.plot(qbinsc[qdata<=q[-1]],Imean[qdata<=q[-1]],'r.',label='DENSS Map')
         handles,labels = ax0.get_legend_handles_labels()
-        handles = [handles[2], handles[0], handles[1]]
-        labels = [labels[2], labels[0], labels[1]]
-        ymin = np.min(np.hstack((I[q<=qdata[-1]],Idata,Imean)))
-        ymax = np.max(np.hstack((I[q<=qdata[-1]],Idata,Imean)))
+        handles = [handles[3], handles[0], handles[1],handles[2]]
+        labels = [labels[3], labels[0], labels[1], labels[2]]
+        ymin = np.min(np.hstack((I[q<=q[-1]],Idata[qdata<=q[-1]],Imean[qdata<=q[-1]])))
+        ymax = np.max(np.hstack((I[q<=q[-1]],Idata[qdata<=q[-1]],Imean[qdata<=q[-1]])))
         ax0.set_ylim([0.5*ymin,1.5*ymax])
         ax0.legend(handles,labels)
         ax0.semilogy()
         ax0.set_ylabel('I(q)')
 
         ax1 = plt.subplot(gs[1])
-        ax1.plot(qdata, qdata*0, 'k--')
+        ax1.plot(qdata[qdata<=q[-1]], qdata[qdata<=q[-1]]*0, 'k--')
         residuals = np.log10(Imean[np.in1d(qbinsc,qdata)])-np.log10(Idata)
-        ax1.plot(qdata, residuals, 'ro-')
+        ax1.plot(qdata[qdata<=q[-1]], residuals[qdata<=q[-1]], 'ro-')
         ylim = ax1.get_ylim()
         ymax = np.max(np.abs(ylim))
-        n = int(.9*len(residuals))
-        ymax = np.max(np.abs(residuals[:-n]))
+        n = int(.9*len(residuals[qdata<=q[-1]]))
+        ymax = np.max(np.abs(residuals[qdata<=q[-1]][:-n]))
         ax1.set_ylim([-ymax,ymax])
         ax1.yaxis.major.locator.set_params(nbins=5)
         xlim = ax0.get_xlim()
@@ -220,7 +227,7 @@ if __name__ == "__main__":
         par1.yaxis.label.set_color(p2.get_color())
         par2.yaxis.label.set_color(p3.get_color())
 
-        plt.savefig(args.output+'_stats_by_step.png', bbox_inches='tight',dpi=300)
+        plt.savefig(args.output+'_stats_by_step.png', bbox_inches='tight',dpi=150)
         plt.close()
 
     logging.info('END')
