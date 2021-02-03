@@ -1057,12 +1057,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         I3D = myabs(F, DENSS_GPU=DENSS_GPU)**2
         Imean = mybinmean(I3D, qbin_labels, DENSS_GPU=DENSS_GPU)
 
-        """
-        if j==0:
-            np.savetxt(fprefix+'_step0_saxs.dat',np.vstack((qbinsc,Imean[j],Imean[j]*.05)).T,delimiter=" ",fmt="%.5e")
-            write_mrc(rho,side,fprefix+"_step"+str(j)+".mrc")
-        """
-
         #scale Fs to match data
         #factors = myones((len(qbins)))
         factors = mysqrt(Idata/Imean, DENSS_GPU=DENSS_GPU)
