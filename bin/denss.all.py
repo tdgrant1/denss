@@ -75,6 +75,8 @@ del args.shrinkwrap_sigma_start_in_A
 del args.shrinkwrap_sigma_end_in_A
 del args.shrinkwrap_sigma_start_in_vox
 del args.shrinkwrap_sigma_end_in_vox
+del args.qraw
+del args.Iraw
 
 def multi_denss(niter, **kwargs):
     try:
@@ -283,12 +285,12 @@ if __name__ == "__main__":
         fscs.append(saxs.calc_fsc(aligned[calc_map],refrho,sides[0]))
     fscs = np.array(fscs)
     fsc = np.mean(fscs,axis=0)
-    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC; Resolution=%.1f A" % resn)
     x = np.linspace(fsc[0,0],fsc[-1,0],100)
     y = np.interp(x, fsc[:,0], fsc[:,1])
     resi = np.argmin(y>=0.5)
     resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
     resn = round(float(1./resx),1)
+    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC; Resolution=%.1f A" % resn)
     print("Resolution: %.1f A" % resn)
 
     superlogger.info('Resolution: %.1f A', resn )
