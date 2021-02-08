@@ -1192,6 +1192,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
 
             if DENSS_GPU:
                 newrho = cp.array(newrho)
+                support = cp.array(support)
 
         if enforce_connectivity and j in enforce_connectivity_steps:
             if DENSS_GPU: 
