@@ -1044,7 +1044,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             if abort_event.is_set():
                 my_logger.info('Aborted!')
                 return []
-        
+
         F = myfftn(rho, DENSS_GPU=DENSS_GPU)
 
         #sometimes, when using denss.refine.py with non-random starting rho,
@@ -1244,6 +1244,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                 sys.stdout.write("\r% 5i % 4.2e % 3.2f       % 5i          " % (j, chi[j], rg[j], supportV[j]))
                 sys.stdout.flush()
 
+        #occasionally report progress in logger
+        if j%500==0 and not gui:
+            my_logger.info('Step % 5i: % 4.2e % 3.2f       % 5i          ', j, chi[j], rg[j], supportV[j])
 
         if j > 101 + shrinkwrap_minstep and mystd(chi[j-100:j], DENSS_GPU=DENSS_GPU) < chi_end_fraction * mymean(chi[j-100:j], DENSS_GPU=DENSS_GPU):
             break

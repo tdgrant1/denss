@@ -162,6 +162,8 @@ if __name__ == "__main__":
 
     pool = multiprocessing.Pool(superargs.cores)
 
+    superlogger.info('Starting DENSS runs')
+
     try:
         mapfunc = partial(multi_denss, **denss_inputs)
         denss_outputs = pool.map(mapfunc, list(range(superargs.nmaps)))
@@ -173,6 +175,8 @@ if __name__ == "__main__":
         pool.terminate()
         pool.close()
         sys.exit(1)
+
+    superlogger.info('Finished DENSS runs')
 
     qdata = denss_outputs[0][0]
     Idata = denss_outputs[0][1]
@@ -224,6 +228,7 @@ if __name__ == "__main__":
     if superargs.enan:
         print()
         print(" Selecting best enantiomers...")
+        superlogger.info('Selecting best enantiomers')
         try:
             allrhos, scores = saxs.select_best_enantiomers(allrhos, cores=superargs.cores)
         except KeyboardInterrupt:
@@ -232,6 +237,7 @@ if __name__ == "__main__":
     if superargs.ref is None:
         print()
         print(" Generating reference...")
+        superlogger.info('Generating reference')
         try:
             refrho = saxs.binary_average(allrhos, superargs.cores)
             saxs.write_mrc(refrho, sides[0], output+"_reference.mrc")
@@ -240,6 +246,7 @@ if __name__ == "__main__":
 
     print()
     print(" Aligning all maps to reference...")
+    superlogger.info('Aligning all maps to reference')
     try:
         aligned, scores = saxs.align_multiple(refrho, allrhos, superargs.cores)
     except KeyboardInterrupt:
@@ -260,7 +267,7 @@ if __name__ == "__main__":
         ioutput = output+"_"+str(i)+"_aligned"
         saxs.write_mrc(aligned[i], sides[0], ioutput+".mrc")
         print("%s.mrc written. Score = %0.3f %s " % (ioutput,scores[i],filtered[i]))
-        logging.info('Correlation score to reference: %s.mrc %.3f %s', ioutput, scores[i], filtered[i])
+        superlogger.info('Correlation score to reference: %s.mrc %.3f %s', ioutput, scores[i], filtered[i])
 
     aligned = aligned[scores>threshold]
     average_rho = np.mean(aligned,axis=0)
