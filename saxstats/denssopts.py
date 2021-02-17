@@ -170,11 +170,16 @@ def parse_arguments(parser):
         np.savetxt(args.output+'.fit', np.vstack((sasrec.qc, Iinterp, sasrec.Icerr, sasrec.Ic)).T,delimiter=' ',fmt='%.5e',header=param_str)
 
     #allow ncs_steps to be either list of ints or string of list of ints
+    print(args.ncs_steps)
+    print(args.ncs_steps[0])
+    print(len(args.ncs_steps))
+    print(type(args.ncs_steps))
     if isinstance(args.ncs_steps, list):
         if len(args.ncs_steps) == 1:
             args.ncs_steps = np.fromstring(args.ncs_steps[0],sep=' ',dtype=int)
         else:
-            args.ncs_steps = np.array(map(int, args.ncs_steps))
+            args.ncs_steps = [int(x) for x in args.ncs_steps]
+    print(args.ncs_steps)
 
     #old default sw_start was 3.0
     #however, in cases where the voxel size is smaller than default,
