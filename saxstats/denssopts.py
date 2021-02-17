@@ -43,7 +43,7 @@ def parse_arguments(parser):
     parser.add_argument("--ne", default=10000, type=float, help="Number of electrons in object")
     parser.add_argument("-s", "--steps", default=None, help="Maximum number of steps (iterations)")
     parser.add_argument("-ncs", "--ncs", default=0, type=int, help="Rotational symmetry")
-    parser.add_argument("-ncs_steps","--ncs_steps", default=[3000,5000,7000,9000], type=int, nargs='+', help="List of steps for applying NCS averaging (default=3000,5000,7000,9000)")
+    parser.add_argument("-ncs_steps","--ncs_steps", default=[3000,5000,7000,9000], nargs='+', help="List of steps for applying NCS averaging (default=3000,5000,7000,9000)")
     parser.add_argument("-ncs_axis", "--ncs_axis", default=1, type=int, help="Rotational symmetry axis (options: 1, 2, or 3 corresponding to (long,medium,short) principal axes)")
     parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
     parser.add_argument("-m", "--mode", default="SLOW", type=str, help="Mode. F(AST) sets default options to run quickly for simple particle shapes. S(LOW) useful for more complex molecules. M(EMBRANE) mode allows for negative contrast. (default SLOW)")
@@ -168,6 +168,13 @@ def parse_arguments(parser):
         #put zeros in for the q values not measured behind the beamstop
         Iinterp = np.interp(sasrec.qc, sasrec.q, sasrec.I, left=0.0, right=0.0)
         np.savetxt(args.output+'.fit', np.vstack((sasrec.qc, Iinterp, sasrec.Icerr, sasrec.Ic)).T,delimiter=' ',fmt='%.5e',header=param_str)
+
+    #allow ncs_steps to be either list of ints or string of list of ints
+    if isinstance(args.ncs_steps, list):
+        if len(args.ncs_steps) == 1:
+            args.ncs_steps = np.fromstring(args.ncs_steps[0],sep=' ',dtype=int)
+        else:
+            args.ncs_steps = np.array(map(int, args.ncs_steps))
 
     #old default sw_start was 3.0
     #however, in cases where the voxel size is smaller than default,
