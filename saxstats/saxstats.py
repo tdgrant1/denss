@@ -1113,7 +1113,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             if ncs_axis == 2: axes=(0,2)
             if ncs_axis == 3: axes=(0,1)
             newrhosym = newrho*0.0
-            for nrot in range(0,ncs+1):
+            for nrot in range(1,ncs+1):
                 newrhosym += ndimage.rotate(newrho,degrees*nrot,axes=axes,reshape=False)
             newrho = newrhosym/ncs
             if DENSS_GPU:
