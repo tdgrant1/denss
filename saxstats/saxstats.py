@@ -2765,6 +2765,60 @@ def pdb2support(pdb,xyz,probe=0.0):
     support[np.unravel_index(xyz_nearby_i,support.shape)] = True
     return support
 
+def pdb2support_fast(pdb,x,y,z,dr=2.0):
+    """Return a boolean 3D density map with support from PDB coordinates"""
+
+    support = np.zeros(x.shape,dtype=np.bool_)
+    n = x.shape[0]
+    side = x.max()-x.min()
+    dx = side/n
+    shift = np.ones(3)*dx/2.
+
+    natoms = pdb.natoms
+    for i in range(natoms):
+        #sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
+        #sys.stdout.flush()
+        #if a grid point of env is within the desired distance, dr, of
+        #the atom coordinate, add it to env
+        #to save memory, only run the distance matrix one atom at a time
+        #and will only look at grid points within a box of size dr near the atom
+        #this will cut out the grid points that are near the atom
+        #first, get the min and max distances for each dimension
+        #also, convert those distances to indices by dividing by dx
+        xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
+        xmin = int(np.floor((xa-dr)/dx)) + n//2
+        xmax = int(np.ceil((xa+dr)/dx)) + n//2
+        ymin = int(np.floor((ya-dr)/dx)) + n//2
+        ymax = int(np.ceil((ya+dr)/dx)) + n//2
+        zmin = int(np.floor((za-dr)/dx)) + n//2
+        zmax = int(np.ceil((za+dr)/dx)) + n//2
+        #handle edges
+        xmin = max([xmin,0])
+        xmax = min([xmax,n])
+        ymin = max([ymin,0])
+        ymax = min([ymax,n])
+        zmin = max([zmin,0])
+        zmax = min([zmax,n])
+        #now lets create a slice object for convenience
+        slc = np.s_[xmin:xmax,ymin:ymax,zmin:zmax]
+        nx = xmax-xmin
+        ny = ymax-ymin
+        nz = zmax-zmin
+        #now lets create a column stack of coordinates for the cropped grid
+        xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
+        #now calculate all distances from the atom to the minigrid points
+        dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
+        #now, add any grid points within dr of atom to the env grid
+        #first, create a dummy array to hold booleans of size dist.size
+        tmpenv = np.zeros(dist.shape,dtype=np.bool_)
+        #now, any elements that have a dist less than dr make true
+        tmpenv[dist<=dr] = True
+        #now reshape for inserting into env
+        tmpenv = tmpenv.reshape(nx,ny,nz)
+        support[slc] += tmpenv
+    #print()
+    return support
+
 def sphere(R, q=np.linspace(0,0.5,501), I0=1.,amp=False):
     """Calculate the scattering of a uniform sphere."""
     q = np.atleast_1d(q)
