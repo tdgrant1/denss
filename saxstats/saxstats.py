@@ -596,9 +596,10 @@ def loadFitFile(filename):
     err = np.array(err)
     ifit = np.array(imodel)
 
-    #If this is a _fit.dat or .fit file from DENSS, grab the header values.
+    #grab some header info if available
     header = []
     for j in range(len(lines)):
+        #If this is a _fit.dat or .fit file from DENSS, grab the header values beginning with hashtag #.
         if '# Parameter Values:' in lines[j]:
             header = lines[j+1:j+9]
 
