@@ -12,9 +12,7 @@ tdgrant.com/denss is the official home of DENSS. Packed with detailed instructio
 It also contains useful tips and best practices.
 
 #### DENSSWeb server: [denss.ccr.buffalo.edu](https://denss.ccr.buffalo.edu)
-Try out DENSS without installing the code using the DENSSWeb server to
-perform simple online calculations suitable for most cases. Thanks to
-Andrew Bruno and the CCR for DENSSWeb!
+Try out DENSS without installing the code using the DENSSWeb server. DENSSWeb recently underwent a major update. Now run DENSSWeb in standard Slow and Membrane modes suitable for publication. You can also enforce symmetry. Thanks to Andrew Bruno and the CCR for DENSSWeb!
 
 #### New automatic Dmax estimation and fitting from RAW data
 When provided raw experimental data, DENSS will now automatically estimate
