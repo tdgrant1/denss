@@ -1335,14 +1335,13 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     write_mrc(np.ones_like(rho)*support,side, fprefix+"_support.mrc")
 
     #Write some more output files
-    fit = np.zeros(( len(qbinsc),5 ))
+    fit = np.zeros(( len(qbinsc),4 ))
     fit[:len(qdata),0] = qdata
     fit[:len(Idata),1] = Idata
     fit[:len(sigqdata),2] = sigqdata
-    fit[:len(qbinsc),3] = qbinsc
-    fit[:len(Imean),4] = Imean
+    fit[:len(Imean),3] = Imean
     np.savetxt(fprefix+'_map.fit', fit, delimiter=' ', fmt='%.5e'.encode('ascii'),
-        header='q(data),I(data),error(data),q(density),I(density)')
+        header='q(data),I(data),error(data),I(density)')
 
     np.savetxt(fprefix+'_stats_by_step.dat',np.vstack((chi, rg, supportV)).T,
         delimiter=" ", fmt="%.5e".encode('ascii'), header='Chi2 Rg SupportVolume')

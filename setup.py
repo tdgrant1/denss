@@ -7,7 +7,7 @@ exec(compile(open('saxstats/_version.py').read(), 'saxstats/_version.py', 'exec'
 setup(name='denss',
       version=__version__,
       author='Thomas Grant',
-      author_email='tgrant@hwi.buffalo.edu',
+      author_email='tdgrant@buffalo.edu',
       packages=['saxstats'],
       scripts=[
       'bin/denss.py',
