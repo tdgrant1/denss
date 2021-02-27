@@ -818,7 +818,7 @@ def filter_P(r,P,sigr=None,qmax=0.5,cutoff=0.75,qmin=0.0,cutoffmin=1.25):
     Pfilt = signal.filtfilt(b,a,P,padlen=len(r)-1)
     r = np.arange(npts)/fs
     if sigr is not None:
-        sigrfilt = signal.filtfilt(b, a, sigr)/(2*np.pi)
+        sigrfilt = signal.filtfilt(b, a, sigr,padlen=len(r)-1)/(2*np.pi)
         return r, Pfilt, sigrfilt
     else:
         return r, Pfilt

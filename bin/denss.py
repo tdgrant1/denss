@@ -134,8 +134,10 @@ if __name__ == "__main__":
         handles,labels = ax0.get_legend_handles_labels()
         handles = [handles[3], handles[0], handles[1],handles[2]]
         labels = [labels[3], labels[0], labels[1], labels[2]]
-        ymin = np.min(np.hstack((I[q<=q[-1]],Idata[qdata<=q[-1]],Imean[qdata<=q[-1]])))
-        ymax = np.max(np.hstack((I[q<=q[-1]],Idata[qdata<=q[-1]],Imean[qdata<=q[-1]])))
+        xmax = np.min([qraw.max(),q.max(),qdata.max()])*1.1
+        ymin = np.min([np.min(I[q<=xmax]),np.min(Idata[qdata<=xmax]),np.min(Imean[qdata<=xmax])])
+        ymax = np.max([np.max(I[q<=xmax]),np.max(Idata[qdata<=xmax]),np.max(Imean[qdata<=xmax])])
+        ax0.set_xlim([-xmax*.05,xmax])
         ax0.set_ylim([0.5*ymin,1.5*ymax])
         ax0.legend(handles,labels)
         ax0.semilogy()
