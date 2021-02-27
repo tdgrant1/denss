@@ -115,8 +115,6 @@ if __name__ == "__main__":
         recenter_steps=args.recenter_steps,
         recenter_mode=args.recenter_mode,
         positivity=args.positivity,
-        minimum_density=args.minimum_density,
-        maximum_density=args.maximum_density,
         extrapolate=args.extrapolate,
         output=args.output,
         steps=args.steps,

@@ -826,7 +826,7 @@ def filter_P(r,P,sigr=None,qmax=0.5,cutoff=0.75,qmin=0.0,cutoffmin=1.25):
 def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False,
     limit_dmax_steps=[500], recenter=True, recenter_steps=None,
     recenter_mode="com", positivity=True, extrapolate=True, output="map",
-    steps=None, seed=None,  minimum_density=None,  maximum_density=None,
+    steps=None, seed=None,
     flatten_low_density=True, rho_start=None, add_noise=None, shrinkwrap=True,
     shrinkwrap_old_method=False,shrinkwrap_sigma_start=3, shrinkwrap_sigma_end=1.5,
     shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
@@ -943,16 +943,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         rho = prng.random_sample(size=x.shape) #- 0.5
 
     sigma = shrinkwrap_sigma_start
-    #convert density values to absolute number of electrons
-    #since FFT and rho given in electrons, not density, until converted at the end
-    rho_min = minimum_density
-    rho_max = maximum_density
-    if rho_min is not None:
-        rho_min *= dV
-        #print rho_min
-    if rho_max is not None:
-        rho_max *= dV
-        #print rho_max
 
     #calculate the starting shrinkwrap volume as the volume of a sphere
     #of radius Dmax, i.e. much larger than the particle size
@@ -990,8 +980,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     my_logger.info('NCS Steps: %s', ncs_steps)
     my_logger.info('NCS Axis: %s', ncs_axis)
     my_logger.info('Positivity: %s', positivity)
-    my_logger.info('Minimum Density: %s', minimum_density)
-    my_logger.info('Maximum Density: %s', maximum_density)
     my_logger.info('Extrapolate high q: %s', extrapolate)
     my_logger.info('Shrinkwrap: %s', shrinkwrap)
     my_logger.info('Shrinkwrap Old Method: %s', shrinkwrap_old_method)
