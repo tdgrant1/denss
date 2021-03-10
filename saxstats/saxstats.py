@@ -55,28 +55,28 @@ try:
 except ImportError:
     CUPY_LOADED = False
 
-def myfftn(x, DENSS_GPU=False): 
+def myfftn(x, DENSS_GPU=False):
     if DENSS_GPU:
         return cp.fft.fftn(x)
     else:
         return np.fft.fftn(x)
 
-def myabs(x, DENSS_GPU=False): 
+def myabs(x, DENSS_GPU=False):
     if DENSS_GPU:
         return cp.abs(x)
-    else: 
+    else:
         return np.abs(x)
 
-def mybinmean(x,bins, DENSS_GPU=False): 
+def mybinmean(x,bins, DENSS_GPU=False):
     if DENSS_GPU:
         xsum = cp.bincount(bins.ravel(), x.ravel())
         xcount = cp.bincount(bins.ravel())
         return xsum/xcount
-    else: 
+    else:
         xsum = np.bincount(bins.ravel(), x.ravel())
         xcount = np.bincount(bins.ravel())
         return xsum/xcount
- 
+
 def myones(x, DENSS_GPU=False):
     if DENSS_GPU:
         return cp.ones(x)
@@ -95,7 +95,7 @@ def mysqrt(x, DENSS_GPU=False):
     else:
         return np.sqrt(x)
 
-def mysum(x, DENSS_GPU=False): 
+def mysum(x, DENSS_GPU=False):
     if DENSS_GPU:
         return cp.sum(x)
     else:
@@ -844,7 +844,10 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     if DENSS_GPU and CUPY_LOADED:
         DENSS_GPU = True
     elif DENSS_GPU:
-        print("GPU option set, but CuPy failed to load")
+        if gui:
+            my_logger.info("GPU option set, but CuPy failed to load")
+        else:
+            print("GPU option set, but CuPy failed to load")
         DENSS_GPU = False
 
     fprefix = os.path.join(path, output)
@@ -1016,7 +1019,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             print("\n Step     Chi2     Rg    Support Volume")
             print(" ----- --------- ------- --------------")
 
-    if DENSS_GPU: 
+    if DENSS_GPU:
         rho = cp.array(rho)
         qbin_labels = cp.array(qbin_labels)
         qbins = cp.array(qbins)
@@ -1056,7 +1059,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         rhoprime = myifftn(F, DENSS_GPU=DENSS_GPU)
         rhoprime = rhoprime.real
 
-        if not DENSS_GPU and j%write_freq == 0:  
+        if not DENSS_GPU and j%write_freq == 0:
             if write_xplor_format:
                 write_xplor(rhoprime/dV, side, fprefix+"_current.xplor")
             write_mrc(rhoprime/dV, side, fprefix+"_current.mrc")
@@ -1088,15 +1091,15 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
 
         #apply non-crystallographic symmetry averaging
         if ncs != 0 and j in ncs_steps:
-            if DENSS_GPU: 
-                newrho = cp.asnumpy(newrho) 
+            if DENSS_GPU:
+                newrho = cp.asnumpy(newrho)
             newrho = align2xyz(newrho)
             if DENSS_GPU:
                 newrho = cp.array(newrho)
 
         if ncs != 0 and j in [stepi+1 for stepi in ncs_steps]:
             if DENSS_GPU:
-                newrho = cp.asnumpy(newrho)       
+                newrho = cp.asnumpy(newrho)
             degrees = 360./ncs
             if ncs_axis == 1: axes=(1,2)
             if ncs_axis == 2: axes=(0,2)
@@ -1109,7 +1112,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                 newrho = cp.array(newrho)
 
         if recenter and j in recenter_steps:
-            if DENSS_GPU: 
+            if DENSS_GPU:
                 newrho = cp.asnumpy(newrho)
                 support = cp.asnumpy(support)
 
@@ -1153,8 +1156,11 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                 else:
                     threshold = shrinkwrap_threshold_fraction
                     if first_time_swdensity:
-                        if not quiet or not gui:
-                            print("\nswitched to shrinkwrap by density threshold = %.4f" %threshold)
+                        if not quiet:
+                            if gui:
+                                my_logger.info("switched to shrinkwrap by density threshold = %.4f" %threshold)
+                            else:
+                                print("\nswitched to shrinkwrap by density threshold = %.4f" %threshold)
                         first_time_swdensity = False
                     newrho, support = shrinkwrap_by_density_value(newrho,absv=True,sigma=sigma,threshold=threshold,recenter=recenter,recenter_mode=recenter_mode)
 
@@ -1184,7 +1190,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                 support = cp.array(support)
 
         if enforce_connectivity and j in enforce_connectivity_steps:
-            if DENSS_GPU: 
+            if DENSS_GPU:
                 newrho = cp.asnumpy(newrho)
 
             #first run shrinkwrap to define the features
@@ -1243,7 +1249,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         rho = newrho
 
     #convert back to numpy outside of for loop
-    if DENSS_GPU: 
+    if DENSS_GPU:
         rho = cp.asnumpy(rho)
         qbin_labels = cp.asnumpy(qbin_labels)
         qbin_args = cp.asnumpy(qbin_args)
@@ -1289,7 +1295,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     #which is what the FFT assumes
     rho /= dV
     my_logger.info('FINISHED DENSITY REFINEMENT')
- 
+
 
     if cutout:
         #here were going to cut rho out of the large real space box
@@ -1776,10 +1782,12 @@ def select_best_enantiomers(rhos, refrho=None, cores=1, avg_queue=None,
             pool.terminate()
             pool.close()
             raise
-        best_enans = np.array([results[k][0] for k in range(len(results))])
-        best_scores = np.array([results[k][1] for k in range(len(results))])
+
     else:
-        best_enans, best_scores = select_best_enantiomer(refrho=refrho, rho=rhos[0], abort_event=abort_event)
+        results = [select_best_enantiomer(refrho=refrho, rho=rho, abort_event=abort_event) for rho in rhos]
+
+    best_enans = np.array([results[k][0] for k in range(len(results))])
+    best_scores = np.array([results[k][1] for k in range(len(results))])
 
     return best_enans, best_scores
 
@@ -2658,7 +2666,7 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
                     ffcoeff[element]
                 except:
                     print("Atom type %s or name not recognized for atom # %s"
-                           % (pdb.atomtype[i], 
+                           % (pdb.atomtype[i],
                               pdb.atomname[i][0].upper()+pdb.atomname[i][1].lower(),
                               i))
                     print("Using default form factor for Carbon")
