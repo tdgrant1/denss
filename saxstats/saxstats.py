@@ -2630,6 +2630,18 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
         #first, get the min and max distances for each dimension
         #also, convert those distances to indices by dividing by dx
         xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
+        #ignore atoms whose coordinates are outside the box limits
+        if (
+            (xa < x.min()) or
+            (xa > x.max()) or
+            (ya < y.min()) or
+            (ya > y.max()) or
+            (za < z.min()) or
+            (za > z.max())
+           ):
+           print()
+           print("Atom %d outside boundary of cell ignored."%i)
+           continue
         xmin = int(np.floor((xa-cutoff)/dx)) + n//2
         xmax = int(np.ceil((xa+cutoff)/dx)) + n//2
         ymin = int(np.floor((ya-cutoff)/dx)) + n//2
@@ -2673,12 +2685,13 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
 
         tmpvalues = realspace_formfactor(element=element,r=dist,B=B)
         #rescale total number of electrons by expected number of electrons
-        tmpvalues *= electrons[element] / np.sum(tmpvalues)
-        try:
-            values[slc] += tmpvalues.reshape(nx,ny,nz)
-        except:
+        if np.sum(tmpvalues)>1e-8:
+            tmpvalues *= electrons[element] / np.sum(tmpvalues)
+        else:
             print()
             print("Atom %d outside boundary of cell ignored."%i)
+
+        values[slc] += tmpvalues.reshape(nx,ny,nz)
         support[slc] = True
     print()
     return values, support
