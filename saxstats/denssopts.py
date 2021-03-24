@@ -42,6 +42,7 @@ def parse_arguments(parser):
     parser.add_argument("-ncs", "--ncs", default=0, type=int, help="Rotational symmetry")
     parser.add_argument("-ncs_steps","--ncs_steps", default=[3000,5000,7000,9000], nargs='+', help="List of steps for applying NCS averaging (default=3000,5000,7000,9000)")
     parser.add_argument("-ncs_axis", "--ncs_axis", default=1, type=int, help="Rotational symmetry axis (options: 1, 2, or 3 corresponding to (long,medium,short) principal axes)")
+    parser.add_argument("-ncs_type", "--ncs_type", default="C", type=str, help="Symmetry type, either cyclical (default) or dihedral (i.e. C or D, dihedral (Dn) adds n 2-fold perpendicular axes)")
     parser.add_argument("-s", "--steps", default=None, help="Maximum number of steps (iterations)")
     parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
     parser.add_argument("-v", "--voxel", default=None, type=float, help="Set desired voxel size, setting resolution of map")
@@ -173,6 +174,12 @@ def parse_arguments(parser):
             args.ncs_steps = np.fromstring(args.ncs_steps[0],sep=' ',dtype=int)
         else:
             args.ncs_steps = [int(x) for x in args.ncs_steps]
+
+    if args.ncs_type[0].upper() == "D":
+        args.ncs_type = "dihedral"
+    else:
+        args.ncs_type = "cyclical"
+
 
     #old default sw_start was 3.0
     #however, in cases where the voxel size is smaller than default,

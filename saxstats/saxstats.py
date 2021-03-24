@@ -826,14 +826,13 @@ def filter_P(r,P,sigr=None,qmax=0.5,cutoff=0.75,qmin=0.0,cutoffmin=1.25):
 def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False,
     limit_dmax_steps=[500], recenter=True, recenter_steps=None,
     recenter_mode="com", positivity=True, extrapolate=True, output="map",
-    steps=None, seed=None,
-    flatten_low_density=True, rho_start=None, add_noise=None, shrinkwrap=True,
-    shrinkwrap_old_method=False,shrinkwrap_sigma_start=3, shrinkwrap_sigma_end=1.5,
-    shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
+    steps=None, seed=None, flatten_low_density=True, rho_start=None, add_noise=None, 
+    shrinkwrap=True, shrinkwrap_old_method=False,shrinkwrap_sigma_start=3, 
+    shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
     shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01,
     write_xplor_format=False, write_freq=100, enforce_connectivity=True,
     enforce_connectivity_steps=[500], cutout=True, quiet=False, ncs=0,
-    ncs_steps=[500],ncs_axis=1, abort_event=None, my_logger=logging.getLogger(),
+    ncs_steps=[500],ncs_axis=1, ncs_type="cyclical",abort_event=None, my_logger=logging.getLogger(),
     path='.', gui=False, DENSS_GPU=False):
     """Calculate electron density from scattering data."""
     if abort_event is not None:
@@ -1100,14 +1099,31 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         if ncs != 0 and j in [stepi+1 for stepi in ncs_steps]:
             if DENSS_GPU:
                 newrho = cp.asnumpy(newrho)
+            if ncs_axis == 1: 
+                axes=(1,2) #longest
+                axes2=(0,1) #shortest
+            if ncs_axis == 2: 
+                axes=(0,2) #middle
+                axes2=(0,1) #shortest
+            if ncs_axis == 3: 
+                axes=(0,1) #shortest
+                axes2=(1,2) #longest
             degrees = 360./ncs
-            if ncs_axis == 1: axes=(1,2)
-            if ncs_axis == 2: axes=(0,2)
-            if ncs_axis == 3: axes=(0,1)
-            newrhosym = newrho*0.0
-            for nrot in range(1,ncs+1):
-                newrhosym += ndimage.rotate(newrho,degrees*nrot,axes=axes,reshape=False)
-            newrho = newrhosym/ncs
+            newrho_total = np.copy(newrho)
+            if ncs_type == "dihedral":
+                #first, rotate original about perpendicular axis by 180
+                #then apply n-fold cyclical rotation
+                d2fold = ndimage.rotate(newrho,180,axes=axes2,reshape=False)
+                newrhosym = np.copy(newrho) + d2fold
+                newrhosym /= 2.0
+                newrho_total = np.copy(newrhosym)
+            else:
+                newrhosym = np.copy(newrho)
+            for nrot in range(1,ncs):
+                sym = ndimage.rotate(newrhosym,degrees*nrot,axes=axes,reshape=False)
+                newrho_total += np.copy(sym)
+            newrho = newrho_total / ncs
+
             if DENSS_GPU:
                 newrho = cp.array(newrho)
 

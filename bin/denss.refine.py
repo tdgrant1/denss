@@ -121,6 +121,7 @@ if __name__ == "__main__":
         ncs=args.ncs,
         ncs_steps=args.ncs_steps,
         ncs_axis=args.ncs_axis,
+        ncs_type=args.ncs_type,
         seed=args.seed,
         shrinkwrap=args.shrinkwrap,
         shrinkwrap_old_method=args.shrinkwrap_old_method,
