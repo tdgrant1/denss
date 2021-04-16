@@ -49,7 +49,7 @@ parser = argparse.ArgumentParser(description="A tool for fitting solution scatte
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
 parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
 parser.add_argument("-d", "--dmax", default=None, type=float, help="Estimated maximum dimension")
-parser.add_argument("-a", "--alpha", default=0., type=float, help="Set alpha smoothing factor")
+parser.add_argument("-a", "--alpha", default=None, type=float, help="Set alpha smoothing factor")
 parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use")
 parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use")
 parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional)")
@@ -89,8 +89,6 @@ if __name__ == "__main__":
 
     if args.max_dmax is None:
         args.max_dmax = 2.*D
-    if args.max_alpha is None:
-        args.max_alpha = 10.
 
     q = Iq[:,0]
     #create a calculated q range for Sasrec
@@ -111,7 +109,21 @@ if __name__ == "__main__":
 
     Icerr = np.interp(qc,q,Iq[n1:n2,2])
 
+    if args.alpha is None:
+        alpha = 0.0
+    else:
+        alpha = args.alpha
     sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=None, alpha=alpha, ne=nes)
+    #get a rough estimate for a reasonable alpha based on I(0)
+    #to set a maximum alpha range, so when users click in the slider
+    #it at least does something reasonable, rather than either nothing
+    #significant, or so huge it becomes difficult to find the right value
+    est_alpha = 100./sasrec.I0**2
+    if args.max_alpha is None:
+        if alpha == 0.0:
+            max_alpha = 2*est_alpha
+        else:
+            max_alpha = 2*alpha
 
     def store_parameters_as_string(event=None):
         param_str = ("Parameter Values:\n"
@@ -157,6 +169,8 @@ if __name__ == "__main__":
 
         #fig, (axI, axP) = plt.subplots(1, 2, figsize=(12,6))
         fig = plt.figure(0, figsize=(12,6))
+        fig.canvas.set_window_title(output)
+        fig.suptitle(output)
         axI = plt.subplot2grid((3,2), (0,0),rowspan=2)
         axR = plt.subplot2grid((3,2), (2,0),sharex=axI)
         axP = plt.subplot2grid((3,2), (0,1),rowspan=3)
@@ -203,7 +217,7 @@ if __name__ == "__main__":
         #axdmax.xaxis.tick_top()
         axdmax.tick_params(labelbottom=False)
 
-        salpha = Slider(axalpha, 'Alpha', 0.0, args.max_alpha, valinit=alpha)
+        salpha = Slider(axalpha, 'Alpha', 0.0, max_alpha, valinit=alpha)
         salpha.valtext.set_visible(False)
 
         #snes = Slider(axnes, 'NES', 0, args.max_nes, valinit=args.nes, valstep=1)

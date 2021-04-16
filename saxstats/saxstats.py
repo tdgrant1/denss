@@ -813,7 +813,7 @@ def filter_P(r,P,sigr=None,qmax=0.5,cutoff=0.75,qmin=0.0,cutoffmin=1.25):
     b = signal.firwin(ntaps, fc, window='hann')
     if qmin>0.0:
         fcmin = (cutoffmin*qmin/(2*np.pi))/nyq
-        b = sigmal.firwin(ntaps, [fcmin,fc],pass_zero=False, window='hann')
+        b = signal.firwin(ntaps, [fcmin,fc],pass_zero=False, window='hann')
     a = np.array([1])
     Pfilt = signal.filtfilt(b,a,P,padlen=len(r)-1)
     r = np.arange(npts)/fs
@@ -2016,20 +2016,19 @@ class Sasrec(object):
         """Return the values of C, a m x n variance-covariance matrix"""
         return np.einsum('ij,kj->ik', Bm/Ierr**2, Bn)
 
-    def Amn(self,m,n,D):
+    def Gmn(self,M,N,D):
         """Return the mxn matrix of coefficients for the integral of (2nd deriv of P(r))**2 used for smoothing"""
-        m = np.atleast_1d(m).astype(float)
-        n = np.atleast_1d(n).astype(float)
-        nm = len(m)
-        nn = len(n)
-        amn = np.zeros((nm,nn))
-        for i in range(nm):
-            for j in range(nn):
-                if m[i] != n[j]:
-                    amn[i,j] = np.pi**2/(2*D**5) * (m[i]*n[j])**2 * (m[i]**4+n[j]**4)/(m[i]**2+n[j]**2)**2 * (-1)**(m[i]+n[j])
-                if m[i] == n[j]:
-                    amn[i,j] = np.pi**4/(2*D**5) * n[j]**6
-        return amn
+        M = np.atleast_1d(M).astype(float)
+        N = np.atleast_1d(N).astype(float)
+        nm = len(M)
+        nn = len(N)
+        gmn = np.zeros((nm,nn))
+        mm, nn = np.meshgrid(M,N,indexing='ij')
+        idx = np.where(mm!=nn)
+        gmn[idx] = np.pi**2/(2*D**5) * (mm[idx]*nn[idx])**2 * (mm[idx]**4+nn[idx]**4)/(mm[idx]**2+nn[idx]**2)**2 * (-1)**(mm[idx]+nn[idx])
+        idx = np.where(mm==nn)
+        gmn[idx] = np.pi**4/(2*D**5) * nn[idx]**6
+        return gmn
 
     def Ct2(self,Ierr, Bm, Bn, alpha, D):
         """Return the values of C, a m x n variance-covariance matrix while smoothing P(r)"""
@@ -2038,8 +2037,8 @@ class Sasrec(object):
         ni = Bm.shape[1]
         M = np.arange(m)+1
         N = np.arange(n)+1
-        amn = self.Amn(M,N,D)
-        return ni/8. * alpha * amn + np.einsum('ij,kj->ik', Bm/Ierr**2, Bn)
+        gmn = self.Gmn(M,N,D)
+        return ni/8. * alpha * gmn + np.einsum('ij,kj->ik', Bm/Ierr**2, Bn)
 
     def Perrt(self,r, Sn, Sm, Cinv):
         """Return the standard errors on P(r).
