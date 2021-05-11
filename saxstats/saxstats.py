@@ -798,6 +798,8 @@ def estimate_dmax(Iq,dmax=None,clean_up=True):
     Pargmax = Pfilt.argmax()
     D_idx = np.where((Pfilt[Pargmax:]<(0.001*Pfilt.max())))[0][0] + Pargmax
     D = r[D_idx]
+    sasrec.D = D
+    sasrec.update()
     return D, sasrec
 
 def filter_P(r,P,sigr=None,qmax=0.5,cutoff=0.75,qmin=0.0,cutoffmin=1.25):
@@ -815,7 +817,7 @@ def filter_P(r,P,sigr=None,qmax=0.5,cutoff=0.75,qmin=0.0,cutoffmin=1.25):
         fcmin = (cutoffmin*qmin/(2*np.pi))/nyq
         b = signal.firwin(ntaps, [fcmin,fc],pass_zero=False, window='hann')
     a = np.array([1])
-    Pfilt = signal.filtfilt(b,a,P,padlen=len(r)-1)
+    Pfilt = signal.filtfilt(tuple(b),tuple(a),tuple(P),padlen=len(r)-1)
     r = np.arange(npts)/fs
     if sigr is not None:
         sigrfilt = signal.filtfilt(b, a, sigr,padlen=len(r)-1)/(2*np.pi)
@@ -1950,6 +1952,7 @@ class Sasrec(object):
         self.update()
 
     def update(self):
+        self.r = np.linspace(0,self.D,self.nr)
         self.ri = np.arange(self.nr)
         self.n = self.shannon_channels(self.qmax,self.D) + self.ne
         self.Ni = np.arange(self.n)
@@ -1959,42 +1962,41 @@ class Sasrec(object):
         self.qn = np.pi/self.D * self.N
         self.In = np.zeros((self.nq))
         self.Inerr = np.zeros((self.nq))
-        self.B = np.zeros((self.n, self.nq))
-        self.S = np.zeros((self.n, self.nr))
-        self.Y = np.zeros((self.n))
-        self.C = np.zeros((self.n, self.n))
-        self.B[self.Ni] = self.Bt(self.N[:, None], self.q, self.D)
-        self.S[self.Ni] = self.St(self.N[:, None], self.r, self.D)
-        self.Y[self.Mi] = self.Yt(I=self.I, Ierr=self.Ierr, Bm=self.B[self.Mi])
-        self.C[self.Mi[:, None], self.Ni] = self.Ct2(Ierr=self.Ierr, Bm=self.B[self.Mi], Bn=self.B[self.Ni], alpha=self.alpha, D=self.D)
+        self.B = self.Bt()
+        #Bc is for the calculated q values in
+        #cases where qc is not equal to q.
+        self.Bc = self.Bt(q=self.qc)
+        self.S = self.St()
+        self.Y = self.Yt()
+        self.C = self.Ct2()
         self.Cinv = np.linalg.inv(self.C)
-        self.In = 0.5*np.linalg.solve(self.C,self.Y)
-        #self.In = 0.5*optimize.nnls(self.C, self.Y)[0]
-        self.Inerr = 0.5*(np.diagonal(self.Cinv))**(0.5)
-        self.Ic = self.Ish2Iq(Ish=self.In,D=self.D,q=self.qc)[:,1]
-        #try and rougly estimate missing error bars for the calculated intensities
-        self.Icerr = np.interp(self.qc, self.q, self.Ierr)
-        self.P = self.Ish2P(self.In,self.D,self.r)
-        self.Perr = self.Perrf(r=self.r, D=self.D, Sn=self.S[self.Ni[:, None], self.ri], Sm=self.S[self.Mi[:, None], self.ri], Cinv=self.Cinv)
-        self.I0 = self.Ish2I0(self.In,self.D)
-        self.I0err = self.I0errf(self.Cinv)
-        self.rg2 = self.Ish2rg2(self.In,self.D)
-        self.rg = self.Ish2rg(self.In,self.D)
-        self.rgerr = self.rgerrf(self.In,self.D,self.Cinv)
-        self.ravg = self.Ish2ravg(self.In,self.D)
-        self.ravgerr = self.ravgerrf(self.In,self.D,self.Cinv)
-        self.Q = self.Ish2Q(self.In,self.D)
-        self.Qerr = self.Qerrf(self.D,self.Cinv)
-        self.Vp = self.Ish2Vp(self.In,self.D)
-        self.Vperr = self.Vperrf(self.In,self.D,self.Cinv)
-        self.mwVp = self.Ish2mwVp(self.In,self.D)
-        self.mwVperr = self.mwVperrf(self.In,self.D,self.Cinv)
-        self.Vc = self.Ish2Vc(self.In,self.D)
-        self.Vcerr = self.Vcerrf(self.In,self.D,self.Cinv)
-        self.mwVc = self.Ish2mwVc(self.In,self.D)
-        self.mwVcerr = self.mwVcerrf(self.In,self.D,self.Cinv)
-        self.lc = self.Ish2lc(self.In,self.D)
-        self.lcerr = self.lcerrf(self.In,self.D,self.Cinv)
+        self.In = np.linalg.solve(self.C,self.Y)
+        self.Inerr = np.diagonal(self.Cinv)**(0.5)
+        self.Ic = self.Ish2Iq()
+        self.Icerr = self.Icerrt()
+        self.P = self.Ish2P()
+        self.Perr = self.Perrt()
+        self.I0 = self.Ish2I0()
+        self.I0err = self.I0errf()
+        self.F = self.Ft()
+        self.rg = self.Ish2rg()
+        self.E = self.Et()
+        self.rgerr = self.rgerrf()
+        self.avgr = self.Ish2avgr()
+        self.avgrerr = self.avgrerrf()
+        self.Q = self.Ish2Q()
+        self.Qerr = self.Qerrf()
+        self.Vp = self.Ish2Vp()
+        self.Vperr = self.Vperrf()
+        self.mwVp = self.Ish2mwVp()
+        self.mwVperr = self.mwVperrf()
+        self.Vc = self.Ish2Vc()
+        self.Vcerr = self.Vcerrf()
+        self.Qr = self.Ish2Qr()
+        self.mwVc = self.Ish2mwVc()
+        self.mwVcerr = self.mwVcerrf()
+        self.lc = self.Ish2lc()
+        self.lcerr = self.lcerrf()
 
     def shannon_channels(self, D, qmax=0.5, qmin=0.0):
         """Return the number of Shannon channels given a q range and maximum particle dimension"""
@@ -2002,27 +2004,45 @@ class Sasrec(object):
         num_channels = int((qmax-qmin) / width)
         return num_channels
 
-    def Bt(self,n,q,D):
-        return (n*np.pi)**2/((n*np.pi)**2-(q*D)**2) * np.sinc(q*D/np.pi) * (-1)**(n+1)
+    def Bt(self,q=None):
+        N = self.N[:, None]
+        if q is None:
+            q = self.q
+        else:
+            q = q
+        D = self.D
+        B = (N*np.pi)**2/((N*np.pi)**2-(q*D)**2) * np.sinc(q*D/np.pi) * (-1)**(N+1)
+        return B
 
-    def St(self,n,r,D):
-        return r/D**2 * n * np.sin(n*np.pi*r/D)
+    def St(self):
+        N = self.N[:,None]
+        r = self.r
+        D = self.D
+        S = r/(2*D**2) * N * np.sin(N*np.pi*r/D)
+        return S
 
-    def Yt(self,I, Ierr, Bm):
+    def Yt(self):
         """Return the values of Y, an m-length vector."""
-        return np.einsum('i, ki->k', I/Ierr**2, Bm)
+        I = self.I
+        Ierr = self.Ierr
+        Bm = self.B
+        Y = np.einsum('q, nq->n', I/Ierr**2, Bm)
+        return Y
 
-    def Ct(self,Ierr, Bm, Bn):
+    def Ct(self):
         """Return the values of C, a m x n variance-covariance matrix"""
-        return np.einsum('ij,kj->ik', Bm/Ierr**2, Bn)
+        Ierr = self.Ierr
+        Bm = self.B
+        Bn = self.B
+        C = 2*np.einsum('ij,kj->ik', Bm/Ierr**2, Bn)
+        return C
 
-    def Gmn(self,M,N,D):
+    def Gmn(self):
         """Return the mxn matrix of coefficients for the integral of (2nd deriv of P(r))**2 used for smoothing"""
-        M = np.atleast_1d(M).astype(float)
-        N = np.atleast_1d(N).astype(float)
-        nm = len(M)
-        nn = len(N)
-        gmn = np.zeros((nm,nn))
+        M = self.M
+        N = self.N
+        D = self.D
+        gmn = np.zeros((self.n,self.n))
         mm, nn = np.meshgrid(M,N,indexing='ij')
         idx = np.where(mm!=nn)
         gmn[idx] = np.pi**2/(2*D**5) * (mm[idx]*nn[idx])**2 * (mm[idx]**4+nn[idx]**4)/(mm[idx]**2+nn[idx]**2)**2 * (-1)**(mm[idx]+nn[idx])
@@ -2030,346 +2050,238 @@ class Sasrec(object):
         gmn[idx] = np.pi**4/(2*D**5) * nn[idx]**6
         return gmn
 
-    def Ct2(self,Ierr, Bm, Bn, alpha, D):
+    def Ct2(self):
         """Return the values of C, a m x n variance-covariance matrix while smoothing P(r)"""
-        m = Bm.shape[0]
-        n = Bn.shape[0]
-        ni = Bm.shape[1]
-        M = np.arange(m)+1
-        N = np.arange(n)+1
-        gmn = self.Gmn(M,N,D)
-        return ni/8. * alpha * gmn + np.einsum('ij,kj->ik', Bm/Ierr**2, Bn)
+        n = self.n
+        Ierr = self.Ierr
+        Bm = self.B
+        Bn = self.B
+        alpha = self.alpha
+        gmn = self.Gmn()
+        return n/4. * alpha * gmn + 2*np.einsum('ij,kj->ik', Bm/Ierr**2, Bn)
 
-    def Perrt(self,r, Sn, Sm, Cinv):
-        """Return the standard errors on P(r).
-
-            To work, Sn will generally equal something like S[N[:, None], pts] where N is
-            the array of n shannon channels, same for Sm, and pts is the array of
-            indices for the number of data points, e.g. np.arange(npts).
-            This is required for correct broadcasting.
-            Example: Perr(r=r, Sn=S[N[:, None], pts]), Sm=S[M[:, None], pts], Cinv=Cinv)
-            """
-        return r*np.einsum('ni,mi,nm->i', Sn, Sm, Cinv)**(.5)
-
-    def Iq2Ish(self,q,I,sigq,D,ne=2):
-        """Calculate Shannon intensities from experimental I(q) profile."""
-        npts = len(q)
-        qmax = np.max(q)
-        D = float(D)
-        nmax = shannon_channels(qmax, D)+ne
-
-        sigq.clip(1e-10)
-
-        B = np.zeros((nmax, npts))
-        C = np.zeros((nmax, nmax))
-        Y = np.zeros((nmax))
-        Ni = np.arange(nmax) #indices
-        Mi = np.arange(nmax) #indices
-        N = Ni+1 #values
-        M = Mi+1 #values
-        pts = np.arange(npts)
-
-        qsh = N*shannon_width(D)
-        Ish = np.zeros((nmax,3))
-
-        B[Ni] = Bt(N[:, None], q, D)
-        Y[Mi] = Yt(I=I,Ierr=sigq,Bm=B[Mi])
-        C[Mi[:, None], Ni] = Ct(Ierr=sigq, Bm=B[Mi], Bn=B[Ni])
-
-        Cinv = np.linalg.inv(C)
-
-        Ish[:,0] = qsh
-        Ish[:,1] = 0.5*np.linalg.solve(C,Y)
-        Ish[:,2] = 0.5*(np.diagonal(Cinv))**(0.5)
-
-        return Ish
-
-    def Iq2Cinv(self,q,I,sigq,D,ne=2):
-        """Calculate Shannon intensities from experimental I(q) profile."""
-        npts = len(q)
-        qmax = np.max(q)
-        D = float(D)
-        nmax = shannon_channels(qmax, D)+ne
-
-        sigq.clip(1e-10)
-
-        B = np.zeros((nmax, npts))
-        C = np.zeros((nmax, nmax))
-        Y = np.zeros((nmax))
-        Ni = np.arange(nmax) #indices
-        Mi = np.arange(nmax) #indices
-        N = Ni+1 #values
-        M = Mi+1 #values
-        pts = np.arange(npts)
-
-        qsh = N*shannon_width(D)
-        Ish = np.zeros((nmax,3))
-
-        B[Ni] = Bt(N[:, None], q, D)
-        Y[Mi] = Yt(I=I,sigq=sigq,Bm=B[Mi])
-        C[Mi[:, None], Ni] = Ct(sigq=sigq, Bm=B[Mi], Bn=B[Ni])
-
-        Cinv = np.linalg.inv(C)
-
-        Ish[:,0] = qsh
-        Ish[:,1] = 0.5*np.linalg.solve(C,Y)
-        Ish[:,2] = 0.5*(np.diagonal(Cinv))**(0.5)
-
-        return Cinv
-
-    def Ish2Iq(self,Ish,D,q=(np.arange(500)+1.)/1000):
+    def Ish2Iq(self):
         """Calculate I(q) from intensities at Shannon points."""
-        q = np.atleast_1d(q)
-        Ish = np.atleast_1d(Ish)
-        Iq = np.zeros((len(q),2))
-        Iq[:,0] = q
-        n = len(Ish)
-        N = np.arange(n)+1
-        denominator = (N[:,None]*np.pi)**2-(q*D)**2
-        I = 2*np.einsum('k,ki->i',Ish,(N[:,None]*np.pi)**2 / denominator * np.sinc(q*D/np.pi) * (-1)**(N[:,None]+1))
-        Iq[:,1] = I
-        return Iq
+        Ish = self.In
+        Bn = self.Bc
+        I = 2*np.einsum('n,nq->q',Ish,Bn)
+        return I
 
-    def Ish2P(self,Ish,D,r=None,dr=None):
+    def Ish2P(self):
         """Calculate P(r) from intensities at Shannon points."""
-        if r is None:
-            if dr is None:
-                dr = 0.10
-            r = np.linspace(0,D,D/dr)
-        r = np.atleast_1d(r)
-        Ish = np.atleast_1d(Ish)
-        N = np.arange(len(Ish))+1
-        P = 1./(2*D**2) * np.einsum('k,kj->k',r,N*Ish*np.sin(N*np.pi*r[:,None]/D))
+        Ish = self.In
+        Sn = self.S
+        P = np.einsum('n,nr->r',Ish,Sn)
         return P
 
-    def _Ish2P(self,Ish,D,r=None,dr=None,extend=True,nstart=0):
-        """Calculate P(r) from intensities at Shannon points."""
-        if r is None:
-            if dr is None:
-                dr = 0.10
-            r = np.linspace(0,D,D/dr)
-        r = np.atleast_1d(r)
-        Ish = np.atleast_1d(Ish)
-        Ish = Ish[nstart:]
-        P = np.zeros((len(r),2))
-        P[:,0] = r
-        N = np.arange(len(Ish))+1+nstart
-        for i in range(len(r)):
-            if r[i]>D:
-                P[i,1] = 0.0
-            else:
-                P[i,1] = r[i]/(2*D**2) * np.sum(N*Ish*np.sin(N*np.pi*r[i]/D))
-                if extend:
-                    Np = np.arange(N[-1]+1,100)
-                    k = Ish[-1]/(N[-1]*np.pi/D)**(-4)
-                    P[i,1] += r[i]/(2*D**2) * k * np.sum(Np*(Np*np.pi/D)**(-4)*np.sin(Np*np.pi*r[i]/D))
-        return P
+    def Icerrt(self):
+        """Return the standard errors on I_c(q)."""
+        Bn = self.Bc
+        Bm = self.Bc
+        err = 2 * np.einsum('nq,mq,nm->q', Bn, Bm, self.Cinv)**(.5)
+        return err
 
-    def Perrf(self,r, D, Sn, Sm, Cinv):
-        """Return the standard errors on P(r).
+    def Perrt(self):
+        """Return the standard errors on P(r)."""
+        Sn = self.S
+        Sm = self.S
+        err = np.einsum('nr,mr,nm->r', Sn, Sm, self.Cinv)**(.5)
+        return err
 
-            To work, Sn will generally equal something like S[N[:, None], pts] where N is
-            the array of n shannon channels, same for Sm, and pts is the array of
-            indices for the number of data points, e.g. np.arange(npts).
-            This is required for correct broadcasting.
-            Example: Perr(r=r, Sn=S[N[:, None], pts]), Sm=S[M[:, None], pts], Cinv=Cinv)
-            """
-        nmax = len(Sn)
-        Ni = np.arange(nmax) #indices
-        Mi = np.arange(nmax) #indices
-        N = Ni+1 #values
-        M = Mi+1 #values
-        #THIS IS WRONG, FIX IT WITH CORRECT EQUATION
-        return r/(4*D**2)*np.einsum('ni,mi,nm->i', N[:,None]*Sn, M[:,None]*Sm, Cinv)**(.5)
-
-    def Ish2I0(self,Ish,D):
+    def Ish2I0(self):
         """Calculate I0 from Shannon intensities"""
-        n = len(Ish)
-        N = np.arange(n)+1
+        N = self.N
+        Ish = self.In
         I0 = 2 * np.sum(Ish*(-1)**(N+1))
         return I0
 
-    def I0errf(self,Cinv):
+    def I0errf(self):
         """Calculate error on I0 from Shannon intensities from inverse C variance-covariance matrix"""
-        nmax = len(Cinv)
-        Ni = np.arange(nmax) #indices
-        Mi = np.arange(nmax) #indices
-        N = Ni+1 #values
-        M = Mi+1 #values
-        s2 = np.einsum('n,m,nm->',(-1)**(N),(-1)**M,Cinv)
+        N = self.N
+        M = self.M
+        Cinv = self.Cinv
+        s2 = 2*np.einsum('n,m,nm->',(-1)**(N),(-1)**M,Cinv)
         return s2**(0.5)
 
-    def Ish2rg(self,Ish,D):
+    def Ft(self):
+        """Calculate Fn function, for use in Rg calculation"""
+        N = self.N
+        F = (1-6/(N*np.pi)**2)*(-1)**(N+1)
+        return F
+
+    def Ish2rg(self):
         """Calculate Rg from Shannon intensities"""
-        n = len(Ish)
-        N = np.arange(n)+1
-        I0 = self.Ish2I0(Ish,D)
-        summation = np.sum(Ish*(1-6/(N*np.pi)**2)*(-1)**(N+1))
+        N = self.N
+        Ish = self.In
+        D = self.D
+        I0 = self.I0
+        F = self.F
+        summation = np.sum(Ish*F)
         rg = np.sqrt(D**2/I0 * summation)
         return rg
 
-    def Ish2rg2(self,Ish,D):
-        """Calculate Rg^2 from Shannon intensities"""
-        n = len(Ish)
-        N = np.arange(n)+1
-        I0 = self.Ish2I0(Ish,D)
-        summation = np.sum(Ish*(1-6/(N*np.pi)**2)*(-1)**(N+1))
-        rg2 = D**2/I0 * summation
-        #rg = np.sqrt(rg2)
-        return rg2
-
-    def rgerrf(self,Ish,D,Cinv):
+    def rgerrfold(self):
         """Calculate error on Rg from Shannon intensities from inverse C variance-covariance matrix"""
-        rg = self.Ish2rg(Ish,D)
-        I0 = self.Ish2I0(Ish,D)
-        nmax = len(Cinv)
-        Ni = np.arange(nmax) #indices
-        Mi = np.arange(nmax) #indices
-        N = Ni+1 #values
-        M = Mi+1 #values
-        s2 = np.einsum('n,m,nm->',(1-6/(N*np.pi)**2)*(-1)**(N),(1-6/(M*np.pi)**2)*(-1)**M,Cinv)
+        Ish = self.In
+        D = self.D
+        Cinv = self.Cinv
+        rg = self.rg
+        I0 = self.I0
+        Fn = self.F
+        Fm = self.F
+        s2 = np.einsum('n,m,nm->',Fn,Fm,Cinv)
         return D**2/(I0*rg)*s2**(0.5)
 
-    def Ish2ravg(self,Ish,D):
+    def rgerrf(self):
+        """Calculate error on Rg from Shannon intensities from inverse C variance-covariance matrix"""
+        Ish = self.In
+        D = self.D
+        Cinv = self.Cinv
+        rg = self.rg
+        I0 = self.I0
+        Fn = self.F
+        Fm = self.F
+        s2 = np.einsum('n,m,nm->',Fn,Fm,Cinv)
+        return D**2/(I0*rg)*s2**(0.5)
+
+    def Et(self):
+        """Calculate En function, for use in ravg calculation"""
+        N = self.N
+        E = ((-1)**N-1)/(N*np.pi)**2 - (-1)**N/2.
+        return E
+
+    def Ish2avgr(self):
         """Calculate average vector length r from Shannon intensities"""
-        n = len(Ish)
-        N = np.arange(n)+1
-        I0 = self.Ish2I0(Ish,D)
-        summation = np.sum(Ish * ( ((-1)**N-1)/(N*np.pi)**2 - (-1)**N/2. ))
-        avgr = 4*D/I0 * summation
+        Ish = self.In
+        I0 = self.I0
+        D = self.D
+        E = self.E
+        avgr = 4*D/I0 * np.sum(Ish * E)
         return avgr
 
-    def ravgerrf(self,Ish,D,Cinv):
+    def avgrerrf(self):
         """Calculate error on Rg from Shannon intensities from inverse C variance-covariance matrix"""
-        avgr = self.Ish2ravg(Ish,D)
-        I0 = self.Ish2I0(Ish,D)
-        nmax = len(Cinv)
-        Ni = np.arange(nmax) #indices
-        Mi = np.arange(nmax) #indices
-        N = Ni+1 #values
-        M = Mi+1 #values
-        s2 = np.einsum('n,m,nm->',((-1)**N-1)/(N*np.pi)**2 - (-1)**N/2.,((-1)**M-1)/(M*np.pi)**2 - (-1)**M/2.,Cinv)
-        return 2*D/I0 * s2**(0.5)
+        D = self.D
+        Cinv = self.Cinv
+        I0 = self.I0
+        En = self.E
+        Em = self.E
+        s2 = np.einsum('n,m,nm->',En,Em,Cinv)
+        return 4*D/I0 * s2**(0.5)
 
-    def Ish2Q(self,Ish,D):
+    def Ish2Q(self):
         """Calculate Porod Invariant Q from Shannon intensities"""
-        n = len(Ish)
-        N = np.arange(n)+1
+        D = self.D
+        N = self.N
+        Ish = self.In
         Q = (np.pi/D)**3 * np.sum(Ish*N**2)
         return Q
 
-    def Qerrf(self,D,Cinv):
+    def Qerrf(self):
         """Calculate error on Q from Shannon intensities from inverse C variance-covariance matrix"""
-        nmax = len(Cinv)
-        Ni = np.arange(nmax) #indices
-        Mi = np.arange(nmax) #indices
-        N = Ni+1 #values
-        M = Mi+1 #values
+        D = self.D
+        Cinv = self.Cinv
+        N = self.N
+        M = self.M
         s2 = np.einsum('n,m,nm->', N**2, M**2,Cinv)
         return (np.pi/D)**3 * s2**(0.5)
 
-    def gamma0(self,Ish, D):
+    def gamma0(self):
         """Calculate gamma at r=0. gamma is P(r)/4*pi*r^2"""
-        Q = self.Ish2Q(Ish,D)
+        Ish = self.In
+        D = self.D
+        Q = self.Q
         return 1/(8*np.pi**3) * Q
 
-    def Ish2Vp(self,Ish,D):
+    def Ish2Vp(self):
         """Calculate Porod Volume from Shannon intensities"""
-        Q = self.Ish2Q(Ish,D)
-        I0 = self.Ish2I0(Ish,D)
+        Q = self.Q
+        I0 = self.I0
         Vp = 2*np.pi**2 * I0/Q
         return Vp
 
-    def Vperrf(self,Ish, D, Cinv):
+    def Vperrf(self):
         """Calculate error on Vp from Shannon intensities from inverse C variance-covariance matrix"""
-        I0 = self.Ish2I0(Ish,D)
-        Q = self.Ish2Q(Ish,D)
-        I0s = self.I0errf(Cinv)
-        Qs = self.Qerrf(D,Cinv)
+        I0 = self.I0
+        Q = self.Q
+        I0s = self.I0err
+        Qs = self.Qerr
         s2 = (2*np.pi/Q)**2*(I0s)**2 + (2*np.pi*I0/Q**2)**2*Qs**2
         return s2**(0.5)
 
-    def Ish2mwVp(self,Ish,D):
+    def Ish2mwVp(self):
         """Calculate molecular weight via Porod Volume from Shannon intensities"""
-        Vp = self.Ish2Vp(Ish,D)
+        Vp = self.Vp
         mw = Vp/1.66
         return mw
 
-    def mwVperrf(self,Ish,D,Cinv):
+    def mwVperrf(self):
         """Calculate error on mwVp from Shannon intensities from inverse C variance-covariance matrix"""
-        Vps = self.Vperrf(Ish,D,Cinv)
+        Vps = self.Vperr
         return Vps/1.66
 
-    def Ish2Vc(self,Ish,D):
+    def Ish2Vc(self):
         """Calculate Volume of Correlation from Shannon intensities"""
-        n = len(Ish)
-        N = np.arange(n)+1
-        I0 = self.Ish2I0(Ish,D)
+        Ish = self.In
+        N = self.N
+        I0 = self.I0
+        D = self.D
         area_qIq = 2*np.pi/D**2 * np.sum(N * Ish * special.sici(N*np.pi)[0])
         Vc = I0/area_qIq
         return Vc
 
-    def Vcerrf(self,Ish, D, Cinv):
+    def Vcerrf(self):
         """Calculate error on Vc from Shannon intensities from inverse C variance-covariance matrix"""
-        I0 = self.Ish2I0(Ish,D)
-        Vc = self.Ish2Vc(Ish,D)
-        nmax = len(Cinv)
-        Ni = np.arange(nmax) #indices
-        Mi = np.arange(nmax) #indices
-        N = Ni+1 #values
-        M = Mi+1 #values
-        s2 = np.einsum('n,m,nm->', N*special.sici(N*np.pi)[0], M*special.sici(M*np.pi)[0],Cinv)
+        I0 = self.I0
+        Vc = self.Vc
+        N = self.N
+        M = self.M
+        D = self.D
+        Cinv = self.Cinv
+        Sin = special.sici(N*np.pi)[0]
+        Sim = special.sici(M*np.pi)[0]
+        s2 = np.einsum('n,m,nm->', N*Sin, M*Sim,Cinv)
         return (2*np.pi*Vc**2/(D**2*I0)) * s2**(0.5)
 
-    def Ish2Qr(self,Ish,D):
+    def Ish2Qr(self):
         """Calculate Rambo Invariant Qr (Vc^2/Rg) from Shannon intensities"""
-        Vc = self.Ish2Vc(Ish,D)
-        Rg = self.Ish2rg(Ish,D)
+        Vc = self.Vc
+        Rg = self.rg
         Qr = Vc**2/Rg
         return Qr
 
-    def Ish2mwVc(self,Ish,D,RNA=False):
+    def Ish2mwVc(self,RNA=False):
         """Calculate molecular weight via the Volume of Correlation from Shannon intensities"""
-        Qr = self.Ish2Qr(Ish,D)
+        Qr = self.Qr
         if RNA:
             mw = (Qr/0.00934)**(0.808)
         else:
             mw = (Qr/0.1231)**(1.00)
         return mw
 
-    def mwVcerrf(self,Ish,D,Cinv):
-        Vc = self.Ish2Vc(Ish,D)
-        Rg = self.Ish2rg(Ish,D)
-        Vcs = self.Vcerrf(Ish,D,Cinv)
-        Rgs = self.rgerrf(Ish,D,Cinv)
+    def mwVcerrf(self):
+        Vc = self.Vc
+        Rg = self.rg
+        Vcs = self.Vcerr
+        Rgs = self.rgerr
         mwVcs = Vc/(0.1231*Rg) * (4*Vcs**2 + (Vc/Rg*Rgs)**2)**(0.5)
         return mwVcs
 
-    def Ish2lc(self,Ish,D):
+    def Ish2lc(self):
         """Calculate length of correlation from Shannon intensities"""
-        Vp = self.Ish2Vp(Ish,D)
-        Vc = self.Ish2Vc(Ish,D)
+        Vp = self.Vp
+        Vc = self.Vc
         lc = Vp/(2*np.pi*Vc)
         return lc
 
-    def lcerrf(self,Ish, D, Cinv):
+    def lcerrf(self):
         """Calculate error on lc from Shannon intensities from inverse C variance-covariance matrix"""
-        Vp = self.Ish2Vp(Ish,D)
-        Vc = self.Ish2Vc(Ish,D)
-        Vps = self.Vperrf(Ish,D,Cinv)
-        Vcs = self.Vcerrf(Ish,D,Cinv)
+        Vp = self.Vp
+        Vc = self.Vc
+        Vps = self.Vperr
+        Vcs = self.Vcerr
         s2 = Vps**2 + (Vp/Vc)**2*Vcs**2
         return 1/(2*np.pi*Vc) * s2**(0.5)
-
-    def Ish2areaIq(self,Ish,D):
-        """Calculate area under I(q) from Shannon intensities"""
-        I0 = self.Ish2I0(Ish,D)
-        area_Iq = np.pi/D * (I0/2 + np.sum(Ish))
-        #the following also works
-        #n = len(Ish)
-        #N = np.arange(n)+1
-        #area_Iq = np.pi/D * np.sum(Ish*(1+(-1)**(N+1)))
-        return area_Iq
 
 class PDB(object):
     """Load pdb file."""

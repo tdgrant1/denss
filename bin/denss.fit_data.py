@@ -105,7 +105,7 @@ if __name__ == "__main__":
     if args.n1 is None:
         n1 = 0
     if args.n2 is None:
-        n2 = len(q)
+        n2 = len(qc)
 
     Icerr = np.interp(qc,q,Iq[n1:n2,2])
 
@@ -205,8 +205,8 @@ if __name__ == "__main__":
 
         axrg = plt.figtext(.55, .125, "Rg = " + str(round(sasrec.rg,2)) + " +- " + str(round(sasrec.rgerr,2)))
         axI0 = plt.figtext(.75, .125, "I(0) = " + str(round(sasrec.I0,2)) + " +- " + str(round(sasrec.I0err,2)))
-        axVp = plt.figtext(.55, .075, "Vp = " + str(round(sasrec.Vp,2)) + " +- " + str(round(sasrec.Vperr,2)))
-        axVpmw = plt.figtext(.75, .075, "Vp MW = " + str(round(sasrec.mwVp,2)) + " +- " + str(round(sasrec.mwVperr,2)))
+        axVpmw = plt.figtext(.55, .075, "Vp MW = " + str(round(sasrec.mwVp,2)) + " +- " + str(round(sasrec.mwVperr,2)))
+        axVp = plt.figtext(.75, .075, "Vp = " + str(round(sasrec.Vp,2)) + " +- " + str(round(sasrec.Vperr,2)))
         axVcmw = plt.figtext(.55, .025, "Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2)))
         axlc = plt.figtext(.75, .025, "Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2)))
 

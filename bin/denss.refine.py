@@ -51,8 +51,8 @@ if args.rho_start is None:
     print(" denss.refine.py requires a .mrc file to be given to the --rho_start option.")
     sys.exit()
 
-basename, ext = os.path.splitext(args.rho_start)
-args.output = basename + '_refine'
+#basename, ext = os.path.splitext(args.rho_start)
+#args.output = basename + '_refine'
 
 args.rho_start, rho_side = saxs.read_mrc(args.rho_start)
 
