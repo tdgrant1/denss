@@ -2045,9 +2045,9 @@ class Sasrec(object):
         gmn = np.zeros((self.n,self.n))
         mm, nn = np.meshgrid(M,N,indexing='ij')
         idx = np.where(mm!=nn)
-        gmn[idx] = np.pi**2/(2*D**5) * (mm[idx]*nn[idx])**2 * (mm[idx]**4+nn[idx]**4)/(mm[idx]**2+nn[idx]**2)**2 * (-1)**(mm[idx]+nn[idx])
+        gmn[idx] = np.pi**2/(2*D**5) * (mm[idx]*nn[idx])**2 * (mm[idx]**4+nn[idx]**4)/(mm[idx]**2-nn[idx]**2)**2 * (-1)**(mm[idx]+nn[idx])
         idx = np.where(mm==nn)
-        gmn[idx] = np.pi**4/(2*D**5) * nn[idx]**6
+        gmn[idx] = nn[idx]**4*np.pi**2/(48*D**5) * (2*nn[idx]**2*np.pi**2 + 33)
         return gmn
 
     def Ct2(self):
@@ -2058,7 +2058,7 @@ class Sasrec(object):
         Bn = self.B
         alpha = self.alpha
         gmn = self.Gmn()
-        return n/4. * alpha * gmn + 2*np.einsum('ij,kj->ik', Bm/Ierr**2, Bn)
+        return alpha * gmn + 2*np.einsum('ij,kj->ik', Bm/Ierr**2, Bn)
 
     def Ish2Iq(self):
         """Calculate I(q) from intensities at Shannon points."""
