@@ -59,6 +59,7 @@ parser.add_argument("--max_alpha", default=None, type=float, help="Maximum limit
 parser.add_argument("--max_nes", default=10, type=int, help=argparse.SUPPRESS)
 parser.add_argument("--no_gui", dest="plot", action="store_false", help="Do not run the interactive GUI mode.")
 parser.add_argument("--no_log", dest="log", action="store_false", help="Do not plot on log y axis.")
+parser.add_argument("--no_extrapolation", dest="extrapolate", action="store_false", help="Do not extrapolate high q data.")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
 if matplotlib_found:
     parser.set_defaults(plot=True)
@@ -90,6 +91,27 @@ if __name__ == "__main__":
     if args.max_dmax is None:
         args.max_dmax = 2.*D
 
+    if args.extrapolate:
+        qe = np.linspace(1.0*Iq[-1,0],3.0*Iq[-1,0],1001)
+        qsph = qe[qe>Iq[-1,0]]
+        #simulate scattering of sphere of Rg of particle
+        Isph = saxs.sphere(q=qsph,R=3./5.*sasrec.rg**0.5)
+        #Isph += np.random.normal(Isph*1e-2,size=len(Isph))
+        Isph += np.random.normal(Isph*1e-2,size=len(Isph))
+        idx = np.where(Isph>0)
+        qsph = qsph[idx]
+        Isph = Isph[idx]
+        #scale extrapolated intensity to match data
+        Isph *= Iq[-20,1].mean()/Isph[:20].mean()
+        ssph = Isph*1.e6 #try huge error bars
+        Iqe = np.concatenate((Iq,np.vstack((qsph,Isph,ssph)).T))
+        #save original Iq for plotting
+        Iq_orig = np.copy(Iq)
+        #now reset Iq to be the extrapolated Iq
+        Iq = np.copy(Iqe)
+    else:
+        Iq_orig = np.copy(Iq)
+
     q = Iq[:,0]
     #create a calculated q range for Sasrec
     qmax = q.max()
@@ -109,8 +131,9 @@ if __name__ == "__main__":
 
     Icerr = np.interp(qc,q,Iq[n1:n2,2])
 
+    est_alpha = 100./sasrec.I0**2
     if args.alpha is None:
-        alpha = 0.0
+        alpha = est_alpha
     else:
         alpha = args.alpha
     sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=None, alpha=alpha, ne=nes)
@@ -118,7 +141,6 @@ if __name__ == "__main__":
     #to set a maximum alpha range, so when users click in the slider
     #it at least does something reasonable, rather than either nothing
     #significant, or so huge it becomes difficult to find the right value
-    est_alpha = 100./sasrec.I0**2
     if args.max_alpha is None:
         if alpha == 0.0:
             max_alpha = 2*est_alpha
@@ -129,15 +151,22 @@ if __name__ == "__main__":
         param_str = ("Parameter Values:\n"
         "Dmax  = {dmax:.5e}\n"
         "alpha = {alpha:.5e}\n"
-        "Rg    = {rg:.5e} +- {rgerr:.5e}\n"
         "I(0)  = {I0:.5e} +- {I0err:.5e}\n"
+        "Rg    = {rg:.5e} +- {rgerr:.5e}\n"
+        "r_avg = {r:.5e} +- {rerr:.5e}\n"
         "Vp    = {Vp:.5e} +- {Vperr:.5e}\n"
         "MW_Vp = {mwVp:.5e} +- {mwVperr:.5e}\n"
+        "Vc    = {Vc:.5e} +- {Vcerr:.5e}\n"
         "MW_Vc = {mwVc:.5e} +- {mwVcerr:.5e}\n"
         "Lc    = {lc:.5e} +- {lcerr:.5e}\n"
-        ).format(dmax=sasrec.D,alpha=sasrec.alpha,rg=sasrec.rg,rgerr=sasrec.rgerr,
-            I0=sasrec.I0,I0err=sasrec.I0err,Vp=sasrec.Vp,Vperr=sasrec.Vperr,
-            mwVp=sasrec.mwVp,mwVperr=sasrec.mwVperr,mwVc=sasrec.mwVc,mwVcerr=sasrec.mwVcerr,
+        ).format(dmax=sasrec.D,alpha=sasrec.alpha,
+            I0=sasrec.I0,I0err=sasrec.I0err,
+            rg=sasrec.rg,rgerr=sasrec.rgerr,
+            r=sasrec.avgr,rerr=sasrec.avgrerr,
+            Vp=sasrec.Vp,Vperr=sasrec.Vperr,
+            mwVp=sasrec.mwVp,mwVperr=sasrec.mwVperr,
+            Vc=sasrec.Vc,Vcerr=sasrec.Vcerr,
+            mwVc=sasrec.mwVc,mwVcerr=sasrec.mwVcerr,
             lc=sasrec.lc,lcerr=sasrec.lcerr)
         return param_str
 
@@ -194,21 +223,29 @@ if __name__ == "__main__":
         axP.set_ylabel('P(r)')
         axP.set_xlabel('r')
 
-        axI.set_xlim([0,1.1*np.max(sasrec.q)])
-        axR.set_xlim([0,1.1*np.max(sasrec.q)])
+        #axI.set_xlim([0,1.1*np.max(sasrec.q)])
+        #axR.set_xlim([0,1.1*np.max(sasrec.q)])
+        axI.set_xlim([0,Iq_orig[-1,0]])
+        axR.set_xlim([0,Iq_orig[-1,0]])
         axP.set_xlim([0,1.1*np.max(sasrec.r)])
+
+        axI.set_ylim([0.25*np.min(sasrec.Ic[sasrec.qc<Iq_orig[-1,0]]),2*np.max(sasrec.Ic[sasrec.qc<Iq_orig[-1,0]])])
+        #axR.set_ylim([0,Iq_orig[-1,0]])
+        #axP.set_ylim([0,1.1*np.max(sasrec.r)])
 
         axcolor = 'lightgoldenrodyellow'
         axdmax = plt.axes([0.05, 0.125, 0.4, 0.03], facecolor=axcolor)
         axalpha = plt.axes([0.05, 0.075, 0.4, 0.03], facecolor=axcolor)
         #axnes = plt.axes([0.05, 0.025, 0.4, 0.03], facecolor=axcolor)
 
-        axrg = plt.figtext(.55, .125, "Rg = " + str(round(sasrec.rg,2)) + " +- " + str(round(sasrec.rgerr,2)))
-        axI0 = plt.figtext(.75, .125, "I(0) = " + str(round(sasrec.I0,2)) + " +- " + str(round(sasrec.I0err,2)))
-        axVpmw = plt.figtext(.55, .075, "Vp MW = " + str(round(sasrec.mwVp,2)) + " +- " + str(round(sasrec.mwVperr,2)))
-        axVp = plt.figtext(.75, .075, "Vp = " + str(round(sasrec.Vp,2)) + " +- " + str(round(sasrec.Vperr,2)))
-        axVcmw = plt.figtext(.55, .025, "Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2)))
-        axlc = plt.figtext(.75, .025, "Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2)))
+        axI0 = plt.figtext(.57, .125,   "I(0) = %.2e $\pm$ %.2e"%(sasrec.I0,sasrec.I0err),family='monospace')
+        axrg = plt.figtext(.57, .075,   "Rg   = %.2e $\pm$ %.2e"%(sasrec.rg,sasrec.rgerr),family='monospace')
+        axrav = plt.figtext(.57, .025,  "$\overline{r}$    = %.2e $\pm$ %.2e"%(sasrec.avgr,sasrec.avgrerr),family='monospace')
+        axVp = plt.figtext(.77, .125,   "Vp = %.2e $\pm$ %.2e"%(sasrec.Vp,sasrec.Vperr),family='monospace')
+        axVc = plt.figtext(.77, .075,   "Vc = %.2e $\pm$ %.2e"%(sasrec.Vc,sasrec.Vcerr),family='monospace')
+        axlc = plt.figtext(.77, .025,   "Lc = %.2e $\pm$ %.2e"%(sasrec.lc,sasrec.lcerr),family='monospace')
+        #axVpmw = plt.figtext(.55, .075, "Vp MW = %.2e $\pm$ %.2e"%(sasrec.mwVp,sasrec.mwVperr),family='monospace')
+        #axVcmw = plt.figtext(.55, .025, "Vc MW = %.2e $\pm$ %.2e"%(sasrec.mwVc,sasrec.mwVcerr),family='monospace')
 
         sdmax = Slider(axdmax, 'Dmax', 0.0, args.max_dmax, valinit=D)
         sdmax.valtext.set_visible(False)
@@ -234,12 +271,14 @@ if __name__ == "__main__":
             I_l2.set_data(sasrec.qc[:n2], sasrec.Ic[:n2])
             Ires_l1.set_data(sasrec.q, res)
             P_l2.set_data(sasrec.r, sasrec.P)
-            axrg.set_text("Rg = " + str(round(sasrec.rg,2)) + " +- " + str(round(sasrec.rgerr,2)))
-            axI0.set_text("I(0) = " + str(round(sasrec.I0,2)) + " +- " + str(round(sasrec.I0err,2)))
-            axVp.set_text("Vp = " + str(round(sasrec.Vp,2)) + " +- " + str(round(sasrec.Vperr,2)))
-            axVpmw.set_text("Vp MW = " + str(round(sasrec.mwVp,2)) + " +- " + str(round(sasrec.mwVperr,2)))
-            axVcmw.set_text("Vc MW = " + str(round(sasrec.mwVc,2)) + " +- " + str(round(sasrec.mwVcerr,2)))
-            axlc.set_text("Lc = " + str(round(sasrec.lc,2)) + " +- " + str(round(sasrec.lcerr,2)))
+            axI0.set_text("I(0) = %.2e $\pm$ %.2e"%(sasrec.I0,sasrec.I0err))
+            axrg.set_text("Rg   = %.2e $\pm$ %.2e"%(sasrec.rg,sasrec.rgerr))
+            axrav.set_text("$\overline{r}$    = %.2e $\pm$ %.2e"%(sasrec.avgr,sasrec.avgrerr))
+            axVp.set_text("Vp = %.2e $\pm$ %.2e"%(sasrec.Vp,sasrec.Vperr))
+            axVc.set_text("Vc = %.2e $\pm$ %.2e"%(sasrec.Vc,sasrec.Vcerr))
+            axlc.set_text("Lc = %.2e $\pm$ %.2e"%(sasrec.lc,sasrec.lcerr))
+            #axVpmw.set_text("Vp MW = %.2e $\pm$ %.2e"%(sasrec.mwVp,sasrec.mwVperr))
+            #axVcmw.set_text("Vc MW = %.2e $\pm$ %.2e"%(sasrec.mwVc,sasrec.mwVcerr))
 
         def n1_submit(text):
             dmax = sdmax.val
