@@ -346,7 +346,6 @@ if __name__ == "__main__":
 
         # making a text entry for dmax that allows for user input
         Dvalue = "{dmax:.4e}".format(dmax=dmax)
-        print(Dvalue)
         axIntDmax = plt.axes([0.45, 0.125, 0.08, 0.03])
         Dmax_box = TextBox(axIntDmax, '', initial=Dvalue)
         Dmax_box.on_submit(D_submit)
