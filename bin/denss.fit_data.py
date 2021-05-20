@@ -345,13 +345,14 @@ if __name__ == "__main__":
             fig.canvas.draw_idle()
 
         # making a text entry for dmax that allows for user input
-        Dvalue = "{}".format(dmax)
+        Dvalue = "{dmax:.4e}".format(dmax=dmax)
+        print(Dvalue)
         axIntDmax = plt.axes([0.45, 0.125, 0.08, 0.03])
         Dmax_box = TextBox(axIntDmax, '', initial=Dvalue)
         Dmax_box.on_submit(D_submit)
 
         # making a text entry for alpha that allows for user input
-        Avalue = "{}".format(alpha)
+        Avalue = "{alpha:.4e}".format(alpha=alpha)
         axIntAlpha = plt.axes([0.45, 0.075, 0.08, 0.03])
         Alpha_box = TextBox(axIntAlpha, '', initial=Avalue)
         Alpha_box.on_submit(A_submit)
