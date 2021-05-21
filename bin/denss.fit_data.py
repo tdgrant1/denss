@@ -87,6 +87,7 @@ if __name__ == "__main__":
         D, sasrec = saxs.estimate_dmax(Iq,clean_up=True)
     else:
         D = args.dmax
+        sasrec = saxs.Sasrec(Iq, D, alpha=0.0)
 
     if args.max_dmax is None:
         args.max_dmax = 2.*D
