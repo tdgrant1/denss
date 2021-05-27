@@ -111,13 +111,12 @@ if __name__ == "__main__":
         qsph = qe[qe>Iq[-1,0]]
         #simulate scattering of sphere of Rg of particle
         Isph = saxs.sphere(q=qsph,R=3./5.*sasrec.rg**0.5)
-        #Isph += np.random.normal(Isph*1e-2,size=len(Isph))
         Isph += np.random.normal(Isph*1e-2,size=len(Isph))
         idx = np.where(Isph>0)
         qsph = qsph[idx]
         Isph = Isph[idx]
         #scale extrapolated intensity to match data
-        Isph *= Iq[-20,1].mean()/Isph[:20].mean()
+        Isph *= Iq[-50:,1].mean()/Isph[:20].mean()
         ssph = Isph*1.e6 #try huge error bars
         Iqe = np.concatenate((Iq,np.vstack((qsph,Isph,ssph)).T))
         #save original Iq for plotting
@@ -137,16 +136,37 @@ if __name__ == "__main__":
     dq = (qmax-qmin)/(q.size-1)
     nq = int(qmin/dq)
     qc = np.concatenate(([0.0],np.arange(nq)*dq+(qmin-nq*dq),q))
-    #Icerr = np.concatenate((np.ones(nq+1)*Iq[0,2],Iq[:,2]))
+    Icerr = np.concatenate((np.ones(nq+1)*Iq[0,2],Iq[:,2]))
 
     if args.qfile is not None:
         qc = np.loadtxt(args.qfile,usecols=(0,))
 
-    Icerr = np.interp(qc,Iq[:,0],Iq[:,2])
+    sasrec = saxs.Sasrec(Iq, D, alpha=0.0)
+    ideal_chi2 = sasrec.calc_chi2()
 
-    est_alpha = 100./sasrec.I0**2
+    al = []
+    chi2 = []
+    alphas = np.arange(-10,20.)
+    for alpha in alphas:
+        sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=None, alpha=10.**alpha, ne=nes)
+        r = sasrec.r
+        pi = np.pi
+        N = sasrec.N[:,None]
+        In = sasrec.In[:,None]
+        chi2value = sasrec.calc_chi2()
+        al.append(alpha)
+        chi2.append(chi2value)
+    chi2 = np.array(chi2)
+
+    #find optimal alpha value based on where chi2 begins to rise, to 10% above the ideal chi2 (where alpha=0)
+    x = np.linspace(alphas[0],alphas[-1],1000)
+    y = np.interp(x, alphas, chi2)
+    chif = 1.1
+    ali = np.argmin(y<=chif*ideal_chi2)
+    opt_alpha = 10.0**np.interp(chif*ideal_chi2,[y[ali+1],y[ali]],[x[ali+1],x[ali]])
+
     if args.alpha is None:
-        alpha = est_alpha
+        alpha = opt_alpha
     else:
         alpha = args.alpha
     sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=None, alpha=alpha, ne=nes)
@@ -156,7 +176,7 @@ if __name__ == "__main__":
     #significant, or so huge it becomes difficult to find the right value
     if args.max_alpha is None:
         if alpha == 0.0:
-            max_alpha = 2*est_alpha
+            max_alpha = 2*opt_alpha
         else:
             max_alpha = 2*alpha
 

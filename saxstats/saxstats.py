@@ -2005,6 +2005,13 @@ class Sasrec(object):
         self.lc = self.Ish2lc()
         self.lcerr = self.lcerrf()
 
+    def calc_chi2(self):
+        Ish = self.In
+        Bn = self.B
+        #calculate Ic at experimental q vales for chi2 calculation
+        Ic_qe = 2*np.einsum('n,nq->q',Ish,Bn)
+        return (1./(self.nq-self.n-1.))*np.sum(1/(self.Ierr**2)*(self.I-Ic_qe)**2)
+
     def shannon_channels(self, D, qmax=0.5, qmin=0.0):
         """Return the number of Shannon channels given a q range and maximum particle dimension"""
         width = np.pi / D
