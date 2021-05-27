@@ -80,7 +80,21 @@ if __name__ == "__main__":
 
     Iq = np.genfromtxt(args.file, invalid_raise = False, usecols=(0,1,2))
     Iq = Iq[~np.isnan(Iq).any(axis = 1)]
+    #get rid of any data points equal to zero in the intensities or errors columns
+    idx = np.where((Iq[:,1]!=0)&(Iq[:,2]!=0))
+    Iq = Iq[idx]
     nes = args.nes
+
+    if args.n1 is None:
+        n1 = 0
+    else:
+        n1 = args.n1
+    if args.n2 is None:
+        n2 = len(Iq[:,0])
+    else:
+        n2 = args.n2
+
+    Iq = Iq[n1:n2]
 
     if args.dmax is None:
         #estimate dmax directly from data
@@ -113,6 +127,9 @@ if __name__ == "__main__":
     else:
         Iq_orig = np.copy(Iq)
 
+    n1 = 0
+    n2 = len(Iq)
+
     q = Iq[:,0]
     #create a calculated q range for Sasrec
     qmax = q.max()
@@ -125,12 +142,7 @@ if __name__ == "__main__":
     if args.qfile is not None:
         qc = np.loadtxt(args.qfile,usecols=(0,))
 
-    if args.n1 is None:
-        n1 = 0
-    if args.n2 is None:
-        n2 = len(qc)
-
-    Icerr = np.interp(qc,q,Iq[n1:n2,2])
+    Icerr = np.interp(qc,Iq[:,0],Iq[:,2])
 
     est_alpha = 100./sasrec.I0**2
     if args.alpha is None:
