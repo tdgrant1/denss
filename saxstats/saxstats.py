@@ -762,7 +762,15 @@ def calc_rg_I0_by_guinier(Iq,nb=None,ne=None):
         nb = 0
     if ne is None:
         ne = Iq.shape[0]
-    m, b = stats.linregress(Iq[nb:ne,0]**2,np.log(Iq[nb:ne,1]))[:2]
+    while True:
+        m, b = stats.linregress(Iq[nb:ne,0]**2,np.log(Iq[nb:ne,1]))[:2]
+        print(m,b)
+        if m < 0.0: 
+            break
+        else:
+            nb += 1
+            if nb>ne:
+                ne = nb+3
     rg = (-3*m)**(0.5)
     I0 = np.exp(b)
     return rg, I0
