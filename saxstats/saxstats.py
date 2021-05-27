@@ -764,7 +764,6 @@ def calc_rg_I0_by_guinier(Iq,nb=None,ne=None):
         ne = Iq.shape[0]
     while True:
         m, b = stats.linregress(Iq[nb:ne,0]**2,np.log(Iq[nb:ne,1]))[:2]
-        print(m,b)
         if m < 0.0: 
             break
         else:
