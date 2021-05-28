@@ -144,28 +144,30 @@ if __name__ == "__main__":
     sasrec = saxs.Sasrec(Iq, D, alpha=0.0)
     ideal_chi2 = sasrec.calc_chi2()
 
-    al = []
-    chi2 = []
-    alphas = np.arange(-10,20.)
-    for alpha in alphas:
-        sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=None, alpha=10.**alpha, ne=nes)
-        r = sasrec.r
-        pi = np.pi
-        N = sasrec.N[:,None]
-        In = sasrec.In[:,None]
-        chi2value = sasrec.calc_chi2()
-        al.append(alpha)
-        chi2.append(chi2value)
-    chi2 = np.array(chi2)
-
-    #find optimal alpha value based on where chi2 begins to rise, to 10% above the ideal chi2 (where alpha=0)
-    x = np.linspace(alphas[0],alphas[-1],1000)
-    y = np.interp(x, alphas, chi2)
-    chif = 1.1
-    ali = np.argmin(y<=chif*ideal_chi2)
-    opt_alpha = 10.0**np.interp(chif*ideal_chi2,[y[ali+1],y[ali]],[x[ali+1],x[ali]])
-
     if args.alpha is None:
+        al = []
+        chi2 = []
+        #here, alphas are actually the exponents, since the range can
+        #vary from 10^-10 upwards of 10^20. This should cover nearly all likely values
+        alphas = np.arange(-10,20.)
+        for alpha in alphas:
+            #print("***** ALPHA ****** %.5e"%alpha)
+            sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=None, alpha=10.**alpha, ne=nes)
+            r = sasrec.r
+            pi = np.pi
+            N = sasrec.N[:,None]
+            In = sasrec.In[:,None]
+            chi2value = sasrec.calc_chi2()
+            al.append(alpha)
+            chi2.append(chi2value)
+        chi2 = np.array(chi2)
+
+        #find optimal alpha value based on where chi2 begins to rise, to 10% above the ideal chi2 (where alpha=0)
+        x = np.linspace(alphas[0],alphas[-1],1000)
+        y = np.interp(x, alphas, chi2)
+        chif = 2.0
+        ali = np.argmin(y<=chif*ideal_chi2)
+        opt_alpha = 10.0**(np.interp(chif*ideal_chi2,[y[ali+1],y[ali]],[x[ali+1],x[ali]])-1)
         alpha = opt_alpha
     else:
         alpha = args.alpha
