@@ -242,6 +242,7 @@ if __name__ == "__main__":
 
         I_l1, = axI.plot(sasrec.q, sasrec.I, 'k.')
         I_l2, = axI.plot(sasrec.qc, sasrec.Ic, 'r-', lw=2)
+        I_l3, = axI.plot(sasrec.qn, sasrec.In, 'bo', mec='b', mfc='none', mew=2)
         if args.log: axI.semilogy()
         axI.set_ylabel('I(q)')
         axI.set_xlabel('q')
@@ -304,6 +305,7 @@ if __name__ == "__main__":
             Icinterp = np.interp(sasrec.q, sasrec.qc, np.abs(sasrec.Ic))
             res = np.log10(np.abs(sasrec.I)) - np.log10(Icinterp)
             I_l2.set_data(sasrec.qc[:n2], sasrec.Ic[:n2])
+            I_l3.set_data(sasrec.qn, sasrec.In)
             Ires_l1.set_data(sasrec.q, res)
             P_l2.set_data(sasrec.r, sasrec.P)
             axI0.set_text("I(0) = %.2e $\pm$ %.2e"%(sasrec.I0,sasrec.I0err))
