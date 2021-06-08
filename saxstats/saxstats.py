@@ -35,7 +35,7 @@ from __future__ import print_function, division, unicode_literals
 try:
     from builtins import object, range, map, zip, str
 except ImportError:
-    from builtin import object, range, map, zip, str
+    from __builtin__ import object, range, map, zip, str
 from io import open
 
 import sys
