@@ -838,8 +838,8 @@ def filter_P(r,P,sigr=None,qmax=0.5,cutoff=0.75,qmin=0.0,cutoffmin=1.25):
 def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False,
     limit_dmax_steps=[500], recenter=True, recenter_steps=None,
     recenter_mode="com", positivity=True, extrapolate=True, output="map",
-    steps=None, seed=None, flatten_low_density=True, rho_start=None, add_noise=None, 
-    shrinkwrap=True, shrinkwrap_old_method=False,shrinkwrap_sigma_start=3, 
+    steps=None, seed=None, flatten_low_density=True, rho_start=None, add_noise=None,
+    shrinkwrap=True, shrinkwrap_old_method=False,shrinkwrap_sigma_start=3,
     shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
     shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01,
     write_xplor_format=False, write_freq=100, enforce_connectivity=True,
@@ -1111,13 +1111,13 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         if ncs != 0 and j in [stepi+1 for stepi in ncs_steps]:
             if DENSS_GPU:
                 newrho = cp.asnumpy(newrho)
-            if ncs_axis == 1: 
+            if ncs_axis == 1:
                 axes=(1,2) #longest
                 axes2=(0,1) #shortest
-            if ncs_axis == 2: 
+            if ncs_axis == 2:
                 axes=(0,2) #middle
                 axes2=(0,1) #shortest
-            if ncs_axis == 3: 
+            if ncs_axis == 3:
                 axes=(0,1) #shortest
                 axes2=(1,2) #longest
             degrees = 360./ncs
@@ -1271,7 +1271,11 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         if j%500==0 and not gui:
             my_logger.info('Step % 5i: % 4.2e % 3.2f       % 5i          ', j, chi[j], rg[j], supportV[j])
 
-        if j > 101 + shrinkwrap_minstep and mystd(chi[j-100:j], DENSS_GPU=DENSS_GPU) < chi_end_fraction * mymean(chi[j-100:j], DENSS_GPU=DENSS_GPU):
+        if DENSS_GPU:
+            lesser = mystd(chi[j-100:j], DENSS_GPU=DENSS_GPU).get() < chi_end_fraction * mymean(chi[j-100:j], DENSS_GPU=DENSS_GPU).get()
+        else:
+            lesser = mystd(chi[j-100:j], DENSS_GPU=DENSS_GPU) < chi_end_fraction * mymean(chi[j-100:j], DENSS_GPU=DENSS_GPU)
+        if j > 101 + shrinkwrap_minstep and lesser:
             break
 
         rho = newrho
