@@ -99,7 +99,10 @@ def parse_arguments(parser):
 
     if args.output is None:
         basename, ext = os.path.splitext(args.file)
-        args.output = basename
+        if args.rho_start is not None:
+            args.output = basename + "_refine"
+        else:
+            args.output = basename
     else:
         args.output = args.output
 
