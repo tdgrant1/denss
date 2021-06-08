@@ -718,7 +718,8 @@ def loadProfile(fname, units="a"):
         q, I, Ierr, Ifit, results = loadDatFile(fname)
         isfit = False
 
-    keys = {key.lower().strip().translate(str.maketrans('','', '_ ')): key for key in list(results.keys())}
+    #keys = {key.lower().strip().translate(str.maketrans('','', '_ ')): key for key in list(results.keys())}
+    keys = {key.lower().strip(): key for key in list(results.keys())}
 
     if 'dmax' in keys:
         dmax = float(results[keys['dmax']])
@@ -827,13 +828,18 @@ def filter_P(r,P,sigr=None,qmax=0.5,cutoff=0.75,qmin=0.0,cutoffmin=1.25):
         fcmin = (cutoffmin*qmin/(2*np.pi))/nyq
         b = signal.firwin(ntaps, [fcmin,fc],pass_zero=False, window='hann')
     a = np.array([1])
-    Pfilt = signal.filtfilt(tuple(b),tuple(a),tuple(P),padlen=len(r)-1)
-    r = np.arange(npts)/fs
-    if sigr is not None:
-        sigrfilt = signal.filtfilt(b, a, sigr,padlen=len(r)-1)/(2*np.pi)
-        return r, Pfilt, sigrfilt
-    else:
-        return r, Pfilt
+    import warnings
+    with warnings.catch_warnings():
+        #theres a warning from filtfilt that is a bug in older scipy versions
+        #we are just going to suppress that here.
+        warnings.filterwarnings("ignore")
+        Pfilt = signal.filtfilt(tuple(b),tuple(a),tuple(P),padlen=len(r)-1)
+        r = np.arange(npts)/fs
+        if sigr is not None:
+            sigrfilt = signal.filtfilt(b, a, sigr,padlen=len(r)-1)/(2*np.pi)
+            return r, Pfilt, sigrfilt
+        else:
+            return r, Pfilt
 
 def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False,
     limit_dmax_steps=[500], recenter=True, recenter_steps=None,
