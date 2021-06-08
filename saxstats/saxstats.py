@@ -32,7 +32,10 @@
 #
 
 from __future__ import print_function, division, unicode_literals
-from builtins import object, range, map, zip, str
+try:
+    from builtins import object, range, map, zip, str
+except ImportError:
+    from builtin import object, range, map, zip, str
 from io import open
 
 import sys

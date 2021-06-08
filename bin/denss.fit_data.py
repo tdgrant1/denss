@@ -33,17 +33,11 @@
 
 from __future__ import print_function
 import datetime, time
-import os, argparse, sys, imp
+import os, argparse, sys
 import logging
 import numpy as np
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
-try:
-    imp.find_module('matplotlib')
-    matplotlib_found = True
-    from matplotlib.gridspec import GridSpec
-except ImportError:
-    matplotlib_found = False
 
 parser = argparse.ArgumentParser(description="A tool for fitting solution scattering data with smooth function based on Moore's algorithm for fitting a trigonometric series.", formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
@@ -61,12 +55,20 @@ parser.add_argument("--no_gui", dest="plot", action="store_false", help="Do not 
 parser.add_argument("--no_log", dest="log", action="store_false", help="Do not plot on log y axis.")
 parser.add_argument("--no_extrapolation", dest="extrapolate", action="store_false", help="Do not extrapolate high q data.")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
-if matplotlib_found:
-    parser.set_defaults(plot=True)
-else:
-    parser.set_defaults(plot=False)
-parser.set_defaults(log=True)
+parser.set_defaults(plot=True)
 args = parser.parse_args()
+
+if args.plot:
+    #if plotting is enabled, try to import matplotlib
+    #if import fails, set plotting to false
+    try:
+        import matplotlib
+        #matplotlib.use('TkAgg')
+        matplotlib.use('Qt5Agg')
+        import matplotlib.pyplot as plt
+        from matplotlib.widgets import Slider, Button, RadioButtons, TextBox
+    except ImportError:
+        args.plot = False
 
 if __name__ == "__main__":
 
@@ -225,11 +227,6 @@ if __name__ == "__main__":
         print("%s and %s files saved" % (output+".fit",output+"_pr.dat"))
 
     if args.plot:
-        import matplotlib
-        #matplotlib.use('TkAgg')
-        matplotlib.use('Qt5Agg')
-        import matplotlib.pyplot as plt
-        from matplotlib.widgets import Slider, Button, RadioButtons, TextBox
 
         #fig, (axI, axP) = plt.subplots(1, 2, figsize=(12,6))
         fig = plt.figure(0, figsize=(12,6))

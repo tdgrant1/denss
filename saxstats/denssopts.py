@@ -2,16 +2,6 @@
 
 from ._version import __version__
 import os, argparse
-import imp
-try:
-    imp.find_module('matplotlib')
-    matplotlib_found = True
-    import matplotlib.pyplot as plt
-    from  matplotlib.colors import colorConverter as cc
-    import matplotlib.gridspec as gridspec
-except ImportError:
-    matplotlib_found = False
-
 import numpy as np
 from . import saxstats as saxs
 
@@ -96,11 +86,16 @@ def parse_arguments(parser):
     parser.set_defaults(cutout=False)
     parser.set_defaults(quiet = False)
     parser.set_defaults(DENSS_GPU = False)
-    if matplotlib_found:
-        parser.set_defaults(plot=True)
-    else:
-        parser.set_defaults(plot=False)
+    parser.set_defaults(plot=True)
     args = parser.parse_args()
+
+    if args.plot:
+        #if plotting is enabled, try to import matplotlib
+        #if import fails, set plotting to false
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError:
+            args.plot = False
 
     if args.output is None:
         basename, ext = os.path.splitext(args.file)

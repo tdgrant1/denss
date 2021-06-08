@@ -34,15 +34,6 @@ import saxstats.denssopts as dopts
 import numpy as np
 import sys, argparse, os
 import logging
-import imp
-try:
-    imp.find_module('matplotlib')
-    matplotlib_found = True
-    import matplotlib.pyplot as plt
-    from  matplotlib.colors import colorConverter as cc
-    import matplotlib.gridspec as gridspec
-except ImportError:
-    matplotlib_found = False
 
 parser = argparse.ArgumentParser(description="DENSS: DENsity from Solution Scattering.\n A tool for calculating an electron density map from solution scattering data", formatter_class=argparse.RawTextHelpFormatter)
 args = dopts.parse_arguments(parser)
@@ -143,7 +134,11 @@ if __name__ == "__main__":
 
     print("\n%s"%args.output)
 
-    if args.plot and matplotlib_found:
+    if args.plot:
+        import matplotlib.pyplot as plt
+        from  matplotlib.colors import colorConverter as cc
+        import matplotlib.gridspec as gridspec
+
         qraw = args.qraw
         Iraw = args.Iraw
         q = args.q

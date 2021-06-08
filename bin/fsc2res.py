@@ -3,24 +3,22 @@
 from __future__ import print_function
 import numpy as np
 import os, sys, argparse
-import imp
-try:
-    imp.find_module('matplotlib')
-    matplotlib_found = True
-    import matplotlib.pyplot as plt
-except ImportError:
-    matplotlib_found = False
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-f", "--file", type=str, nargs='+', help="FSC (Fourier Shell Correlation) filename(s) (multiple FSCs will be averaged)")
 parser.add_argument("--plot_on", dest="plot", action="store_true", help="Create simple plots of results (requires Matplotlib, default if module exists).")
 parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not create simple plots of results. (Default if Matplotlib does not exist)")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
-if matplotlib_found:
-    parser.set_defaults(plot=True)
-else:
-    parser.set_defaults(plot=False)
+parser.set_defaults(plot=True)
 args = parser.parse_args()
+
+if args.plot:
+    #if plotting is enabled, try to import matplotlib
+    #if import fails, set plotting to false
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        args.plot = False
 
 if args.output is None:
     basename, ext = os.path.splitext(args.file[0])
@@ -43,8 +41,6 @@ if nf==1:
 else:
     fsc = np.mean(fscs,axis=0)
 
-np.savetxt(output,fsc,delimiter=' ',fmt='%.5e',header="1/resolution, FSC")
-
 x = np.linspace(fsc[0,0],fsc[-1,0],1000)
 y = np.interp(x, fsc[:,0], fsc[:,1])
 
@@ -52,6 +48,8 @@ resi = np.argmin(y>=0.5)
 resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
 
 resn = round(float(1./resx),1)
+
+np.savetxt(output,fsc,delimiter=' ',fmt='%.5e',header="1/resolution, FSC")
 
 print("Resolution: %.1f A" % resn)
 
