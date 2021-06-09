@@ -1142,6 +1142,32 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                 newrho_total += np.copy(sym)
             newrho = newrho_total / ncs
 
+            #run shrinkwrap after ncs averaging to get new support
+            if shrinkwrap_old_method:
+                #run the old method
+                if j>500:
+                    absv = True
+                else:
+                    absv = False
+                newrho, support = shrinkwrap_by_density_value(newrho,absv=absv,sigma=sigma,threshold=threshold,recenter=recenter,recenter_mode=recenter_mode)
+            else:
+                swN = int(swV/dV)
+                #end this stage of shrinkwrap when the volume is less than a sphere of radius D/2
+                if swbyvol and swV > swVend:
+                    newrho, support, threshold = shrinkwrap_by_volume(newrho,absv=True,sigma=sigma,N=swN,recenter=recenter,recenter_mode=recenter_mode)
+                    swV *= swV_decay
+                else:
+                    threshold = shrinkwrap_threshold_fraction
+                    if first_time_swdensity:
+                        if not quiet:
+                            if gui:
+                                my_logger.info("switched to shrinkwrap by density threshold = %.4f" %threshold)
+                            else:
+                                print("\nswitched to shrinkwrap by density threshold = %.4f" %threshold)
+                        first_time_swdensity = False
+                    newrho, support = shrinkwrap_by_density_value(newrho,absv=True,sigma=sigma,threshold=threshold,recenter=recenter,recenter_mode=recenter_mode)
+
+
             if DENSS_GPU:
                 newrho = cp.array(newrho)
 
@@ -1879,7 +1905,6 @@ def multi_average_two(niter, **kwargs):
     """ Wrapper script for averaging two maps for multiprocessing."""
     #kwargs['rho1']=kwargs['rho1'][niter]
     #kwargs['rho2']=kwargs['rho2'][niter]
-    time.sleep(1)
     return average_two(kwargs['rho1'][niter],kwargs['rho2'][niter],abort_event=kwargs['abort_event'])
 
 def average_pairs(rhos, cores=1, abort_event=None, single_proc=False):
