@@ -80,6 +80,8 @@ del args.Iraw
 
 def multi_denss(niter, **kwargs):
     try:
+        time.sleep(1)
+
         # Processing keyword args for compatibility with RAW GUI
         kwargs['path'] = '.'
 
@@ -111,8 +113,9 @@ def multi_denss(niter, **kwargs):
         result = saxs.denss(**kwargs)
         logger.info('END')
         return result
-        time.sleep(1)
+
     except KeyboardInterrupt:
+        print("KeyboardInterrupt")
         pass
 
 

@@ -47,6 +47,7 @@ import logging
 from functools import partial
 import multiprocessing
 import datetime, time
+from time import sleep
 
 import numpy as np
 from scipy import ndimage, interpolate, spatial, special, optimize, signal, stats
@@ -1626,15 +1627,16 @@ def minimize_rho_score(T, refrho, movrho):
 def rho_overlap_score(rho1,rho2, threshold=None):
     """Scoring function for superposition of electron density maps."""
     if threshold is None:
-        n=2*np.sum(np.abs(rho1*rho2))
-        d=(2*np.sum(rho1**2)**0.5*np.sum(rho2**2)**0.5)
+        n=np.sum(rho1*rho2)
+        d=np.sum(rho1**2)**0.5*np.sum(rho1**2)**0.5
     else:
         #if there's a threshold, base it on only one map, then use
         #those indices for both maps to ensure the same pixels are compared
         idx = np.where(np.abs(rho1)>threshold*np.abs(rho1).max())
-        n=2*np.sum(np.abs(rho1[idx]*rho2[idx]))
+        n=2*np.sum(rho1[idx]*rho2[idx])
         d=(2*np.sum(rho1[idx]**2)**0.5*np.sum(rho2[idx]**2)**0.5)
     score = n/d
+    #print(n,d,score)
     #-score for least squares minimization, i.e. want to minimize, not maximize score
     return -score
 
@@ -1786,44 +1788,59 @@ def align(refrho, movrho, coarse=True, abort_event=None):
         if abort_event.is_set():
             return None, None
 
-    ne_rho = np.sum((movrho))
-    #movrho, score = minimize_rho(refrho, movrho)
-    movrho, score = coarse_then_fine_alignment(refrho=refrho, movrho=movrho, coarse=coarse, topn=5,
-        abort_event=abort_event)
+    try:
+        sleep(1)
+        ne_rho = np.sum((movrho))
+        #movrho, score = minimize_rho(refrho, movrho)
+        movrho, score = coarse_then_fine_alignment(refrho=refrho, movrho=movrho, coarse=coarse, topn=5,
+            abort_event=abort_event)
 
-    if movrho is not None:
-        movrho *= ne_rho/np.sum(movrho)
+        if movrho is not None:
+            movrho *= ne_rho/np.sum(movrho)
 
-    return movrho, score
+        return movrho, score
+
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt")
+        pass
+
 
 def select_best_enantiomer(refrho, rho, abort_event=None):
     """ Generate, align and select the enantiomer that best fits the reference map."""
     #translate refrho to center in case not already centered
     #just use roll to approximate translation to avoid interpolation, since
     #fine adjustments and interpolation will happen during alignment step
-    c_refrho = center_rho_roll(refrho)
-    #center rho in case it is not centered. use roll to get approximate location
-    #and avoid interpolation
-    c_rho = center_rho_roll(rho)
-    #generate an array of the enantiomers
-    enans = generate_enantiomers(c_rho)
-    #allow for abort
-    if abort_event is not None:
-        if abort_event.is_set():
-            return None, None
 
-    #align each enantiomer and store the aligned maps and scores in results list
-    results = [align(c_refrho, enan, abort_event=abort_event) for enan in enans]
+    try:
+        sleep(1)
 
-    #now select the best enantiomer
-    #rather than return the aligned and therefore interpolated enantiomer,
-    #instead just return the original enantiomer, flipped from the original map
-    #then no interpolation has taken place. So just dont overwrite enans essentially.
-    #enans = np.array([results[k][0] for k in range(len(results))])
-    enans_scores = np.array([results[k][1] for k in range(len(results))])
-    best_i = np.argmax(enans_scores)
-    best_enan, best_score = enans[best_i], enans_scores[best_i]
-    return best_enan, best_score
+        c_refrho = center_rho_roll(refrho)
+        #center rho in case it is not centered. use roll to get approximate location
+        #and avoid interpolation
+        c_rho = center_rho_roll(rho)
+        #generate an array of the enantiomers
+        enans = generate_enantiomers(c_rho)
+        #allow for abort
+        if abort_event is not None:
+            if abort_event.is_set():
+                return None, None
+
+        #align each enantiomer and store the aligned maps and scores in results list
+        results = [align(c_refrho, enan, abort_event=abort_event) for enan in enans]
+
+        #now select the best enantiomer
+        #rather than return the aligned and therefore interpolated enantiomer,
+        #instead just return the original enantiomer, flipped from the original map
+        #then no interpolation has taken place. So just dont overwrite enans essentially.
+        #enans = np.array([results[k][0] for k in range(len(results))])
+        enans_scores = np.array([results[k][1] for k in range(len(results))])
+        best_i = np.argmax(enans_scores)
+        best_enan, best_score = enans[best_i], enans_scores[best_i]
+        return best_enan, best_score
+
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt")
+        pass
 
 def select_best_enantiomers(rhos, refrho=None, cores=1, avg_queue=None,
     abort_event=None, single_proc=False):
@@ -1847,6 +1864,7 @@ def select_best_enantiomers(rhos, refrho=None, cores=1, avg_queue=None,
         except KeyboardInterrupt:
             pool.terminate()
             pool.close()
+            sys.exit(1)
             raise
 
     else:
@@ -1886,6 +1904,7 @@ def align_multiple(refrho, rhos, cores=1, abort_event=None, single_proc=False):
         except KeyboardInterrupt:
             pool.terminate()
             pool.close()
+            sys.exit(1)
             raise
     else:
         results = [align(refrho, rho, abort_event=abort_event) for rho in rhos]
@@ -1903,9 +1922,12 @@ def average_two(rho1, rho2, abort_event=None):
 
 def multi_average_two(niter, **kwargs):
     """ Wrapper script for averaging two maps for multiprocessing."""
-    #kwargs['rho1']=kwargs['rho1'][niter]
-    #kwargs['rho2']=kwargs['rho2'][niter]
-    return average_two(kwargs['rho1'][niter],kwargs['rho2'][niter],abort_event=kwargs['abort_event'])
+    try:
+        sleep(1)
+        return average_two(kwargs['rho1'][niter],kwargs['rho2'][niter],abort_event=kwargs['abort_event'])
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt")
+        pass
 
 def average_pairs(rhos, cores=1, abort_event=None, single_proc=False):
     """ Average pairs of electron density maps, second half to first half."""
@@ -1922,6 +1944,7 @@ def average_pairs(rhos, cores=1, abort_event=None, single_proc=False):
         except KeyboardInterrupt:
             pool.terminate()
             pool.close()
+            sys.exit(1)
             raise
     else:
         average_rhos = [multi_average_two(niter, **rho_args) for niter in

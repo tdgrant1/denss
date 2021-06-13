@@ -30,7 +30,6 @@
 from __future__ import print_function
 import os, sys, logging
 import numpy as np
-from scipy import ndimage
 import argparse
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
@@ -137,8 +136,8 @@ if __name__ == "__main__":
         else:
             ioutput = output
         saxs.write_mrc(aligned[i], sides[0], ioutput+'.mrc')
-        print("%s.mrc written. Score = %0.3f" % (ioutput,scores[i]))
-        logging.info('Correlation score to reference: %s.mrc %.3f', ioutput, scores[i])
+        print("%s.mrc written. Score = %0.3e" % (ioutput,scores[i]))
+        logging.info('Correlation score to reference: %s.mrc %.3e', ioutput, scores[i])
 
     logging.info('END')
 

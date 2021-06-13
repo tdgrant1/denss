@@ -31,7 +31,6 @@
 from __future__ import print_function
 import os, sys, logging
 import numpy as np
-from scipy import ndimage
 import argparse
 from saxstats._version import __version__
 import saxstats.saxstats as saxs

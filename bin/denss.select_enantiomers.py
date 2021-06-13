@@ -30,8 +30,6 @@
 from __future__ import print_function
 import sys, os, argparse, logging
 import numpy as np
-from scipy import ndimage
-from multiprocessing import Pool
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 
