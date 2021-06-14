@@ -80,7 +80,7 @@ if __name__ == "__main__":
         #value sampled by the fsc curve
         resx = np.max(fsc[:,0])
         resn = float(1./resx)
-        print("Resolution: %.1f A (maximum possible)" % resn)
+        print("Resolution: < %.1f A (maximum possible)" % resn)
     else:
         resi = np.argmin(y>=0.5)
         resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
