@@ -30,7 +30,6 @@
 from __future__ import print_function
 import sys, os, argparse, logging
 import numpy as np
-from scipy import ndimage
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 
@@ -142,8 +141,8 @@ if __name__ == "__main__":
     threshold = mean - 2*std
     filtered = np.empty(len(scores),dtype=str)
     print()
-    print("Mean of correlation scores: %.3f" % mean)
-    print("Standard deviation of scores: %.3f" % std)
+    print("Mean of correlation scores: %.3e" % mean)
+    print("Standard deviation of scores: %.3e" % std)
     for i in range(nmaps):
         if scores[i] < threshold:
             filtered[i] = 'Filtered'
@@ -152,17 +151,17 @@ if __name__ == "__main__":
         basename, ext = os.path.splitext(args.files[i])
         ioutput = basename+"_aligned"
         saxs.write_mrc(aligned[i], sides[0], ioutput+'.mrc')
-        print("%s.mrc written. Score = %0.3f %s " % (ioutput,scores[i],filtered[i]))
-        logging.info('Correlation score to reference: %s.mrc %.3f %s', ioutput, scores[i], filtered[i])
+        print("%s.mrc written. Score = %0.3e %s " % (ioutput,scores[i],filtered[i]))
+        logging.info('Correlation score to reference: %s.mrc %.3e %s', ioutput, scores[i], filtered[i])
 
     aligned = aligned[scores>threshold]
     average_rho = np.mean(aligned,axis=0)
 
-    logging.info('Mean of correlation scores: %.3f', mean)
-    logging.info('Standard deviation of the scores: %.3f', std)
+    logging.info('Mean of correlation scores: %.3e', mean)
+    logging.info('Standard deviation of the scores: %.3e', std)
     logging.info('Total number of input maps for alignment: %i',allrhos.shape[0])
     logging.info('Number of aligned maps accepted: %i', aligned.shape[0])
-    logging.info('Correlation score between average and reference: %.3f', -saxs.rho_overlap_score(average_rho, refrho))
+    logging.info('Correlation score between average and reference: %.3e', -saxs.rho_overlap_score(average_rho, refrho))
     saxs.write_mrc(average_rho, sides[0], output+'_avg.mrc')
     logging.info('END')
 

@@ -148,7 +148,7 @@ def rho2rg(rho,side=None,r=None,support=None,dx=None):
     if dx is None:
         print("Error: To calculate Rg, must provide dx")
         sys.exit()
-    rhocom = (np.array(ndimage.measurements.center_of_mass(rho))-np.array(rho.shape)/2.)*dx
+    rhocom = (np.array(ndimage.measurements.center_of_mass(np.abs(rho)))-np.array(rho.shape)/2.)*dx
     rg2 = np.sum(r[support]**2*rho[support])/np.sum(rho[support])
     rg2 = rg2 - np.linalg.norm(rhocom)**2
     rg = np.sign(rg2)*np.abs(rg2)**0.5
@@ -1182,7 +1182,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             if recenter_mode == "max":
                 rhocom = np.unravel_index(newrho.argmax(), newrho.shape)
             else:
-                rhocom = np.array(ndimage.measurements.center_of_mass(newrho))
+                rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(newrho)))
             gridcenter = np.array(newrho.shape)/2.
             shift = gridcenter-rhocom
             shift = shift.astype(int)
@@ -1497,7 +1497,7 @@ def center_rho(rho, centering="com", return_shift=False):
     if centering == "max":
         rhocom = np.unravel_index(rho.argmax(), rho.shape)
     else:
-        rhocom = np.array(ndimage.measurements.center_of_mass(rho))
+        rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
     gridcenter = np.array(rho.shape)/2.
     shift = gridcenter-rhocom
     rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
@@ -1514,9 +1514,9 @@ def center_rho_roll(rho, recenter_mode="com", return_shift=False):
     recenter_mode - a string either com (center of mass) or max (maximum density)
     """
     if recenter_mode == "max":
-        rhocom = np.unravel_index(rho.argmax(), rho.shape)
+        rhocom = np.unravel_index(np.abs(rho).argmax(), rho.shape)
     else:
-        rhocom = np.array(ndimage.measurements.center_of_mass(rho))
+        rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
     gridcenter = np.array(rho.shape)/2.
     shift = gridcenter-rhocom
     shift = shift.astype(int)
@@ -1636,7 +1636,6 @@ def rho_overlap_score(rho1,rho2, threshold=None):
         n=2*np.sum(rho1[idx]*rho2[idx])
         d=(2*np.sum(rho1[idx]**2)**0.5*np.sum(rho2[idx]**2)**0.5)
     score = n/d
-    #print(n,d,score)
     #-score for least squares minimization, i.e. want to minimize, not maximize score
     return -score
 
@@ -1648,7 +1647,7 @@ def transform_rho(rho, T, order=1):
     """
     ne_rho= np.sum((rho))
     R = euler2matrix(T[0],T[1],T[2])
-    c_in = np.array(ndimage.measurements.center_of_mass(rho))
+    c_in = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
     c_out = np.array(rho.shape)/2.
     offset = c_in-c_out.dot(R)
     offset += T[3:]
@@ -1714,7 +1713,7 @@ def principal_axis_alignment(refrho,movrho):
     side = 1.0
     ne_movrho = np.sum((movrho))
     #first center refrho and movrho, save refrho shift
-    rhocom = np.array(ndimage.measurements.center_of_mass(refrho))
+    rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(refrho)))
     gridcenter = np.array(refrho.shape)/2.
     shift = gridcenter-rhocom
     refrho = ndimage.interpolation.shift(refrho,shift,order=3,mode='wrap')
@@ -1733,7 +1732,7 @@ def principal_axis_alignment(refrho,movrho):
     movrho = enans[np.argmax(scores)]
     #now rotate movrho by the inverse of the refrho rotation
     R = np.linalg.inv(refR)
-    c_in = np.array(ndimage.measurements.center_of_mass(movrho))
+    c_in = np.array(ndimage.measurements.center_of_mass(np.abs(movrho)))
     c_out = np.array(movrho.shape)/2.
     offset=c_in-c_out.dot(R)
     movrho = ndimage.interpolation.affine_transform(movrho,R.T,order=3,offset=offset,mode='wrap')
@@ -1747,7 +1746,7 @@ def align2xyz(rho, return_transform=False):
     side = 1.0
     ne_rho = np.sum(rho)
     #shift refrho to the center
-    rhocom = np.array(ndimage.measurements.center_of_mass(rho))
+    rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
     gridcenter = np.array(rho.shape)/2.
     shift = gridcenter-rhocom
     rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
@@ -1763,7 +1762,7 @@ def align2xyz(rho, return_transform=False):
         I = inertia_tensor(rho, side)
         w,v = np.linalg.eigh(I) #principal axes
         R = v.T #rotation matrix
-        c_in = np.array(ndimage.measurements.center_of_mass(rho))
+        c_in = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
         c_out = np.array(rho.shape)/2.
         offset=c_in-c_out.dot(R)
         rho = ndimage.interpolation.affine_transform(rho, R.T, order=3,
@@ -1804,7 +1803,6 @@ def align(refrho, movrho, coarse=True, abort_event=None):
         print("KeyboardInterrupt")
         pass
 
-
 def select_best_enantiomer(refrho, rho, abort_event=None):
     """ Generate, align and select the enantiomer that best fits the reference map."""
     #translate refrho to center in case not already centered
@@ -1813,7 +1811,6 @@ def select_best_enantiomer(refrho, rho, abort_event=None):
 
     try:
         sleep(1)
-
         c_refrho = center_rho_roll(refrho)
         #center rho in case it is not centered. use roll to get approximate location
         #and avoid interpolation
