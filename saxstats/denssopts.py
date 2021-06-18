@@ -134,7 +134,7 @@ def parse_arguments(parser):
 
     if args.dmax is not None and args.dmax >= 0:
         dmax = args.dmax
-    elif file_dmax == -1:
+    elif file_dmax < 0:
         #if dmax from loadProfile() is -1, then dmax was not able
         #to be extracted from the file
         #in that case, estimate dmax directly from the data

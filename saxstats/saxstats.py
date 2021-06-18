@@ -471,8 +471,10 @@ def loadOutFile(filename):
     Jerr = np.concatenate((prepend,Jerr))
     Jreg = np.array(Jreg)
     Jreg = np.concatenate((prepend*0,Jreg))
+    Jexp = np.array(Jexp)
+    Jexp = np.concatenate((prepend*0,Jexp))
 
-    return np.array(qfull), np.array(Ireg), Jerr, Jreg, results
+    return np.array(qfull), Jexp, Jerr, np.array(Ireg), results
 
 def loadDatFile(filename):
     ''' Loads a Primus .dat format file. Taken from the BioXTAS RAW software package,
@@ -730,7 +732,8 @@ def loadProfile(fname, units="a"):
     if units == "nm":
         #DENSS assumes 1/angstrom, so convert from 1/nm to 1/angstrom
         q /= 10
-        dmax *= 10
+        if denss != -1:
+            dmax *= 10
         print("Angular units converted from 1/nm to 1/angstrom")
 
     return q, I, Ierr, Ifit, dmax, isfit
