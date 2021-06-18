@@ -44,6 +44,7 @@ parser.add_argument("-s", "--side", default=None, type=float, help="Desired leng
 parser.add_argument("-t","--threshold", default=None, type=float, help="Minimum density threshold (given as e-/A^3; sets lesser values to zero).")
 parser.add_argument("-ne","--ne", default=None, type=float, help="Desired number of electrons in map.")
 parser.add_argument("-zflip","--zflip", action="store_true", help="Generate the enantiomer by flipping map over Z axis.")
+parser.add_argument("-u", "--units", default=None, type=str, help="Change units (\"a\": [from nm to angstrom] or \"nm\": [from angstrom to nanometer])")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
 args = parser.parse_args()
 
@@ -64,17 +65,32 @@ if __name__ == "__main__":
     V = a*b*c
     dV = vx*vy*vz
     ne = np.sum(rho) * dV
+
     print("Original number of electrons:", ne)
+    print("prezoom")
+    print("Shape:  ", rho.shape)
+    print("Sides:  ", a, b, c)
+    print("Voxels: ", vx, vy, vz)
+
+    #change units. By default sf (scale factor) is 1.0 so no change
+    sf = 1.0
+    if args.units == "a":
+        sf = 10.0
+    if args.units == "nm":
+        sf = 0.1
+    a *= sf
+    b *= sf
+    c *= sf
+    vx *= sf
+    vy *= sf
+    vz *= sf
+    V = a*b*c
+    dV = vx*vy*vz
 
     if args.voxel is None:
         voxel = min((vx, vy, vz))
     else:
         voxel = args.voxel
-
-    print("prezoom")
-    print("Shape:  ", rho.shape)
-    print("Sides:  ", a, b, c)
-    print("Voxels: ", vx, vy, vz)
 
     if args.voxel is not None:
         #only resample if voxel option is defined by user
