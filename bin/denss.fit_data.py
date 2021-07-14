@@ -180,7 +180,7 @@ if __name__ == "__main__":
     #significant, or so huge it becomes difficult to find the right value
     if args.max_alpha is None:
         if alpha == 0.0:
-            max_alpha = 2*opt_alpha
+            max_alpha = 2.0
         else:
             max_alpha = 2*alpha
 
@@ -261,7 +261,6 @@ if __name__ == "__main__":
         axI.set_xlim([0,Iq_orig[-1,0]])
         axR.set_xlim([0,Iq_orig[-1,0]])
         axP.set_xlim([0,1.1*np.max(sasrec.r)])
-
         axI.set_ylim([0.25*np.min(sasrec.Ic[sasrec.qc<Iq_orig[-1,0]]),2*np.max(sasrec.Ic[sasrec.qc<Iq_orig[-1,0]])])
         #axR.set_ylim([0,Iq_orig[-1,0]])
         #axP.set_ylim([0,1.1*np.max(sasrec.r)])

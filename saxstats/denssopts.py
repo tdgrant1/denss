@@ -166,6 +166,14 @@ def parse_arguments(parser):
         Iinterp = np.interp(sasrec.qc, sasrec.q, sasrec.I, left=0.0, right=0.0)
         np.savetxt(args.output+'.fit', np.vstack((sasrec.qc, Iinterp, sasrec.Icerr, sasrec.Ic)).T,delimiter=' ',fmt='%.5e',header=param_str)
 
+    #denss cannot deal with negative intensity values which sometimes happens with real data
+    #if the fit goes negative, denss will fail
+    #so first, remove all negative intensity values from the fit
+    idx_pos = np.where(I>0)
+    q = q[idx_pos]
+    I = I[idx_pos]
+    sigq = sigq[idx_pos]
+
     #allow ncs_steps to be either list of ints or string of list of ints
     if isinstance(args.ncs_steps, list):
         if len(args.ncs_steps) == 1:

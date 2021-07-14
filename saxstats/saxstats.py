@@ -2088,7 +2088,11 @@ class Sasrec(object):
         else:
             q = q
         D = self.D
-        B = (N*np.pi)**2/((N*np.pi)**2-(q*D)**2) * np.sinc(q*D/np.pi) * (-1)**(N+1)
+        #catch cases where qD==nPi, not often, but possible
+        x = (N*np.pi)**2-(q*D)**2
+        y =  np.where(x==0,(N*np.pi)**2,x)
+        #B = (N*np.pi)**2/((N*np.pi)**2-(q*D)**2) * np.sinc(q*D/np.pi) * (-1)**(N+1)
+        B = (N*np.pi)**2/y * np.sinc(q*D/np.pi) * (-1)**(N+1)
         return B
 
     def St(self):
