@@ -98,7 +98,8 @@ def parse_arguments(parser):
             args.plot = False
 
     if args.output is None:
-        basename, ext = os.path.splitext(args.file)
+        fname_nopath = os.path.basename(args.file)
+        basename, ext = os.path.splitext(fname_nopath)
         if args.rho_start is not None:
             args.output = basename + "_refine"
         else:

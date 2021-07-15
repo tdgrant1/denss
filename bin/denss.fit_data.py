@@ -75,7 +75,8 @@ if __name__ == "__main__":
     alpha = args.alpha
 
     if args.output is None:
-        basename, ext = os.path.splitext(args.file)
+        fname_nopath = os.path.basename(args.file)
+        basename, ext = os.path.splitext(fname_nopath)
         output = basename
     else:
         output = args.output

@@ -5,7 +5,7 @@ import numpy as np
 import os, sys, argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-f", "--file", type=str, nargs='+', help="FSC (Fourier Shell Correlation) filename(s) (multiple FSCs will be averaged)")
+parser.add_argument("-f", "--files", type=str, nargs='+', help="FSC (Fourier Shell Correlation) filename(s) (multiple FSCs will be averaged)")
 parser.add_argument("--plot_on", dest="plot", action="store_true", help="Create simple plots of results (requires Matplotlib, default if module exists).")
 parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not create simple plots of results. (Default if Matplotlib does not exist)")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
@@ -21,7 +21,8 @@ if args.plot:
         args.plot = False
 
 if args.output is None:
-    basename, ext = os.path.splitext(args.file[0])
+    fname_nopath = os.path.basename(args.files[0])
+    basename, ext = os.path.splitext(fname_nopath)
     output = basename+'_fsc.dat'
 else:
     output = args.output
@@ -30,10 +31,10 @@ def find_nearest_i(array,value):
     """Return the index of the array item nearest to specified value"""
     return (np.abs(array-value)).argmin()
 
-nf = len(args.file)
+nf = len(args.files)
 fscs = []
 for i in range(nf):
-    fscs.append(np.loadtxt(args.file[i]))
+    fscs.append(np.loadtxt(args.files[i]))
 fscs = np.array(fscs)
 
 if nf==1:

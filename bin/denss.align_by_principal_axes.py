@@ -49,7 +49,8 @@ args = parser.parse_args()
 if __name__ == "__main__":
 
     if args.output is None:
-        basename, ext = os.path.splitext(args.file)
+        fname_nopath = os.path.basename(args.file)
+        basename, ext = os.path.splitext(fname_nopath)
         output = basename+"_alignedbyPA"
     else:
         output = args.output
@@ -72,7 +73,8 @@ if __name__ == "__main__":
         if args.ref.endswith('.pdb'):
             logging.info('Center PDB reference: %s', args.center)
             logging.info('PDB reference map resolution: %.2f', args.resolution)
-            refbasename, refext = os.path.splitext(args.ref)
+            reffname_nopath = os.path.basename(args.ref)
+            refbasename, refext = os.path.splitext(reffname_nopath)
             refoutput = refbasename+"_centered.pdb"
             refside = side
             voxel = (refside/movrho.shape)[0]

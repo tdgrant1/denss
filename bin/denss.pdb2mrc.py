@@ -52,7 +52,8 @@ args = parser.parse_args()
 
 if __name__ == "__main__":
 
-    basename, ext = os.path.splitext(args.file)
+    fname_nopath = os.path.basename(args.file)
+    basename, ext = os.path.splitext(fname_nopath)
 
     if args.output is None:
         output = basename + "_pdb"

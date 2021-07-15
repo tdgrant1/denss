@@ -46,7 +46,8 @@ args = parser.parse_args()
 if __name__ == "__main__":
 
     if args.output is None:
-        basename, ext = os.path.splitext(args.files[0])
+        fname_nopath = os.path.basename(args.files[0])
+        basename, ext = os.path.splitext(fname_nopath)
         output = basename
     else:
         output = args.output
@@ -81,7 +82,8 @@ if __name__ == "__main__":
 
     #save each selected enantiomer
     for i in range(nmaps):
-        basename, ext = os.path.splitext(args.files[i])
+        fname_nopath = os.path.basename(args.files[i])
+        basename, ext = os.path.splitext(fname_nopath)
         ioutput = basename+"_enan"
         saxs.write_mrc(allrhos[i], sides[0], ioutput+'.mrc')
 

@@ -46,7 +46,8 @@ args = parser.parse_args()
 if __name__ == "__main__":
 
     if args.output is None:
-        basename, ext = os.path.splitext(args.files[0])
+        fname_nopath = os.path.basename(args.files[0])
+        basename, ext = os.path.splitext(fname_nopath)
         output = basename
     else:
         output = args.output

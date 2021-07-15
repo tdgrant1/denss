@@ -125,7 +125,8 @@ if __name__ == "__main__":
         print("Not enough maps to align")
         sys.exit(1)
 
-    basename, ext = os.path.splitext(superargs.file)
+    fname_nopath = os.path.basename(superargs.file)
+    basename, ext = os.path.splitext(fname_nopath)
     if (superargs.output is None) or (superargs.output == basename):
         output = basename
     else:
