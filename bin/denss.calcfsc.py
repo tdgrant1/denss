@@ -98,7 +98,7 @@ if __name__ == "__main__":
         plt.legend()
         plt.xlabel('Resolution (1/$\mathrm{\AA}$)')
         plt.ylabel('Fourier Shell Correlation')
-        plt.savefig(output,ext='png',dpi=150)
+        plt.savefig(output+'.png',dpi=150)
         plt.close()
 
 
