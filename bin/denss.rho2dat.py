@@ -106,8 +106,7 @@ if __name__ == "__main__":
     #convert from density to electron count for FFT calculation
     rho *= dV
 
-    #create list of qbin indices just in region of data for later F scaling
-    qbin_args = np.copy(qbinsc)
+    #calculate scattering profile from density
     F = np.fft.fftn(rho)
     I3D = np.abs(F)**2
     Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
@@ -155,8 +154,6 @@ if __name__ == "__main__":
         #create an array labeling each voxel according to which qbin it belongs
         qbin_labels = np.searchsorted(qbins,qr,"right")
         qbin_labels -= 1
-        #create list of qbin indices just in region of data for later F scaling
-        qbin_args = np.copy(qbinsc)
         rho_pad = np.zeros((n,n,n),dtype=np.float32)
         a = n//2-n_orig//2
         b = n//2+n_orig//2
