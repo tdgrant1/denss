@@ -116,14 +116,32 @@ if __name__ == "__main__":
     #say, some low percent of the maximum
     #this becomes important for estimating solvent content
     support[rho>0.0001*rho.max()] = True
-    rho[~support] = 0
+    #rho[~support] = 0
     #scale map to total number of electrons while still in vacuum
     #to adjust for some small fraction of electrons just flattened
     rho *= np.sum(pdb.nelectrons) / rho.sum()
     #convert total electron count to density
     rho /= dV
     #now, subtract the solvent density from the particle voxels
-    rho[support] -= args.solv
+    #rho[support] -= args.solv
+    #use support, which is 0s and 1s, to simulate the effect of a 
+    #constant bulk solvent, but after blurring at the resolution desired
+    #need to convert resolution in angstroms used above into sigma for blurring
+    #sigma is in pixels, but also some kind of quadratic relationship
+    from scipy import ndimage
+    import matplotlib.pyplot as plt
+    sigma_in_A = args.resolution**0.5
+    sigma_in_pix = sigma_in_A * dx
+    print(sigma_in_A, sigma_in_pix)
+    for sf in np.linspace(.1,1,10):
+        solvent = ndimage.filters.gaussian_filter(support*1.0,sigma=0.5,mode='wrap')
+        saxs.write_mrc(solvent,side,output+"_solvent_%s.mrc"%sf)
+        diff = rho-solvent*sf
+        saxs.write_mrc(diff,side,output+"_diff_%s.mrc"%sf)
+    
+        plt.hist(solvent.ravel(),bins=100)
+        #plt.hist(diff.ravel(),bins=100)
+    plt.show()
 
     #write output
     saxs.write_mrc(rho,side,output+".mrc")
