@@ -1631,13 +1631,13 @@ def rho_overlap_score(rho1,rho2, threshold=None):
     """Scoring function for superposition of electron density maps."""
     if threshold is None:
         n=np.sum(rho1*rho2)
-        d=np.sum(rho1**2)**0.5*np.sum(rho1**2)**0.5
+        d=np.sum(rho1**2)**0.5*np.sum(rho2**2)**0.5
     else:
         #if there's a threshold, base it on only one map, then use
         #those indices for both maps to ensure the same pixels are compared
         idx = np.where(np.abs(rho1)>threshold*np.abs(rho1).max())
-        n=2*np.sum(rho1[idx]*rho2[idx])
-        d=(2*np.sum(rho1[idx]**2)**0.5*np.sum(rho2[idx]**2)**0.5)
+        n=np.sum(rho1[idx]*rho2[idx])
+        d=np.sum(rho1[idx]**2)**0.5*np.sum(rho2[idx]**2)**0.5
     score = n/d
     #-score for least squares minimization, i.e. want to minimize, not maximize score
     return -score
