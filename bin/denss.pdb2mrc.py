@@ -41,7 +41,7 @@ parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired vox
 parser.add_argument("-n", "--nsamples", default=64, type=float, help="Desired number of samples per axis (default=64)")
 parser.add_argument("-m", "--mode", default="slow", type=str, help="Mode. Either fast (Simple Gaussian sphere), slow (accurate 5-term Gaussian using Cromer-Mann coefficients), or FFT (default=slow).")
 parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (i.e. Gaussian sphere width sigma) (default=15 angstroms)")
-parser.add_argument("--solv", default=0.334, type=float, help="Desired Solvent Density (default=0.334 e-/A^3)")
+parser.add_argument("--solv", default=0.000, type=float, help="Desired Solvent Density (default=0.000 e-/A^3)")
 parser.add_argument("--ignore_waters", dest="ignore_waters", action="store_true", help="Ignore waters.")
 parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB reference (default).")
 parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB reference.")

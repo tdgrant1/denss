@@ -159,9 +159,10 @@ if __name__ == "__main__":
         b = n//2+n_orig//2
         rho_pad[a:b,a:b,a:b] = rho
         rho = np.copy(rho_pad)
-        F = np.fft.fftn(rho)
-        I3D = np.abs(F)**2
-        Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
+
+    F = np.fft.fftn(rho)
+    I3D = np.abs(F)**2
+    Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
 
     qmax_to_use = np.max(qx_)
     print("qmax to use: %f" % qmax_to_use)

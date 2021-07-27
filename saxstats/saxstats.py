@@ -2672,7 +2672,6 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
         xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
         dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
         dist *= dist
-        #tmpvalues = pdb.nelectrons[i]*1./np.sqrt(2*np.pi*sigma**2) * np.exp(-dist[0]/(2*sigma**2))
         try:
             element = pdb.atomtype[i]
             ffcoeff[element]
@@ -2690,6 +2689,8 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
                               pdb.atomname[i][0].upper()+pdb.atomname[i][1].lower(),
                               i))
                     print("Using default form factor for Carbon")
+                    element = 'C'
+                    ffcoeff[element]
 
         tmpvalues = realspace_formfactor(element=element,r=dist,B=B)
         #rescale total number of electrons by expected number of electrons
@@ -2871,14 +2872,10 @@ def realspace_formfactor(element, r=(np.arange(501))/1000., B=0.0):
     for i in range(4):
         ai = ffcoeff[element]['a'][i]
         bi = ffcoeff[element]['b'][i]
-        #the form factor equation in the next line was taken from a publication
-        #but it ended up being incorrect. Maybe they defined a parameter differently
-        #ff += 4*ai * (np.pi**3/bi)**0.5 * np.exp(-(2*np.pi*r)**2/bi)
-        #the form factor in the next line is correct, based on an analytical Fourier
+        #the form factor in the next line is based on an analytical Fourier
         #tranform of the form factor in reciprocal space
         #ff += 2*(2/bi)**0.5*np.pi * ai * np.exp(-(2*np.pi*r)**2/bi)
         #the form factor in the next line additionally accounts for a B-factor
-        #ff += 2*(6)**0.5 * np.pi * ai * np.exp(-3*(2*np.pi*r)**2/(3*bi+8*(np.pi*u)**2)) / (3*bi+8*(np.pi*u)**2)**0.5
         ff += 2*(6)**0.5 * np.pi * ai * np.exp(-3*(2*np.pi*r)**2/(3*bi+B)) / (3*bi+B)**0.5
     i = np.where((r==0))
     ff += signal.unit_impulse(r.shape, i) * ffcoeff[element]['c']
