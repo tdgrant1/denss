@@ -281,6 +281,10 @@ if __name__ == "__main__":
     superlogger.info('Total number of input maps for alignment: %i',allrhos.shape[0])
     superlogger.info('Number of aligned maps accepted: %i', aligned.shape[0])
     superlogger.info('Correlation score between average and reference: %.3f', -saxs.rho_overlap_score(average_rho, refrho))
+    superlogger.info('Mean Density of Avg Map (all voxels): %3.5f', np.mean(average_rho))
+    superlogger.info('Std. Dev. of Density (all voxels): %3.5f', np.std(average_rho))
+    superlogger.info('Modified Mean Density (voxels >0.01*max): %3.5f', np.mean(average_rho[np.abs(average_rho)>0.01*average_rho.max()]))
+    superlogger.info('Modified Std. Dev. of Density (voxels >0.01*max): %3.5f', np.std(average_rho[np.abs(average_rho)>0.01*average_rho.max()]))
     saxs.write_mrc(average_rho, sides[0], output+'_avg.mrc')
 
     """

@@ -49,6 +49,10 @@ if __name__ == "__main__":
     print(" Voxel size:  %f x %f x %f" % (vx, vy, vz))
     print(" Voxel volume: %f" % (vx*vy*vz))
     print(" Total number of electrons:  %f" % (rho.sum()*vx*vy*vz))
+    print(" Mean Density (all voxels): %3.5f" % np.mean(rho))
+    print(" Std. Dev. of Density (all voxels): %3.5f" % np.std(rho))
+    print(" Modified Mean Density (voxels >0.01*max): %3.5f" % np.mean(rho[np.abs(rho)>0.01*rho.max()]))
+    print(" Modified Std. Dev. of Density (voxels >0.01*max): %3.5f" % np.std(rho[np.abs(rho)>0.01*rho.max()]))
 
 
 

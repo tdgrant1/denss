@@ -1414,6 +1414,10 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     my_logger.info('Final Chi2: %.3e', chi[j])
     my_logger.info('Final Rg: %3.3f', rg[j+1])
     my_logger.info('Final Support Volume: %3.3f', supportV[j+1])
+    my_logger.info('Mean Density (all voxels): %3.5f', np.mean(rho))
+    my_logger.info('Std. Dev. of Density (all voxels): %3.5f', np.std(rho))
+    my_logger.info('Modified Mean Density (voxels >0.01*max): %3.5f', np.mean(rho[np.abs(rho)>0.01*rho.max()]))
+    my_logger.info('Modified Std. Dev. of Density (voxels >0.01*max): %3.5f', np.std(rho[np.abs(rho)>0.01*rho.max()]))
     # my_logger.info('END')
 
     #return original unscaled values of Idata (and therefore Imean) for comparison with real data
