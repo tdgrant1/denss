@@ -223,7 +223,7 @@ if __name__ == "__main__":
         #quick, interpolate the raw data, sasrec.I, to the new qc values, but be sure to 
         #put zeros in for the q values not measured behind the beamstop
         Iinterp = np.interp(sasrec.qc, sasrec.q, sasrec.I, left=0.0, right=0.0)
-        np.savetxt(output+'.fit', np.vstack((sasrec.qc, Iinterp, Icerr, sasrec.Ic)).T,delimiter=' ',fmt='%.5e',header=param_str)
+        np.savetxt(output+'.fit', np.vstack((sasrec.qc, Iinterp, sasrec.Icerr, sasrec.Ic)).T,delimiter=' ',fmt='%.5e',header=param_str)
         np.savetxt(output+'_pr.dat', np.vstack((sasrec.r, sasrec.P, sasrec.Perr)).T,delimiter=' ',fmt='%.5e')
         print("%s and %s files saved" % (output+".fit",output+"_pr.dat"))
 
