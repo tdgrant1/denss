@@ -1416,8 +1416,11 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     my_logger.info('Final Support Volume: %3.3f', supportV[j+1])
     my_logger.info('Mean Density (all voxels): %3.5f', np.mean(rho))
     my_logger.info('Std. Dev. of Density (all voxels): %3.5f', np.std(rho))
-    my_logger.info('Modified Mean Density (voxels >0.01*max): %3.5f', np.mean(rho[np.abs(rho)>0.01*rho.max()]))
-    my_logger.info('Modified Std. Dev. of Density (voxels >0.01*max): %3.5f', np.std(rho[np.abs(rho)>0.01*rho.max()]))
+    my_logger.info('RMSD of Density (all voxels): %3.5f', np.sqrt(np.mean(np.square(rho))))
+    idx = np.where(np.abs(rho)>0.01*rho.max())
+    my_logger.info('Modified Mean Density (voxels >0.01*max): %3.5f', np.mean(rho[idx]))
+    my_logger.info('Modified Std. Dev. of Density (voxels >0.01*max): %3.5f', np.std(rho[idx]))
+    my_logger.info('Modified RMSD of Density (voxels >0.01*max): %3.5f', np.sqrt(np.mean(np.square(rho[idx]))))
     # my_logger.info('END')
 
     #return original unscaled values of Idata (and therefore Imean) for comparison with real data
@@ -1997,6 +2000,33 @@ def calc_fsc(rho1, rho2, side):
     FSC = numerator/denominator
     qidx = np.where(qbins<qx_max)
     return  np.vstack((qbins[qidx],FSC[qidx])).T
+
+def fsc2res(fsc, cutoff=0.5, return_plot=False):
+    """Calculate resolution from the FSC curve using the cutoff given.
+
+    fsc - an Nx2 array, where the first column is the x axis given as
+          as 1/resolution (angstrom).
+    cutoff - the fsc value at which to estimate resolution, default=0.5.
+    return_plot - return additional arrays for plotting (x, y, resx)
+    """
+    x = np.linspace(fsc[0,0],fsc[-1,0],100)
+    y = np.interp(x, fsc[:,0], fsc[:,1])
+    if np.min(fsc[:,1]) > 0.5:
+        #if the fsc curve never falls below zero, then
+        #set the resolution to be the maximum resolution
+        #value sampled by the fsc curve
+        resx = np.max(fsc[:,0])
+        resn = float(1./resx)
+        #print("Resolution: < %.1f A (maximum possible)" % resn)
+    else:
+        resi = np.argmin(y>=0.5)
+        resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
+        resn = float(1./resx)
+        #print("Resolution: %.1f A" % resn)
+    if return_plot:
+        return resn, x, y, resx
+    else:
+        return resn
 
 class Sasrec(object):
     def __init__(self, Iq, D, qc=None, r=None, alpha=0.0, ne=2):

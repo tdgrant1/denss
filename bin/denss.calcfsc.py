@@ -73,19 +73,10 @@ if __name__ == "__main__":
         sys.exit()
 
     fsc = saxs.calc_fsc(rho,refrho,side)
-    x = np.linspace(fsc[0,0],fsc[-1,0],100)
-    y = np.interp(x, fsc[:,0], fsc[:,1])
+    resn, x, y, resx = saxs.fsc2res(fsc, return_plot=True)
     if np.min(fsc[:,1]) > 0.5:
-        #if the fsc curve never falls below zero, then
-        #set the resolution to be the maximum resolution
-        #value sampled by the fsc curve
-        resx = np.max(fsc[:,0])
-        resn = float(1./resx)
         print("Resolution: < %.1f A (maximum possible)" % resn)
     else:
-        resi = np.argmin(y>=0.5)
-        resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
-        resn = float(1./resx)
         print("Resolution: %.1f A" % resn)
 
     np.savetxt(output+'.dat', fsc, delimiter=' ', fmt='% .5e', header="1/resolution, FSC; Resolution=%.1f A" % resn)
