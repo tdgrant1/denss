@@ -202,6 +202,16 @@ if __name__ == "__main__":
     all_chis = np.array([denss_outputs[i][5] for i in np.arange(superargs.nmaps)])
     all_rg = np.array([denss_outputs[i][6] for i in np.arange(superargs.nmaps)])
     all_supportV = np.array([denss_outputs[i][7] for i in np.arange(superargs.nmaps)])
+    final_chis = np.zeros(superargs.nmaps)
+    final_rgs = np.zeros(superargs.nmaps)
+    final_supportVs = np.zeros(superargs.nmaps)
+    for i in range(superargs.nmaps):
+        final_rgs[i] = all_rg[i,all_rg[i]>0][-1]
+        final_chis[i] = all_chis[i,all_chis[i]>0][-1]
+        final_supportVs[i] = all_supportV[i,all_supportV[i]>0][-1]
+    superlogger.info('Average Rg...............: %3.3f +- %3.3f', np.mean(final_rgs), np.std(final_rgs))
+    superlogger.info('Average Chi2.............: %.3e +- %.3e', np.mean(final_chis), np.std(final_chis))
+    superlogger.info('Average Support Volume...: %3.3f +- %3.3f', np.mean(final_supportVs), np.std(final_supportVs))
 
     np.savetxt(output+'_chis_by_step.fit',all_chis.T,delimiter=" ",fmt="%.5e",header=",".join(chi_header))
     np.savetxt(output+'_rg_by_step.fit',all_rg.T,delimiter=" ",fmt="%.5e",header=",".join(rg_header))
@@ -237,6 +247,9 @@ if __name__ == "__main__":
             allrhos, scores = saxs.select_best_enantiomers(allrhos, cores=superargs.cores)
         except KeyboardInterrupt:
             sys.exit(1)
+        for i in range(superargs.nmaps):
+            ioutput = output+"_"+str(i)+"_enan"
+            saxs.write_mrc(allrhos[i], sides[0], ioutput+".mrc")
 
     if superargs.ref is None:
         print()
