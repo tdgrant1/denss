@@ -800,13 +800,13 @@ def estimate_dmax(Iq,dmax=None,clean_up=True):
         #allow user to give an initial estimate of Dmax
         #multiply by 2 to allow for enough large r values
         D = 2*dmax
-    #create a calculated q range for Sasrec
+    #create a calculated q range for Sasrec for low q out to q=0
     qmin = np.min(q)
     dq = (q.max()-q.min())/(q.size-1)
     nq = int(qmin/dq)
     qc = np.concatenate(([0.0],np.arange(nq)*dq+(qmin-nq*dq),q))
     #run Sasrec to perform IFT
-    sasrec = Sasrec(Iq, D, qc=qc, alpha=0.0)
+    sasrec = Sasrec(Iq, D, qc=None, alpha=0.0, extrapolate=False)
     #now filter the P(r) curve for estimating Dmax better
     r, Pfilt, sigrfilt = filter_P(sasrec.r, sasrec.P, sasrec.Perr, qmax=Iq[:,0].max())
     #estimate D as the first position where P becomes less than 0.01*P.max(), after P.max()
@@ -2009,7 +2009,7 @@ def fsc2res(fsc, cutoff=0.5, return_plot=False):
     cutoff - the fsc value at which to estimate resolution, default=0.5.
     return_plot - return additional arrays for plotting (x, y, resx)
     """
-    x = np.linspace(fsc[0,0],fsc[-1,0],100)
+    x = np.linspace(fsc[0,0],fsc[-1,0],1000)
     y = np.interp(x, fsc[:,0], fsc[:,1])
     if np.min(fsc[:,1]) > 0.5:
         #if the fsc curve never falls below zero, then
@@ -2029,22 +2029,28 @@ def fsc2res(fsc, cutoff=0.5, return_plot=False):
         return resn
 
 class Sasrec(object):
-    def __init__(self, Iq, D, qc=None, r=None, alpha=0.0, ne=2):
+    def __init__(self, Iq, D, qc=None, r=None, alpha=0.0, ne=2, extrapolate=True):
         self.q = Iq[:,0]
         self.I = Iq[:,1]
         self.Ierr = Iq[:,2]
         self.q.clip(1e-10)
         self.I[np.abs(self.I)<1e-10] = 1e-10
         self.Ierr.clip(1e-10)
+        self.q_data = np.copy(self.q)
+        self.I_data = np.copy(self.I)
+        self.Ierr_data = np.copy(self.Ierr)
+        if qc is None:
+            #self.qc = self.q
+            self.create_lowq()
+        else:
+            self.qc = qc
+        if extrapolate:
+            self.extrapolate()
         self.D = D
         self.qmin = np.min(self.q)
         self.qmax = np.max(self.q)
         self.nq = len(self.q)
         self.qi = np.arange(self.nq)
-        if qc is None:
-            self.qc = self.q
-        else:
-            self.qc = qc
         if r is None:
             self.nr = self.nq
             self.r = np.linspace(0,self.D,self.nr)
@@ -2066,6 +2072,7 @@ class Sasrec(object):
         self.qn = np.pi/self.D * self.N
         self.In = np.zeros((self.nq))
         self.Inerr = np.zeros((self.nq))
+        self.B_data = self.Bt(q=self.q_data)
         self.B = self.Bt()
         #Bc is for the calculated q values in
         #cases where qc is not equal to q.
@@ -2102,12 +2109,38 @@ class Sasrec(object):
         self.lc = self.Ish2lc()
         self.lcerr = self.lcerrf()
 
+    def create_lowq(self):
+        """Create a calculated q range for Sasrec for low q out to q=0.
+        Just the q values, not any extrapolation of intensities."""
+        dq = (self.q.max()-self.q.min())/(self.q.size-1)
+        nq = int(self.q.min()/dq)
+        self.qc = np.concatenate(([0.0],np.arange(nq)*dq+(self.q.min()-nq*dq),self.q))
+
+    def extrapolate(self):
+        """Extrapolate to high q values"""
+        #create a range of 1001 data points from 1*qmax to 3*qmax
+        qe = np.linspace(1.0*self.q[-1],3.0*self.q[-1],1001)
+        qe = qe[qe>self.q[-1]]
+        qce = np.linspace(1.0*self.qc[-1],3.0*self.q[-1],1001)
+        qce = qce[qce>self.qc[-1]]
+        #extrapolated intensities can be anything, since they will
+        #have infinite errors and thus no impact on the calculation
+        #of the fit, so just make them a constant
+        Ie = np.ones_like(qe)
+        #set infinite error bars so that the actual intensities don't matter
+        Ierre = Ie*np.inf
+        self.q = np.hstack((self.q, qe))
+        self.I = np.hstack((self.I, Ie))
+        self.Ierr = np.hstack((self.Ierr, Ierre))
+        self.qc = np.hstack((self.qc, qce))
+
     def calc_chi2(self):
         Ish = self.In
-        Bn = self.B
+        Bn = self.B_data
         #calculate Ic at experimental q vales for chi2 calculation
         Ic_qe = 2*np.einsum('n,nq->q',Ish,Bn)
-        return (1./(self.nq-self.n-1.))*np.sum(1/(self.Ierr**2)*(self.I-Ic_qe)**2)
+        chi2 = (1./(self.nq-self.n-1.))*np.sum(1/(self.Ierr_data**2)*(self.I_data-Ic_qe)**2)
+        return chi2
 
     def shannon_channels(self, D, qmax=0.5, qmin=0.0):
         """Return the number of Shannon channels given a q range and maximum particle dimension"""
@@ -2193,14 +2226,16 @@ class Sasrec(object):
         """Return the standard errors on I_c(q)."""
         Bn = self.Bc
         Bm = self.Bc
-        err = 2 * np.einsum('nq,mq,nm->q', Bn, Bm, self.Cinv)**(.5)
+        err2 = 2 * np.einsum('nq,mq,nm->q', Bn, Bm, self.Cinv)
+        err = err2**(.5)
         return err
 
     def Perrt(self):
         """Return the standard errors on P(r)."""
         Sn = self.S
         Sm = self.S
-        err = np.einsum('nr,mr,nm->r', Sn, Sm, self.Cinv)**(.5)
+        err2 = np.einsum('nr,mr,nm->r', Sn, Sm, self.Cinv)
+        err = err2**(.5)
         return err
 
     def Ish2I0(self):

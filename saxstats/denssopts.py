@@ -30,14 +30,14 @@ def parse_arguments(parser):
     parser.add_argument("-d", "--dmax", default=None, type=float, help="Estimated maximum dimension")
     parser.add_argument("-n", "--nsamples", default=None, type=int, help="Number of samples, i.e. grid points, along a single dimension. (Sets voxel size, overridden by --voxel. Best optimization with n=power of 2. Default=64)")
     parser.add_argument("-ncs", "--ncs", default=0, type=int, help="Rotational symmetry")
-    parser.add_argument("-ncs_steps","--ncs_steps", default=[3000,5000,7000,9000], nargs='+', help="List of steps for applying NCS averaging (default=3000,5000,7000,9000)")
-    parser.add_argument("-ncs_axis", "--ncs_axis", default=1, type=int, help="Rotational symmetry axis (options: 1, 2, or 3 corresponding to (long,medium,short) principal axes)")
+    parser.add_argument("-ncs_steps","--ncs_steps", default=[3000,5000,7000,9000], nargs='+', help="Space separated list of steps for applying NCS averaging (default=3000 5000 7000 9000)")
+    parser.add_argument("-ncs_axis", "--ncs_axis", default="1", type=str, help="Rotational symmetry axis (options: 1, 2, or 3 corresponding to (long,medium,short) principal axes)")
     parser.add_argument("-ncs_type", "--ncs_type", default="C", type=str, help="Symmetry type, either cyclical (default) or dihedral (i.e. C or D, dihedral (Dn) adds n 2-fold perpendicular axes)")
     parser.add_argument("-s", "--steps", default=None, help="Maximum number of steps (iterations)")
     parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
     parser.add_argument("-v", "--voxel", default=None, type=float, help="Set desired voxel size, setting resolution of map")
     parser.add_argument("-os","--oversampling", default=3., type=float, help="Sampling ratio")
-    parser.add_argument("--ne", default=10000, type=float, help="Number of electrons in object")
+    parser.add_argument("--ne", default=10000, type=float, help="Number of electrons in object (default 10000, set to negative number to ignore.)")
     parser.add_argument("--seed", default=None, help="Random seed to initialize the map")
     parser.add_argument("-ld_on","-ld_on","--limit_dmax_on", dest="limit_dmax", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("-ld_off","--limit_dmax_off", dest="limit_dmax", action="store_false", help=argparse.SUPPRESS)
@@ -152,7 +152,7 @@ def parse_arguments(parser):
         dq = (qmax-qmin)/(q.size-1)
         nq = int(qmin/dq)
         qc = np.concatenate(([0.0],np.arange(nq)*dq+(qmin-nq*dq),q))
-        sasrec = saxs.Sasrec(Iq, dmax, qc=qc)
+        sasrec = saxs.Sasrec(Iq, dmax, qc=None)
         #now, set the Iq values to be the new fitted q values
         q = sasrec.qc
         I = sasrec.Ic
@@ -187,6 +187,17 @@ def parse_arguments(parser):
     else:
         args.ncs_type = "cyclical"
 
+    if args.ncs_axis[0].upper() == "L" or args.ncs_axis[0] == "1":
+        #if "1" or "long" or "LONG" or "L" or similar is given
+        #assume the long axis, i.e. axis = 1
+        args.ncs_axis = 1
+    elif args.ncs_axis[0].upper() == "S" or args.ncs_axis[0] == "3":
+        #if "3" or "short" or "SHORT" or "S" or similar is given
+        #assume the short axis, i.e. axis = 3
+        args.ncs_axis = 3
+    else:
+        #default to long axis
+        args.ncs_axis = 1
 
     #old default sw_start was 3.0
     #however, in cases where the voxel size is smaller than default,
@@ -322,6 +333,12 @@ def parse_arguments(parser):
 
     if args.steps is not None:
         steps = args.steps
+
+    if args.ne <= 0.0:
+        #if args.ne is negative, then assume that the user
+        #does not want to set the number of electrons, and just
+        #set it equal to the square root of the forward scattering I(0)
+        args.ne = I[0]**0.5
 
     #now recollect all the edited options back into args
     args.nsamples = nsamples
