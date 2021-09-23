@@ -253,6 +253,8 @@ if __name__ == "__main__":
         axI.set_ylim([0.25*np.min(sasrec.Ic[sasrec.qc<Iq_orig[-1,0]]),2*np.max(sasrec.Ic[sasrec.qc<Iq_orig[-1,0]])])
         #axR.set_ylim([0,Iq_orig[-1,0]])
         #axP.set_ylim([0,1.1*np.max(sasrec.r)])
+        #the "q" axis label is a little low, so let's raise it up a bit
+        axR.xaxis.labelpad = -10
 
         axcolor = 'lightgoldenrodyellow'
         #axn1n2 = plt.axes([0.05, 0.175, 0.4, 0.03], facecolor=axcolor)
@@ -413,9 +415,40 @@ if __name__ == "__main__":
         n2_box.on_submit(n2_submit)
 
         # create a checkbox for extrapolation
-        #plt.figtext(0.3315, 0.178, "Extrapolate")
-        axExtrap = plt.axes([0.35, 0.087, 0.1, 0.2], frameon=False)
+        axExtrap = plt.axes([0.35, 0.170, 0.015, 0.03], frameon=True)
+        axExtrap.margins(0.0)
         extrapolate_check = CheckButtons(axExtrap, ["Extrapolate"], [args.extrapolate])
+        #the axes object for the checkbutton is crazy large, and actually
+        #blocks the sliders underneath even when frameon=False
+        #so we have to manually set the size and location of each of the
+        #elements of the checkbox after setting the axes margins to zero above
+        #including the rectangle checkbox, the lines for the X, and the label
+        check = extrapolate_check
+        size =  1.0 #size relative to axes axExtrap
+        for r in extrapolate_check.rectangles:
+            r.set_x(0.)
+            r.set_y(0.)
+            r.set_width(size)
+            r.set_height(size)
+        first = True
+        for l in check.lines:
+            for ll in l:
+                llx = ll.get_xdata()
+                lly = ll.get_ydata()
+                #print(llx)
+                #print(lly)
+                ll.set_xdata([0.0,size])
+                if first:
+                    #there's two lines making
+                    #up the checkbox, so need
+                    #to set the y values separately
+                    #one going from bottom left to 
+                    #upper right, the other opposite
+                    ll.set_ydata([size,0.0])
+                    first = False
+                else:
+                    ll.set_ydata([0.0, size])
+        check.labels[0].set_position((1.5,.5))
 
         #here is the slider updating
         sdmax.on_changed(update)

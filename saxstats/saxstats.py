@@ -48,6 +48,7 @@ from functools import partial
 import multiprocessing
 import datetime, time
 from time import sleep
+import warnings
 
 import numpy as np
 from scipy import ndimage, interpolate, spatial, special, optimize, signal, stats
@@ -2082,7 +2083,9 @@ class Sasrec(object):
         self.C = self.Ct2()
         self.Cinv = np.linalg.inv(self.C)
         self.In = np.linalg.solve(self.C,self.Y)
-        self.Inerr = np.diagonal(self.Cinv)**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            self.Inerr = np.diagonal(self.Cinv)**(0.5)
         self.Ic = self.Ish2Iq()
         self.Icerr = self.Icerrt()
         self.P = self.Ish2P()
@@ -2227,7 +2230,9 @@ class Sasrec(object):
         Bn = self.Bc
         Bm = self.Bc
         err2 = 2 * np.einsum('nq,mq,nm->q', Bn, Bm, self.Cinv)
-        err = err2**(.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            err = err2**(.5)
         return err
 
     def Perrt(self):
@@ -2235,7 +2240,9 @@ class Sasrec(object):
         Sn = self.S
         Sm = self.S
         err2 = np.einsum('nr,mr,nm->r', Sn, Sm, self.Cinv)
-        err = err2**(.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            err = err2**(.5)
         return err
 
     def Ish2I0(self):
@@ -2292,7 +2299,10 @@ class Sasrec(object):
         Fn = self.F
         Fm = self.F
         s2 = np.einsum('n,m,nm->',Fn,Fm,Cinv)
-        return D**2/(I0*rg)*s2**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            rgerr = D**2/(I0*rg)*s2**(0.5)
+        return rgerr
 
     def Et(self):
         """Calculate En function, for use in ravg calculation"""
@@ -2317,7 +2327,10 @@ class Sasrec(object):
         En = self.E
         Em = self.E
         s2 = np.einsum('n,m,nm->',En,Em,Cinv)
-        return 4*D/I0 * s2**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            avgrerr = 4*D/I0 * s2**(0.5)
+        return avgrerr
 
     def Ish2Q(self):
         """Calculate Porod Invariant Q from Shannon intensities"""
@@ -2356,8 +2369,11 @@ class Sasrec(object):
         Q = self.Q
         I0s = self.I0err
         Qs = self.Qerr
-        s2 = (2*np.pi/Q)**2*(I0s)**2 + (2*np.pi*I0/Q**2)**2*Qs**2
-        return s2**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            Vperr2 = (2*np.pi/Q)**2*(I0s)**2 + (2*np.pi*I0/Q**2)**2*Qs**2
+            Vperr = Vperr2**(0.5)
+        return Vperr
 
     def Ish2mwVp(self):
         """Calculate molecular weight via Porod Volume from Shannon intensities"""
@@ -2391,7 +2407,10 @@ class Sasrec(object):
         Sin = special.sici(N*np.pi)[0]
         Sim = special.sici(M*np.pi)[0]
         s2 = np.einsum('n,m,nm->', N*Sin, M*Sim,Cinv)
-        return (2*np.pi*Vc**2/(D**2*I0)) * s2**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            Vcerr = (2*np.pi*Vc**2/(D**2*I0)) * s2**(0.5)
+        return Vcerr
 
     def Ish2Qr(self):
         """Calculate Rambo Invariant Qr (Vc^2/Rg) from Shannon intensities"""
@@ -2414,7 +2433,9 @@ class Sasrec(object):
         Rg = self.rg
         Vcs = self.Vcerr
         Rgs = self.rgerr
-        mwVcs = Vc/(0.1231*Rg) * (4*Vcs**2 + (Vc/Rg*Rgs)**2)**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            mwVcs = Vc/(0.1231*Rg) * (4*Vcs**2 + (Vc/Rg*Rgs)**2)**(0.5)
         return mwVcs
 
     def Ish2lc(self):
@@ -2431,7 +2452,10 @@ class Sasrec(object):
         Vps = self.Vperr
         Vcs = self.Vcerr
         s2 = Vps**2 + (Vp/Vc)**2*Vcs**2
-        return 1/(2*np.pi*Vc) * s2**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            lcerr = 1/(2*np.pi*Vc) * s2**(0.5)
+        return lcerr
 
 class PDB(object):
     """Load pdb file."""
