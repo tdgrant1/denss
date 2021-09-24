@@ -82,6 +82,12 @@ if __name__ == "__main__":
         output = args.output
 
     Iq = np.genfromtxt(args.file, invalid_raise = False, usecols=(0,1,2))
+    if len(Iq.shape) < 2:
+        print("Invalid data format. Data file must have 3 columns: q, I, errors.")
+        exit()
+    if Iq.shape[1] < 3:
+        print("Not enough columns (data must have 3 columns: q, I, errors).")
+        exit()
     Iq = Iq[~np.isnan(Iq).any(axis = 1)]
     #get rid of any data points equal to zero in the intensities or errors columns
     idx = np.where((Iq[:,1]!=0)&(Iq[:,2]!=0))
@@ -97,7 +103,7 @@ if __name__ == "__main__":
     else:
         n2 = args.n2
 
-    Iq = Iq[n1:n2]
+    Iq = Iq #[n1:n2]
     Iq_orig = np.copy(Iq)
 
     if args.dmax is None:
@@ -112,10 +118,28 @@ if __name__ == "__main__":
     if args.max_dmax is None:
         args.max_dmax = 2.*D
 
-    sasrec = saxs.Sasrec(Iq, D, alpha=0.0, extrapolate=args.extrapolate)
+    print("Dmax = %.2f"%D)
+    qmax = Iq[n1:n2,0].max()
+    nsh = qmax/(np.pi/D)
+    print("Number of Shannon channels: %d"%(nsh))
+    if nsh > 500:
+        print("WARNING: Nsh > 500. Calculation may take a while. Please double check Dmax is accurate.")
+        #give the user a few seconds to cancel with CTRL-C
+        waittime = 10
+        import time
+        try:
+            for i in range(waittime):
+                sys.stdout.write("\rTo cancel, press CTRL-C in the next %d seconds. "%(waittime-i))
+                sys.stdout.flush()
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("Canceling...")
+            exit()
 
-    n1 = 0
-    n2 = len(Iq)
+    sasrec = saxs.Sasrec(Iq[n1:n2], D, alpha=0.0, extrapolate=args.extrapolate)
+
+    #n1 = 0
+    #n2 = len(Iq)
 
     if args.qfile is not None:
         qc = np.loadtxt(args.qfile,usecols=(0,))
@@ -123,7 +147,7 @@ if __name__ == "__main__":
         qc = None
 
     #calculate chi2 when alpha=0, to get the best possible chi2 for reference
-    sasrec = saxs.Sasrec(Iq, D, qc=qc, alpha=0.0, extrapolate=args.extrapolate)
+    sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, alpha=0.0, extrapolate=args.extrapolate)
     ideal_chi2 = sasrec.calc_chi2()
 
     if args.alpha is None:
@@ -132,8 +156,12 @@ if __name__ == "__main__":
         #here, alphas are actually the exponents, since the range can
         #vary from 10^-10 upwards of 10^20. This should cover nearly all likely values
         alphas = np.arange(-10,20.)
+        i = 0
+        nalphas = len(alphas)
         for alpha in alphas:
-            #print("***** ALPHA ****** %.5e"%alpha)
+            i += 1
+            sys.stdout.write("\rScanning alphas... {:.0%} complete".format(i*1./nalphas))
+            sys.stdout.flush()
             sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=None, alpha=10.**alpha, ne=nes, extrapolate=args.extrapolate)
             r = sasrec.r
             pi = np.pi
@@ -142,13 +170,14 @@ if __name__ == "__main__":
             chi2value = sasrec.calc_chi2()
             al.append(alpha)
             chi2.append(chi2value)
+            #print("***** ALPHA ****** 10^%d : %.5e "%(alpha, chi2value))
         chi2 = np.array(chi2)
-
+        print()
         #find optimal alpha value based on where chi2 begins to rise, to 10% above the ideal chi2 (where alpha=0)
         x = np.linspace(alphas[0],alphas[-1],1000)
         y = np.interp(x, alphas, chi2)
         chif = 2.0
-        ali = np.argmin(y<=chif*ideal_chi2)
+        ali = np.argmax(x[y<=chif*ideal_chi2])
         opt_alpha = 10.0**(np.interp(chif*ideal_chi2,[y[ali+1],y[ali]],[x[ali+1],x[ali]])-1)
         alpha = opt_alpha
     else:
@@ -218,7 +247,7 @@ if __name__ == "__main__":
         plt.subplots_adjust(left=0.068, bottom=0.25, right=0.98, top=0.95)
 
         #add a plot of untouched light gray data for reference for the user
-        I_l0, = axI.plot(sasrec.q_data, sasrec.I_data, '.', c='0.8', ms=3)
+        I_l0, = axI.plot(Iq_orig[:,0], Iq_orig[:,1], '.', c='0.8', ms=3)
         I_l1, = axI.plot(sasrec.q_data, sasrec.I_data, 'k.', ms=3, label='test')
         I_l2, = axI.plot(sasrec.qc, sasrec.Ic, 'r-', lw=2)
         I_l3, = axI.plot(sasrec.qn, sasrec.In, 'bo', mec='b', mfc='none', mew=2)
@@ -235,7 +264,8 @@ if __name__ == "__main__":
         #in case qc were fewer points than the data, for whatever reason,
         #only grab the points up to qc.max
         ridx = np.where((sasrec.q_data<sasrec.qc.max()))
-        Ires_l0, = axR.plot([sasrec.qc.min(),sasrec.qc.max()], [0,0], 'k--')
+        absolute_maximum_q = np.max([sasrec.qc.max(),sasrec.q.max(),Iq_orig[:,0].max()])
+        Ires_l0, = axR.plot([0,absolute_maximum_q], [0,0], 'k--')
         Ires_l1, = axR.plot(sasrec.q_data[ridx], res[ridx], 'r.', ms=3)
         axR.set_ylabel('Residuals')
         axR.set_xlabel('q')

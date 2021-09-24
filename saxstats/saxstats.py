@@ -2258,7 +2258,10 @@ class Sasrec(object):
         M = self.M
         Cinv = self.Cinv
         s2 = 2*np.einsum('n,m,nm->',(-1)**(N),(-1)**M,Cinv)
-        return s2**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            s = s2**(0.5)
+        return s
 
     def Ft(self):
         """Calculate Fn function, for use in Rg calculation"""
@@ -2274,7 +2277,9 @@ class Sasrec(object):
         I0 = self.I0
         F = self.F
         summation = np.sum(Ish*F)
-        rg = np.sqrt(D**2/I0 * summation)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            rg = np.sqrt(D**2/I0 * summation)
         return rg
 
     def rgerrfold(self):
@@ -2287,7 +2292,10 @@ class Sasrec(object):
         Fn = self.F
         Fm = self.F
         s2 = np.einsum('n,m,nm->',Fn,Fm,Cinv)
-        return D**2/(I0*rg)*s2**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            s = D**2/(I0*rg)*s2**(0.5)
+        return s
 
     def rgerrf(self):
         """Calculate error on Rg from Shannon intensities from inverse C variance-covariance matrix"""
@@ -2347,7 +2355,10 @@ class Sasrec(object):
         N = self.N
         M = self.M
         s2 = np.einsum('n,m,nm->', N**2, M**2,Cinv)
-        return (np.pi/D)**3 * s2**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            s = (np.pi/D)**3 * s2**(0.5)
+        return s
 
     def gamma0(self):
         """Calculate gamma at r=0. gamma is P(r)/4*pi*r^2"""
