@@ -47,6 +47,8 @@ parser.add_argument("-a", "--alpha", default=None, type=float, help="Set alpha s
 parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use")
 parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use")
 parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional)")
+parser.add_argument("-r", "--rfile", default=None, type=str, help=argparse.SUPPRESS)
+parser.add_argument("-nr", "--nr", default=None, type=int, help="Number of points in P(r) curve (default = number of points in I(q) profile).")
 parser.add_argument("--nes", default=0, type=int, help=argparse.SUPPRESS)
 parser.add_argument("--max_dmax", default=None, type=float, help="Maximum limit for allowed Dmax values (for plotting slider)")
 parser.add_argument("--max_alpha", default=None, type=float, help="Maximum limit for allowed alpha values (for plotting slider)")
@@ -103,7 +105,6 @@ if __name__ == "__main__":
     else:
         n2 = args.n2
 
-    Iq = Iq #[n1:n2]
     Iq_orig = np.copy(Iq)
 
     if args.dmax is None:
@@ -128,26 +129,27 @@ if __name__ == "__main__":
         waittime = 10
         import time
         try:
-            for i in range(waittime):
+            for i in range(waittime+1):
                 sys.stdout.write("\rTo cancel, press CTRL-C in the next %d seconds. "%(waittime-i))
                 sys.stdout.flush()
                 time.sleep(1)
+            print()
         except KeyboardInterrupt:
             print("Canceling...")
             exit()
-
-    sasrec = saxs.Sasrec(Iq[n1:n2], D, alpha=0.0, extrapolate=args.extrapolate)
-
-    #n1 = 0
-    #n2 = len(Iq)
 
     if args.qfile is not None:
         qc = np.loadtxt(args.qfile,usecols=(0,))
     else:
         qc = None
 
+    if args.rfile is not None:
+        r = np.loadtxt(args.rfile,usecols=(0,))
+    else:
+        r = None
+
     #calculate chi2 when alpha=0, to get the best possible chi2 for reference
-    sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, alpha=0.0, extrapolate=args.extrapolate)
+    sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=0.0, extrapolate=args.extrapolate)
     ideal_chi2 = sasrec.calc_chi2()
 
     if args.alpha is None:
@@ -162,8 +164,8 @@ if __name__ == "__main__":
             i += 1
             sys.stdout.write("\rScanning alphas... {:.0%} complete".format(i*1./nalphas))
             sys.stdout.flush()
-            sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=None, alpha=10.**alpha, ne=nes, extrapolate=args.extrapolate)
-            r = sasrec.r
+            sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=10.**alpha, ne=nes, extrapolate=args.extrapolate)
+            #r = sasrec.r
             pi = np.pi
             N = sasrec.N[:,None]
             In = sasrec.In[:,None]
@@ -173,18 +175,22 @@ if __name__ == "__main__":
             #print("***** ALPHA ****** 10^%d : %.5e "%(alpha, chi2value))
         chi2 = np.array(chi2)
         print()
-        #find optimal alpha value based on where chi2 begins to rise, to 10% above the ideal chi2 (where alpha=0)
+        #find optimal alpha value based on where chi2 begins to rise, to 10% above the ideal chi2
+        #interpolate between tested alphas to find more precise value
         x = np.linspace(alphas[0],alphas[-1],1000)
         y = np.interp(x, alphas, chi2)
         chif = 2.0
+        #take the maximum alpha value (x) where the chi2 just starts to rise above ideal
         ali = np.argmax(x[y<=chif*ideal_chi2])
+        #set the optimal alpha to be 10^alpha, since we were actually using exponents
+        #but also subtract 1 from that exponent, just to be safe that we didn't oversmooth
         opt_alpha = 10.0**(np.interp(chif*ideal_chi2,[y[ali+1],y[ali]],[x[ali+1],x[ali]])-1)
         alpha = opt_alpha
     else:
         alpha = args.alpha
-    sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=None, alpha=alpha, ne=nes, extrapolate=args.extrapolate)
-    #get a rough estimate for a reasonable alpha based on I(0)
-    #to set a maximum alpha range, so when users click in the slider
+    sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=alpha, ne=nes, extrapolate=args.extrapolate)
+
+    #set a maximum alpha range, so when users click in the slider
     #it at least does something reasonable, rather than either nothing
     #significant, or so huge it becomes difficult to find the right value
     if args.max_alpha is None:
@@ -229,7 +235,7 @@ if __name__ == "__main__":
         #add column headers to param_str for output
         param_str += 'q, I, error, fit'
         #quick, interpolate the raw data, sasrec.I, to the new qc values, but be sure to 
-        #put zeros in for the q values not measured behind the beamstop
+        #put zeros in for the q values not measured
         Iinterp = np.interp(sasrec.qc, sasrec.q_data, sasrec.I_data, left=0.0, right=0.0)
         np.savetxt(output+'.fit', np.vstack((sasrec.qc, Iinterp, sasrec.Icerr, sasrec.Ic)).T,delimiter=' ',fmt='%.5e',header=param_str)
         np.savetxt(output+'_pr.dat', np.vstack((sasrec.r, sasrec.P, sasrec.Perr)).T,delimiter=' ',fmt='%.5e')
@@ -292,12 +298,12 @@ if __name__ == "__main__":
         axalpha = plt.axes([0.05, 0.075, 0.4, 0.03], facecolor=axcolor)
         #axnes = plt.axes([0.05, 0.025, 0.4, 0.03], facecolor=axcolor)
 
-        axI0 = plt.figtext(.57, .125,   "I(0) = %.2e $\pm$ %.2e"%(sasrec.I0,sasrec.I0err),family='monospace')
-        axrg = plt.figtext(.57, .075,   "Rg   = %.2e $\pm$ %.2e"%(sasrec.rg,sasrec.rgerr),family='monospace')
+        axI0 = plt.figtext(.57, .125,   "$I(0)$  = %.2e $\pm$ %.2e"%(sasrec.I0,sasrec.I0err),family='monospace')
+        axrg = plt.figtext(.57, .075,   "$R_g$   = %.2e $\pm$ %.2e"%(sasrec.rg,sasrec.rgerr),family='monospace')
         axrav = plt.figtext(.57, .025,  "$\overline{r}$    = %.2e $\pm$ %.2e"%(sasrec.avgr,sasrec.avgrerr),family='monospace')
-        axVp = plt.figtext(.77, .125,   "Vp = %.2e $\pm$ %.2e"%(sasrec.Vp,sasrec.Vperr),family='monospace')
-        axVc = plt.figtext(.77, .075,   "Vc = %.2e $\pm$ %.2e"%(sasrec.Vc,sasrec.Vcerr),family='monospace')
-        axlc = plt.figtext(.77, .025,   "Lc = %.2e $\pm$ %.2e"%(sasrec.lc,sasrec.lcerr),family='monospace')
+        axVp = plt.figtext(.77, .125,   "$V_p$ = %.2e $\pm$ %.2e"%(sasrec.Vp,sasrec.Vperr),family='monospace')
+        axVc = plt.figtext(.77, .075,   "$V_c$ = %.2e $\pm$ %.2e"%(sasrec.Vc,sasrec.Vcerr),family='monospace')
+        axlc = plt.figtext(.77, .025,   "$\ell_c$ = %.2e $\pm$ %.2e"%(sasrec.lc,sasrec.lcerr),family='monospace')
         #axVpmw = plt.figtext(.55, .075, "Vp MW = %.2e $\pm$ %.2e"%(sasrec.mwVp,sasrec.mwVperr),family='monospace')
         #axVcmw = plt.figtext(.55, .025, "Vc MW = %.2e $\pm$ %.2e"%(sasrec.mwVc,sasrec.mwVcerr),family='monospace')
 
@@ -321,7 +327,7 @@ if __name__ == "__main__":
 
         def analyze(dmax,alpha,n1,n2,extrapolate):
             global sasrec
-            sasrec = saxs.Sasrec(Iq_orig[n1:n2], dmax, qc=qc, r=None, alpha=alpha, ne=nes, extrapolate=extrapolate)
+            sasrec = saxs.Sasrec(Iq_orig[n1:n2], dmax, qc=qc, r=r, nr=args.nr, alpha=alpha, ne=nes, extrapolate=extrapolate)
             Icinterp = np.interp(sasrec.q_data, sasrec.qc, np.abs(sasrec.Ic))
             res = sasrec.I_data/sasrec.Ierr_data - Icinterp/sasrec.Ierr_data
             ridx = np.where((sasrec.q_data<sasrec.qc.max()))
@@ -330,12 +336,12 @@ if __name__ == "__main__":
             I_l3.set_data(sasrec.qn, sasrec.In)
             Ires_l1.set_data(sasrec.q_data[ridx], res[ridx])
             P_l2.set_data(sasrec.r, sasrec.P)
-            axI0.set_text("I(0) = %.2e $\pm$ %.2e"%(sasrec.I0,sasrec.I0err))
-            axrg.set_text("Rg   = %.2e $\pm$ %.2e"%(sasrec.rg,sasrec.rgerr))
+            axI0.set_text("$I(0)$  = %.2e $\pm$ %.2e"%(sasrec.I0,sasrec.I0err))
+            axrg.set_text("$R_g$   = %.2e $\pm$ %.2e"%(sasrec.rg,sasrec.rgerr))
             axrav.set_text("$\overline{r}$    = %.2e $\pm$ %.2e"%(sasrec.avgr,sasrec.avgrerr))
-            axVp.set_text("Vp = %.2e $\pm$ %.2e"%(sasrec.Vp,sasrec.Vperr))
-            axVc.set_text("Vc = %.2e $\pm$ %.2e"%(sasrec.Vc,sasrec.Vcerr))
-            axlc.set_text("Lc = %.2e $\pm$ %.2e"%(sasrec.lc,sasrec.lcerr))
+            axVp.set_text("$V_p$ = %.2e $\pm$ %.2e"%(sasrec.Vp,sasrec.Vperr))
+            axVc.set_text("$V_c$ = %.2e $\pm$ %.2e"%(sasrec.Vc,sasrec.Vcerr))
+            axlc.set_text("$\ell_c$ = %.2e $\pm$ %.2e"%(sasrec.lc,sasrec.lcerr))
             #axVpmw.set_text("Vp MW = %.2e $\pm$ %.2e"%(sasrec.mwVp,sasrec.mwVperr))
             #axVcmw.set_text("Vc MW = %.2e $\pm$ %.2e"%(sasrec.mwVc,sasrec.mwVcerr))
 
@@ -375,7 +381,10 @@ if __name__ == "__main__":
             analyze(dmax,alpha,n1,n2,extrapolate)
             # this updates the slider value based on text box value
             sdmax.set_val(dmax)
-            axdmax.set_xticks([0.9 * sdmax.valmax, 0.1 * sdmax.valmax])
+            if (dmax > 0.9 * sdmax.valmax) or (dmax < 0.1 * sdmax.valmax):
+                sdmax.valmax = 2 * dmax
+                sdmax.ax.set_xlim(sdmax.valmin, sdmax.valmax)
+                axdmax.set_xticks([0.9 * sdmax.valmax, 0.1 * sdmax.valmax])
             fig.canvas.draw_idle()
 
         def A_submit(text):
@@ -387,6 +396,16 @@ if __name__ == "__main__":
             analyze(dmax,alpha,n1,n2,extrapolate)
             # this updates the slider value based on text box value
             salpha.set_val(alpha)
+            # partions alpha slider
+            if (alpha > 0.9 * salpha.valmax) or (alpha < 0.1 * salpha.valmax):
+                salpha.valmax = 2 * alpha
+                # alpha starting at zero makes initial adjustment additive not multiplicative
+                if alpha != 0:
+                    salpha.ax.set_xlim(salpha.valmin, salpha.valmax)
+                elif alpha == 0:
+                    salpha.valmax = alpha + 10
+                    salpha.valmin = 0.0
+                    salpha.ax.set_xlim(salpha.valmin, salpha.valmax)
             fig.canvas.draw_idle()
 
         def update(val):
@@ -455,11 +474,11 @@ if __name__ == "__main__":
         #including the rectangle checkbox, the lines for the X, and the label
         check = extrapolate_check
         size =  1.0 #size relative to axes axExtrap
-        for r in extrapolate_check.rectangles:
-            r.set_x(0.)
-            r.set_y(0.)
-            r.set_width(size)
-            r.set_height(size)
+        for rect in extrapolate_check.rectangles:
+            rect.set_x(0.)
+            rect.set_y(0.)
+            rect.set_width(size)
+            rect.set_height(size)
         first = True
         for l in check.lines:
             for ll in l:

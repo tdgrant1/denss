@@ -2030,7 +2030,7 @@ def fsc2res(fsc, cutoff=0.5, return_plot=False):
         return resn
 
 class Sasrec(object):
-    def __init__(self, Iq, D, qc=None, r=None, alpha=0.0, ne=2, extrapolate=True):
+    def __init__(self, Iq, D, qc=None, r=None, nr=None, alpha=0.0, ne=2, extrapolate=True):
         self.q = Iq[:,0]
         self.I = Iq[:,1]
         self.Ierr = Iq[:,2]
@@ -2052,18 +2052,21 @@ class Sasrec(object):
         self.qmax = np.max(self.q)
         self.nq = len(self.q)
         self.qi = np.arange(self.nq)
-        if r is None:
-            self.nr = self.nq
-            self.r = np.linspace(0,self.D,self.nr)
-        else:
+        if r is not None:
             self.r = r
             self.nr = len(self.r)
+        elif nr is not None:
+            self.nr = nr
+            self.r = np.linspace(0,self.D,self.nr)
+        else:
+            self.nr = self.nq
+            self.r = np.linspace(0,self.D,self.nr)
         self.alpha = alpha
         self.ne = ne
         self.update()
 
     def update(self):
-        self.r = np.linspace(0,self.D,self.nr)
+        #self.r = np.linspace(0,self.D,self.nr)
         self.ri = np.arange(self.nr)
         self.n = self.shannon_channels(self.qmax,self.D) + self.ne
         self.Ni = np.arange(self.n)
