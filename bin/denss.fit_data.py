@@ -119,11 +119,27 @@ if __name__ == "__main__":
     if args.max_dmax is None:
         args.max_dmax = 2.*D
 
+    if args.qfile is not None:
+        qc = np.loadtxt(args.qfile,usecols=(0,))
+    else:
+        qc = None
+
+    if args.rfile is not None:
+        r = np.loadtxt(args.rfile,usecols=(0,))
+    else:
+        r = None
+
     print("Dmax = %.2f"%D)
     qmax = Iq[n1:n2,0].max()
+    if qc is None:
+        qmaxc = qmax*3.0
+    else:
+        qmaxc = qc.max()
     nsh = qmax/(np.pi/D)
-    print("Number of Shannon channels: %d"%(nsh))
-    if nsh > 500:
+    nshc = qmaxc/(np.pi/D)
+    print("Number of experimental Shannon channels: %d"%(nsh))
+    print("Number of calculated Shannon channels: %d"%(nshc))
+    if (nsh > 500) or (nshc>500):
         print("WARNING: Nsh > 500. Calculation may take a while. Please double check Dmax is accurate.")
         #give the user a few seconds to cancel with CTRL-C
         waittime = 10
@@ -137,16 +153,6 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             print("Canceling...")
             exit()
-
-    if args.qfile is not None:
-        qc = np.loadtxt(args.qfile,usecols=(0,))
-    else:
-        qc = None
-
-    if args.rfile is not None:
-        r = np.loadtxt(args.rfile,usecols=(0,))
-    else:
-        r = None
 
     #calculate chi2 when alpha=0, to get the best possible chi2 for reference
     sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=0.0, extrapolate=args.extrapolate)
