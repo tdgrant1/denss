@@ -190,7 +190,9 @@ if __name__ == "__main__":
         ali = np.argmax(x[y<=chif*ideal_chi2])
         #set the optimal alpha to be 10^alpha, since we were actually using exponents
         #but also subtract 1 from that exponent, just to be safe that we didn't oversmooth
-        opt_alpha = 10.0**(np.interp(chif*ideal_chi2,[y[ali+1],y[ali]],[x[ali+1],x[ali]])-1)
+        opt_alpha_exponent = np.interp(chif*ideal_chi2,[y[ali+1],y[ali]],[x[ali+1],x[ali]])
+        #print(opt_alpha_exponent)
+        opt_alpha = 10.0**(opt_alpha_exponent-1)
         alpha = opt_alpha
     else:
         alpha = args.alpha

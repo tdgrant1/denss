@@ -777,11 +777,35 @@ def calc_rg_I0_by_guinier(Iq,nb=None,ne=None):
             break
         else:
             nb += 1
-            if nb>ne:
-                ne = nb+3
+            ne += 1
+            if nb>50:
+                raise ValueError("Guinier estimation failed. Guinier region slope is positive.")
     rg = (-3*m)**(0.5)
     I0 = np.exp(b)
     return rg, I0
+
+def calc_rg_by_guinier_peak(Iq,exp=1,nb=0,ne=None):
+    """roughly estimate Rg using the Guinier peak method.
+    Use only desired q range in input arrays.
+    exp - the exponent in q^exp * I(q)"""
+    d = exp
+    if ne is None:
+        ne = Iq.shape[0]
+    q = Iq[:,0] #[nb:ne,0]
+    I = Iq[:,1] #[nb:ne,1]
+    qdI = q**d * I
+    try:
+        #fit a quick quadratic for smoothness, ax^2 + bx + c
+        a,b,c = np.polyfit(q,qdI,2)
+        #get the peak position
+        qpeak = -b/(2*a) 
+    except:
+        #if polyfit fails, just grab the maximum position
+        qpeaki = np.argmax(qdI)
+        qpeak = q[qpeaki]
+    #calculate Rg from the peak position
+    rg = (3.*d/2.)**0.5 / qpeak
+    return rg
 
 def estimate_dmax(Iq,dmax=None,clean_up=True):
     """Attempt to roughly estimate Dmax directly from data."""
@@ -793,7 +817,10 @@ def estimate_dmax(Iq,dmax=None,clean_up=True):
     if dmax is None:
         #first, estimate a very rough rg from the first 20 data points
         nmax = 20
-        rg, I0 = calc_rg_I0_by_guinier(Iq,ne=nmax)
+        try:
+            rg, I0 = calc_rg_I0_by_guinier(Iq,ne=nmax)
+        except:
+            rg = calc_rg_by_guinier_peak(Iq,exp=1,ne=100)
         #next, dmax is roughly 3.5*rg for most particles
         #so calculate P(r) using a larger dmax, say twice as large, so 7*rg
         D = 7*rg
@@ -812,7 +839,14 @@ def estimate_dmax(Iq,dmax=None,clean_up=True):
     r, Pfilt, sigrfilt = filter_P(sasrec.r, sasrec.P, sasrec.Perr, qmax=Iq[:,0].max())
     #estimate D as the first position where P becomes less than 0.01*P.max(), after P.max()
     Pargmax = Pfilt.argmax()
-    D_idx = np.where((Pfilt[Pargmax:]<(0.001*Pfilt.max())))[0][0] + Pargmax
+    #catch cases where the P(r) plot goes largely negative at large r values,
+    #as this indicates repulsion. Set the new Pargmax, which is really just an
+    #identifier for where to begin searching for Dmax, to be any P value whose
+    #absolute value is greater than at least 10% of Pfilt.max. The large 10% is to 
+    #avoid issues with oscillations in P(r).
+    above_idx = np.where((np.abs(Pfilt)>0.1*Pfilt.max())&(r>r[Pargmax]))
+    Pargmax = np.max(above_idx)
+    D_idx = np.where((np.abs(Pfilt[Pargmax:])<(0.001*Pfilt.max())))[0][0] + Pargmax
     D = r[D_idx]
     sasrec.D = D
     sasrec.update()
