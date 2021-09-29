@@ -163,7 +163,7 @@ if __name__ == "__main__":
         chi2 = []
         #here, alphas are actually the exponents, since the range can
         #vary from 10^-10 upwards of 10^20. This should cover nearly all likely values
-        alphas = np.arange(-10,20.)
+        alphas = np.arange(-20,20.)
         i = 0
         nalphas = len(alphas)
         for alpha in alphas:
@@ -187,9 +187,14 @@ if __name__ == "__main__":
         y = np.interp(x, alphas, chi2)
         chif = 2.0
         #take the maximum alpha value (x) where the chi2 just starts to rise above ideal
-        ali = np.argmax(x[y<=chif*ideal_chi2])
+        try:
+            ali = np.argmax(x[y<=chif*ideal_chi2])
+        except:
+            #if it fails, it may mean that the lowest alpha value of 10^-20 is still too large, so just take that.
+            ali = 0
         #set the optimal alpha to be 10^alpha, since we were actually using exponents
         #but also subtract 1 from that exponent, just to be safe that we didn't oversmooth
+        #also interpolate between the two neighboring alpha values, to get closer to the chif*ideal_chi2
         opt_alpha_exponent = np.interp(chif*ideal_chi2,[y[ali+1],y[ali]],[x[ali+1],x[ali]])
         #print(opt_alpha_exponent)
         opt_alpha = 10.0**(opt_alpha_exponent-1)
