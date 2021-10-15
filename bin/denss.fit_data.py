@@ -195,7 +195,7 @@ if __name__ == "__main__":
         #set the optimal alpha to be 10^alpha, since we were actually using exponents
         #but also subtract 1 from that exponent, just to be safe that we didn't oversmooth
         #also interpolate between the two neighboring alpha values, to get closer to the chif*ideal_chi2
-        opt_alpha_exponent = np.interp(chif*ideal_chi2,[y[ali+1],y[ali]],[x[ali+1],x[ali]])
+        opt_alpha_exponent = np.interp(chif*ideal_chi2,[y[ali],y[ali-1]],[x[ali],x[ali-1]])
         #print(opt_alpha_exponent)
         opt_alpha = 10.0**(opt_alpha_exponent-1)
         alpha = opt_alpha
