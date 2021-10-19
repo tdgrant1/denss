@@ -157,7 +157,9 @@ if __name__ == "__main__":
         print("%s.mrc written. Score = %0.3e %s " % (ioutput,scores[i],filtered[i]))
         logging.info('Correlation score to reference: %s.mrc %.3e %s', ioutput, scores[i], filtered[i])
 
-    aligned = aligned[scores>threshold]
+    idx_keep = np.where(scores>threshold)
+    kept_ids = np.arange(nmaps)[idx_keep]
+    aligned = aligned[idx_keep]
     average_rho = np.mean(aligned,axis=0)
 
     logging.info('Mean of correlation scores: %.3e', mean)
@@ -168,13 +170,7 @@ if __name__ == "__main__":
     saxs.write_mrc(average_rho, sides[0], output+'_avg.mrc')
     logging.info('END')
 
-    """
-    #split maps into 2 halves--> enan, align, average independently with same refrho
-    avg_rho1 = np.mean(aligned[::2],axis=0)
-    avg_rho2 = np.mean(aligned[1::2],axis=0)
-    fsc = saxs.calc_fsc(avg_rho1,avg_rho2,sides[0])
-    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="qbins, FSC")
-    """
+
     #rather than compare two halves, average all fsc's to the reference
     fscs = []
     resns = []
@@ -185,6 +181,16 @@ if __name__ == "__main__":
         resns.append(resn_map)
 
     fscs = np.array(fscs)
+
+    #save a file containing all fsc curves
+    fscs_header = ['res(1/A)']
+    for i in kept_ids:
+        ioutput = output+"_"+str(i)+"_aligned"
+        fscs_header.append(ioutput)
+    #add the resolution as the first column
+    fscs_for_file = np.vstack((fscs[0,:,0],fscs[:,:,1])).T
+    np.savetxt(output+'_allfscs.dat',fscs_for_file,delimiter=" ",fmt="%.5e",header=",".join(fscs_header))
+
     resns = np.array(resns)
     fsc = np.mean(fscs,axis=0)
     resn, x, y, resx = saxs.fsc2res(fsc, return_plot=True)
