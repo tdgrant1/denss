@@ -776,6 +776,9 @@ def calc_rg_I0_by_guinier(Iq,nb=None,ne=None):
         if m < 0.0: 
             break
         else:
+            #the slope should be negative
+            #if the slope is positive, shift the 
+            #region forward by one point and try again
             nb += 1
             ne += 1
             if nb>50:
@@ -2118,6 +2121,7 @@ class Sasrec(object):
         self.S = self.St()
         self.Y = self.Yt()
         self.C = self.Ct2()
+        #print(self.C)
         self.Cinv = np.linalg.inv(self.C)
         self.In = np.linalg.solve(self.C,self.Y)
         with warnings.catch_warnings():

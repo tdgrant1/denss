@@ -49,7 +49,7 @@ parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point
 parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional)")
 parser.add_argument("-r", "--rfile", default=None, type=str, help=argparse.SUPPRESS)
 parser.add_argument("-nr", "--nr", default=None, type=int, help="Number of points in P(r) curve (default = number of points in I(q) profile).")
-parser.add_argument("--nes", default=0, type=int, help=argparse.SUPPRESS)
+parser.add_argument("--nes", default=2, type=int, help=argparse.SUPPRESS)
 parser.add_argument("--max_dmax", default=None, type=float, help="Maximum limit for allowed Dmax values (for plotting slider)")
 parser.add_argument("--max_alpha", default=None, type=float, help="Maximum limit for allowed alpha values (for plotting slider)")
 parser.add_argument("--max_nes", default=10, type=int, help=argparse.SUPPRESS)
@@ -170,7 +170,10 @@ if __name__ == "__main__":
             i += 1
             sys.stdout.write("\rScanning alphas... {:.0%} complete".format(i*1./nalphas))
             sys.stdout.flush()
-            sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=10.**alpha, ne=nes, extrapolate=args.extrapolate)
+            try:
+                sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=10.**alpha, ne=nes, extrapolate=args.extrapolate)
+            except:
+                continue
             #r = sasrec.r
             pi = np.pi
             N = sasrec.N[:,None]
@@ -179,12 +182,14 @@ if __name__ == "__main__":
             al.append(alpha)
             chi2.append(chi2value)
             #print("***** ALPHA ****** 10^%d : %.5e "%(alpha, chi2value))
+        al = np.array(al)
         chi2 = np.array(chi2)
         print()
         #find optimal alpha value based on where chi2 begins to rise, to 10% above the ideal chi2
         #interpolate between tested alphas to find more precise value
-        x = np.linspace(alphas[0],alphas[-1],1000)
-        y = np.interp(x, alphas, chi2)
+        #x = np.linspace(alphas[0],alphas[-1],1000)
+        x = np.linspace(al[0],al[-1],1000)
+        y = np.interp(x, al, chi2)
         chif = 2.0
         #take the maximum alpha value (x) where the chi2 just starts to rise above ideal
         try:
@@ -331,7 +336,7 @@ if __name__ == "__main__":
         #axdmax.xaxis.tick_top()
         axdmax.tick_params(labelbottom=False)
 
-        salpha = Slider(axalpha, 'Alpha', 0.0, max_alpha, valinit=alpha)
+        salpha = Slider(axalpha, r'$\alpha$', 0.0, max_alpha, valinit=alpha)
         salpha.valtext.set_visible(False)
 
         dmax = D
