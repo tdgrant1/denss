@@ -24,7 +24,7 @@ if args.plot:
 if args.output is None:
     fname_nopath = os.path.basename(args.files[0])
     basename, ext = os.path.splitext(fname_nopath)
-    output = basename+'_fsc.dat'
+    output = basename+" "
 else:
     output = args.output
 
@@ -45,7 +45,7 @@ if np.min(fsc[:,1]) > 0.5:
 else:
     print("Resolution: %.1f A" % resn)
 
-np.savetxt(output,fsc,delimiter=' ',fmt='%.5e',header="1/resolution, FSC")
+np.savetxt(output+'.dat',fsc,delimiter=' ',fmt='%.5e',header="1/resolution, FSC")
 
 if args.plot:
     import matplotlib.pyplot as plt
@@ -58,8 +58,7 @@ if args.plot:
     plt.legend()
     plt.xlabel('Resolution (1/$\mathrm{\AA}$)')
     plt.ylabel('Fourier Shell Correlation')
-    pltoutput = os.path.splitext(output)[0]
-    print(pltoutput)
-    plt.savefig(pltoutput+'.png',dpi=150)
+    print(output)
+    plt.savefig(output+'.png',dpi=150)
     plt.close()
 

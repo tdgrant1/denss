@@ -2057,8 +2057,10 @@ def fsc2res(fsc, cutoff=0.5, return_plot=False):
         resn = float(1./resx)
         #print("Resolution: < %.1f A (maximum possible)" % resn)
     else:
-        resi = np.argmin(y>=0.5)
-        resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
+        idx  = np.where(y>=0.5)
+        #resi = np.argmin(y>=0.5)
+        #resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
+        resx = np.max(x[idx])
         resn = float(1./resx)
         #print("Resolution: %.1f A" % resn)
     if return_plot:
