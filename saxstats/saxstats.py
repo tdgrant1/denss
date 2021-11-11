@@ -2513,7 +2513,19 @@ class Sasrec(object):
 
 class PDB(object):
     """Load pdb file."""
-    def __init__(self, filename, ignore_waters=False):
+    def __init__(self, filename=None, natoms=None, ignore_waters=False):
+        if isinstance(filename, int):
+            #if a user gives no keyword argument, but just an integer,
+            #assume the user means the argument is to be interpreted
+            #as natoms, rather than filename
+            natoms = filename
+            filename = None
+        if filename is not None:
+            self.read_pdb(filename, ignore_waters=ignore_waters)
+        elif natoms is not None:
+            self.generate_pdb_from_defaults(natoms)
+
+    def read_pdb(self, filename, ignore_waters=False):
         self.natoms = 0
         with open(filename) as f:
             for line in f:
@@ -2575,6 +2587,40 @@ class PDB(object):
                 self.charge[atom] = line[78:80].strip('\n')
                 self.nelectrons[atom] = electrons.get(self.atomtype[atom].upper(),6)
                 atom += 1
+
+    def generate_pdb_from_defaults(self, natoms):
+        self.natoms = natoms
+        #simple array of incrementing integers, starting from 1
+        self.atomnum = np.arange((self.natoms),dtype=int)+1
+        #all carbon atoms by default
+        self.atomname = np.full((self.natoms),"C",dtype=np.dtype((np.str,3)))
+        #no alternate conformations by default
+        self.atomalt = np.zeros((self.natoms),dtype=np.dtype((np.str,1)))
+        #all Alanines by default
+        self.resname = np.full((self.natoms),"ALA",dtype=np.dtype((np.str,3)))
+        #each atom belongs to a new residue by default
+        self.resnum = np.arange((self.natoms),dtype=int)
+        #chain A by default
+        self.chain = np.full((self.natoms),"A",dtype=np.dtype((np.str,1)))
+        #all atoms at (0,0,0) by default
+        self.coords = np.zeros((self.natoms, 3))
+        #all atoms 1.0 occupancy by default
+        self.occupancy = np.ones((self.natoms))
+        #all atoms 20 A^2 by default
+        self.b = np.ones((self.natoms))*20.0
+        #all atom types carbon by default
+        self.atomtype = np.full((self.natoms),"C",dtype=np.dtype((np.str,2)))
+        #all atoms neutral by default
+        self.charge = np.zeros((self.natoms),dtype=np.dtype((np.str,2)))
+        #all atoms carbon so have six electrons by default
+        self.nelectrons = np.ones((self.natoms),dtype=int)*6
+        #for CRYST1 card, use default defined by PDB, but 100 A side
+        self.cella = 100.0
+        self.cellb = 100.0
+        self.cellc = 100.0
+        self.cellalpha = 90.0
+        self.cellbeta = 90.0
+        self.cellgamma = 90.0
 
     def remove_waters(self):
         idx = np.where((self.resname=="HOH") | (self.resname=="TIP"))
@@ -2995,22 +3041,29 @@ def sphere(R, q=np.linspace(0,0.5,501), I0=1.,amp=False):
     else:
         return I0 * a**2
 
-def formfactor(element, q=(np.arange(500)+1)/1000.):
+def formfactor(element, q=(np.arange(500)+1)/1000.,B=0):
     """Calculate atomic form factors"""
     q = np.atleast_1d(q)
     ff = np.zeros(q.shape)
     for i in range(4):
         ff += ffcoeff[element]['a'][i] * np.exp(-ffcoeff[element]['b'][i]*(q/(4*np.pi))**2)
     ff += ffcoeff[element]['c']
+    ff *= np.exp(-B*q**2)
     return ff
 
 def u2B(u):
     """Calculate B-factor from atomic displacement, u"""
-    return 8 * np.pi**2 * u**2
+    if u<0:
+        return -8 * np.pi**2 * np.abs(u)**2
+    else:
+        return 8 * np.pi**2 * u**2
 
 def B2u(B):
     """Calculate atomic displacement, u, from B-factor"""
-    return (B/(8*np.pi**2))**0.5
+    if B<0:
+        return -(np.abs(B)/(8*np.pi**2))**0.5
+    else:
+        return (B/(8*np.pi**2))**0.5
 
 def realspace_formfactor(element, r=(np.arange(501))/1000., B=0.0):
     """Calculate real space atomic form factors"""
