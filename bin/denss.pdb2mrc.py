@@ -36,15 +36,15 @@ import sys, argparse, os
 parser = argparse.ArgumentParser(description="A tool for calculating simple electron density maps from pdb files.", formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
 parser.add_argument("-f", "--file", type=str, help="PDB filename")
-parser.add_argument("-s", "--side", default=300., type=float, help="Desired length real space box side (default=300 angstroms)")
+parser.add_argument("-s", "--side", default=None, type=float, help="Desired side length of real space box (default=None).")
 parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired voxel size (default=None)")
-parser.add_argument("-n", "--nsamples", default=64, type=float, help="Desired number of samples per axis (default=64)")
+parser.add_argument("-n", "--nsamples", default=64, type=int, help="Desired number of samples per axis (default=64)")
 parser.add_argument("-m", "--mode", default="slow", type=str, help="Mode. Either fast (Simple Gaussian sphere), slow (accurate 5-term Gaussian using Cromer-Mann coefficients), or FFT (default=slow).")
-parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (i.e. Gaussian sphere width sigma) (default=15 angstroms)")
-parser.add_argument("--solv", default=0.000, type=float, help="Desired Solvent Density (default=0.000 e-/A^3)")
+parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (B-factor-like atomic displacement (slow mode) Gaussian sphere width sigma (fast mode) (default=3*voxel)")
+parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB (default).")
+parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB.")
+parser.add_argument("--solv", default=0.000, type=float, help="Desired Solvent Density (experimental, default=0.000 e-/A^3)")
 parser.add_argument("--ignore_waters", dest="ignore_waters", action="store_true", help="Ignore waters.")
-parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB reference (default).")
-parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB reference.")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix (default=basename_pdb)")
 parser.set_defaults(ignore_waters = False)
 parser.set_defaults(center = True)
@@ -60,7 +60,30 @@ if __name__ == "__main__":
     else:
         output = args.output
 
-    side = args.side
+    pdb = saxs.PDB(args.file)
+    if args.center:
+        pdboutput = basename+"_centered.pdb"
+        pdb.coords -= pdb.coords.mean(axis=0)
+        pdb.write(filename=pdboutput)
+
+    if args.side is None:
+        #roughly estimate maximum dimension
+        #calculate max distance along x, y, z
+        #take the maximum of the three
+        #double that value to set the default side
+        xmin = np.min(pdb.coords[:,0])
+        xmax = np.max(pdb.coords[:,0])
+        ymin = np.min(pdb.coords[:,1])
+        ymax = np.max(pdb.coords[:,1])
+        zmin = np.min(pdb.coords[:,2])
+        zmax = np.max(pdb.coords[:,2])
+        wx = xmax-xmin
+        wy = ymax-ymin
+        wz = zmax-zmin
+        side = 2*np.max([wx,wy,wz])
+    else:
+        side = args.side
+
     if args.voxel is None:
         voxel = side / args.nsamples
     else:
@@ -76,11 +99,6 @@ if __name__ == "__main__":
     x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
 
     xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
-    pdb = saxs.PDB(args.file)
-    if args.center:
-        pdboutput = basename+"_centered.pdb"
-        pdb.coords -= pdb.coords.mean(axis=0)
-        pdb.write(filename=pdboutput)
 
     if args.mode == "fast":
         #rho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution,mode="fast",eps=1e-6)
