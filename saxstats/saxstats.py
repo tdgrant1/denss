@@ -1226,7 +1226,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                 rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(newrho)))
             gridcenter = np.array(newrho.shape)/2.
             shift = gridcenter-rhocom
-            shift = shift.astype(int)
+            shift = np.rint(shift).astype(int)
             newrho = np.roll(np.roll(np.roll(newrho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
             support = np.roll(np.roll(np.roll(support, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
 
@@ -1567,7 +1567,7 @@ def center_rho_roll(rho, recenter_mode="com", return_shift=False):
         rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
     gridcenter = np.array(rho.shape)/2.
     shift = gridcenter-rhocom
-    shift = shift.astype(int)
+    shift = np.rint(shift).astype(int)
     rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
     if return_shift:
         return rho, shift
