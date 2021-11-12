@@ -84,27 +84,24 @@ if __name__ == "__main__":
     """
     #rather than compare two halves, average all fsc's to the reference
     fscs = []
-    for map in range(nmaps):
-        fscs.append(saxs.calc_fsc(rhos[map],average_rho,side))
+    resns = []
+    for calc_map in range(len(aligned)):
+        fsc_map = saxs.calc_fsc(aligned[calc_map],refrho,sides[0])
+        fscs.append(fsc_map)
+        resn_map = saxs.fsc2res(fsc_map)
+        resns.append(resn_map)
+
     fscs = np.array(fscs)
+    resns = np.array(resns)
     fsc = np.mean(fscs,axis=0)
-
-    x = np.linspace(fsc[0,0],fsc[-1,0],100)
-    y = np.interp(x, fsc[:,0], fsc[:,1])
+    resn, x, y, resx = saxs.fsc2res(fsc, return_plot=True)
+    resn_sd = np.std(resns)
     if np.min(fsc[:,1]) > 0.5:
-        #if the fsc curve never falls below zero, then
-        #set the resolution to be the maximum resolution
-        #value sampled by the fsc curve
-        resx = np.max(fsc[:,0])
-        resn = float(1./resx)
-        print("Resolution: < %.1f A (maximum possible)" % resn)
+        print("Resolution: < %.1f +- %.1f A (maximum possible)" % (resn,resn_sd))
     else:
-        resi = np.argmin(y>=0.5)
-        resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
-        resn = float(1./resx)
-        print("Resolution: %.1f A" % resn)
+        print("Resolution: %.1f +- %.1f A " % (resn,resn_sd))
 
-    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC; Resolution=%.1f A" % resn)
+    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC; Resolution=%.1f +- %.1f A" % (resn,resn_sd))
 
     logging.info('Resolution: %.1f '+ 'A', resn )
     logging.info('END')

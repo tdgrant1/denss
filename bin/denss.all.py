@@ -202,6 +202,16 @@ if __name__ == "__main__":
     all_chis = np.array([denss_outputs[i][5] for i in np.arange(superargs.nmaps)])
     all_rg = np.array([denss_outputs[i][6] for i in np.arange(superargs.nmaps)])
     all_supportV = np.array([denss_outputs[i][7] for i in np.arange(superargs.nmaps)])
+    final_chis = np.zeros(superargs.nmaps)
+    final_rgs = np.zeros(superargs.nmaps)
+    final_supportVs = np.zeros(superargs.nmaps)
+    for i in range(superargs.nmaps):
+        final_rgs[i] = all_rg[i,all_rg[i]>0][-1]
+        final_chis[i] = all_chis[i,all_chis[i]>0][-1]
+        final_supportVs[i] = all_supportV[i,all_supportV[i]>0][-1]
+    superlogger.info('Average Rg...............: %3.3f +- %3.3f', np.mean(final_rgs), np.std(final_rgs))
+    superlogger.info('Average Chi2.............: %.3e +- %.3e', np.mean(final_chis), np.std(final_chis))
+    superlogger.info('Average Support Volume...: %3.3f +- %3.3f', np.mean(final_supportVs), np.std(final_supportVs))
 
     np.savetxt(output+'_chis_by_step.fit',all_chis.T,delimiter=" ",fmt="%.5e",header=",".join(chi_header))
     np.savetxt(output+'_rg_by_step.fit',all_rg.T,delimiter=" ",fmt="%.5e",header=",".join(rg_header))
@@ -237,6 +247,9 @@ if __name__ == "__main__":
             allrhos, scores = saxs.select_best_enantiomers(allrhos, cores=superargs.cores)
         except KeyboardInterrupt:
             sys.exit(1)
+        for i in range(superargs.nmaps):
+            ioutput = output+"_"+str(i)+"_enan"
+            saxs.write_mrc(allrhos[i], sides[0], ioutput+".mrc")
 
     if superargs.ref is None:
         print()
@@ -273,7 +286,9 @@ if __name__ == "__main__":
         print("%s.mrc written. Score = %0.3f %s " % (ioutput,scores[i],filtered[i]))
         superlogger.info('Correlation score to reference: %s.mrc %.3f %s', ioutput, scores[i], filtered[i])
 
-    aligned = aligned[scores>threshold]
+    idx_keep = np.where(scores>threshold)
+    kept_ids = np.arange(superargs.nmaps)[idx_keep]
+    aligned = aligned[idx_keep]
     average_rho = np.mean(aligned,axis=0)
 
     superlogger.info('Mean of correlation scores: %.3f', mean)
@@ -281,38 +296,47 @@ if __name__ == "__main__":
     superlogger.info('Total number of input maps for alignment: %i',allrhos.shape[0])
     superlogger.info('Number of aligned maps accepted: %i', aligned.shape[0])
     superlogger.info('Correlation score between average and reference: %.3f', -saxs.rho_overlap_score(average_rho, refrho))
+    superlogger.info('Mean Density of Avg Map (all voxels): %3.5f', np.mean(average_rho))
+    superlogger.info('Std. Dev. of Density (all voxels): %3.5f', np.std(average_rho))
+    superlogger.info('RMSD of Density (all voxels): %3.5f', np.sqrt(np.mean(np.square(average_rho))))
+    idx = np.where(np.abs(average_rho)>0.01*average_rho.max())
+    superlogger.info('Modified Mean Density (voxels >0.01*max): %3.5f', np.mean(average_rho[idx]))
+    superlogger.info('Modified Std. Dev. of Density (voxels >0.01*max): %3.5f', np.std(average_rho[idx]))
+    superlogger.info('Modified RMSD of Density (voxels >0.01*max): %3.5f', np.sqrt(np.mean(np.square(average_rho[idx]))))
     saxs.write_mrc(average_rho, sides[0], output+'_avg.mrc')
 
-    """
-    #split maps into 2 halves--> enan, align, average independently with same refrho
-    avg_rho1 = np.mean(aligned[::2],axis=0)
-    avg_rho2 = np.mean(aligned[1::2],axis=0)
-    fsc = saxs.calc_fsc(avg_rho1,avg_rho2,sides[0])
-    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="qbins, FSC")
-    """
     #rather than compare two halves, average all fsc's to the reference
     fscs = []
+    resns = []
     for calc_map in range(len(aligned)):
-        fscs.append(saxs.calc_fsc(aligned[calc_map],refrho,sides[0]))
-    fscs = np.array(fscs)
-    fsc = np.mean(fscs,axis=0)
-    x = np.linspace(fsc[0,0],fsc[-1,0],100)
-    y = np.interp(x, fsc[:,0], fsc[:,1])
-    if np.min(fsc[:,1]) > 0.5:
-        #if the fsc curve never falls below zero, then
-        #set the resolution to be the maximum resolution
-        #value sampled by the fsc curve
-        resx = np.max(fsc[:,0])
-        resn = float(1./resx)
-        print("Resolution: < %.1f A (maximum possible)" % resn)
-    else:
-        resi = np.argmin(y>=0.5)
-        resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
-        resn = float(1./resx)
-        print("Resolution: %.1f A" % resn)
-    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC; Resolution=%.1f A" % resn)
+        fsc_map = saxs.calc_fsc(aligned[calc_map],refrho,sides[0])
+        fscs.append(fsc_map)
+        resn_map = saxs.fsc2res(fsc_map)
+        resns.append(resn_map)
 
-    superlogger.info('Resolution: %.1f A', resn )
+    fscs = np.array(fscs)
+
+    #save a file containing all fsc curves
+    fscs_header = ['res(1/A)']
+    for i in kept_ids:
+        ioutput = output+"_"+str(i)+"_aligned"
+        fscs_header.append(ioutput)
+    #add the resolution as the first column
+    fscs_for_file = np.vstack((fscs[0,:,0],fscs[:,:,1])).T
+    np.savetxt(output+'_allfscs.dat',fscs_for_file,delimiter=" ",fmt="%.5e",header=",".join(fscs_header))
+
+    resns = np.array(resns)
+    fsc = np.mean(fscs,axis=0)
+    resn, x, y, resx = saxs.fsc2res(fsc, return_plot=True)
+    resn_sd = np.std(resns)
+    if np.min(fsc[:,1]) > 0.5:
+        print("Resolution: < %.1f +- %.1f A (maximum possible)" % (resn,resn_sd))
+    else:
+        print("Resolution: %.1f +- %.1f A " % (resn,resn_sd))
+
+    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC; Resolution=%.1f +- %.1f A" % (resn,resn_sd))
+
+    superlogger.info('Resolution = %.1f +- %.1f A' % (resn,resn_sd))
     superlogger.info('END')
 
     if superargs.plot:

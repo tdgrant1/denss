@@ -157,7 +157,9 @@ if __name__ == "__main__":
         print("%s.mrc written. Score = %0.3e %s " % (ioutput,scores[i],filtered[i]))
         logging.info('Correlation score to reference: %s.mrc %.3e %s', ioutput, scores[i], filtered[i])
 
-    aligned = aligned[scores>threshold]
+    idx_keep = np.where(scores>threshold)
+    kept_ids = np.arange(nmaps)[idx_keep]
+    aligned = aligned[idx_keep]
     average_rho = np.mean(aligned,axis=0)
 
     logging.info('Mean of correlation scores: %.3e', mean)
@@ -168,34 +170,38 @@ if __name__ == "__main__":
     saxs.write_mrc(average_rho, sides[0], output+'_avg.mrc')
     logging.info('END')
 
-    """
-    #split maps into 2 halves--> enan, align, average independently with same refrho
-    avg_rho1 = np.mean(aligned[::2],axis=0)
-    avg_rho2 = np.mean(aligned[1::2],axis=0)
-    fsc = saxs.calc_fsc(avg_rho1,avg_rho2,sides[0])
-    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="qbins, FSC")
-    """
+
     #rather than compare two halves, average all fsc's to the reference
     fscs = []
-    for map in range(len(aligned)):
-        fscs.append(saxs.calc_fsc(aligned[map],refrho,sides[0]))
+    resns = []
+    for calc_map in range(len(aligned)):
+        fsc_map = saxs.calc_fsc(aligned[calc_map],refrho,sides[0])
+        fscs.append(fsc_map)
+        resn_map = saxs.fsc2res(fsc_map)
+        resns.append(resn_map)
+
     fscs = np.array(fscs)
+
+    #save a file containing all fsc curves
+    fscs_header = ['res(1/A)']
+    for i in kept_ids:
+        ioutput = output+"_"+str(i)+"_aligned"
+        fscs_header.append(ioutput)
+    #add the resolution as the first column
+    fscs_for_file = np.vstack((fscs[0,:,0],fscs[:,:,1])).T
+    np.savetxt(output+'_allfscs.dat',fscs_for_file,delimiter=" ",fmt="%.5e",header=",".join(fscs_header))
+
+    resns = np.array(resns)
     fsc = np.mean(fscs,axis=0)
-    x = np.linspace(fsc[0,0],fsc[-1,0],100)
-    y = np.interp(x, fsc[:,0], fsc[:,1])
+    resn, x, y, resx = saxs.fsc2res(fsc, return_plot=True)
+    resn_sd = np.std(resns)
     if np.min(fsc[:,1]) > 0.5:
-        #if the fsc curve never falls below zero, then
-        #set the resolution to be the maximum resolution
-        #value sampled by the fsc curve
-        resx = np.max(fsc[:,0])
-        resn = float(1./resx)
-        print("Resolution: < %.1f A (maximum possible)" % resn)
+        print("Resolution: < %.1f +- %.1f A (maximum possible)" % (resn,resn_sd))
     else:
-        resi = np.argmin(y>=0.5)
-        resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
-        resn = float(1./resx)
-        print("Resolution: %.1f A" % resn)
-    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC; Resolution=%.1f A" % resn)
+        print("Resolution: %.1f +- %.1f A " % (resn,resn_sd))
+
+    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC; Resolution=%.1f +- %.1f A" % (resn,resn_sd))
+
     logging.info('Resolution: %.1f A', resn )
     logging.info('END')
 

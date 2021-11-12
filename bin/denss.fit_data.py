@@ -47,6 +47,8 @@ parser.add_argument("-a", "--alpha", default=None, type=float, help="Set alpha s
 parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use")
 parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use")
 parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional)")
+parser.add_argument("-r", "--rfile", default=None, type=str, help=argparse.SUPPRESS)
+parser.add_argument("-nr", "--nr", default=None, type=int, help="Number of points in P(r) curve (default = number of points in I(q) profile).")
 parser.add_argument("--nes", default=2, type=int, help=argparse.SUPPRESS)
 parser.add_argument("--max_dmax", default=None, type=float, help="Maximum limit for allowed Dmax values (for plotting slider)")
 parser.add_argument("--max_alpha", default=None, type=float, help="Maximum limit for allowed alpha values (for plotting slider)")
@@ -66,7 +68,7 @@ if args.plot:
         #matplotlib.use('TkAgg')
         matplotlib.use('Qt5Agg')
         import matplotlib.pyplot as plt
-        from matplotlib.widgets import Slider, Button, RadioButtons, TextBox
+        from matplotlib.widgets import Slider, Button, RadioButtons, TextBox, CheckButtons #, RangeSlider
     except ImportError:
         args.plot = False
 
@@ -82,6 +84,12 @@ if __name__ == "__main__":
         output = args.output
 
     Iq = np.genfromtxt(args.file, invalid_raise = False, usecols=(0,1,2))
+    if len(Iq.shape) < 2:
+        print("Invalid data format. Data file must have 3 columns: q, I, errors.")
+        exit()
+    if Iq.shape[1] < 3:
+        print("Not enough columns (data must have 3 columns: q, I, errors).")
+        exit()
     Iq = Iq[~np.isnan(Iq).any(axis = 1)]
     #get rid of any data points equal to zero in the intensities or errors columns
     idx = np.where((Iq[:,1]!=0)&(Iq[:,2]!=0))
@@ -97,54 +105,57 @@ if __name__ == "__main__":
     else:
         n2 = args.n2
 
-    Iq = Iq[n1:n2]
+    Iq_orig = np.copy(Iq)
 
     if args.dmax is None:
         #estimate dmax directly from data
-        D, sasrec = saxs.estimate_dmax(Iq,clean_up=True)
+        #note that saxs.estimate_dmax does NOT extrapolate
+        #the high q data, even though by default
+        #saxs.Sasrec does extrapolate.
+        D, sasrec = saxs.estimate_dmax(Iq, clean_up=True)
     else:
         D = args.dmax
-        sasrec = saxs.Sasrec(Iq, D, alpha=0.0)
 
     if args.max_dmax is None:
         args.max_dmax = 2.*D
 
-    if args.extrapolate:
-        qe = np.linspace(1.0*Iq[-1,0],3.0*Iq[-1,0],1001)
-        qsph = qe[qe>Iq[-1,0]]
-        #simulate scattering of sphere of Rg of particle
-        Isph = saxs.sphere(q=qsph,R=3./5.*sasrec.rg**0.5)
-        Isph += np.random.normal(Isph*1e-2,size=len(Isph))
-        idx = np.where(Isph>0)
-        qsph = qsph[idx]
-        Isph = Isph[idx]
-        #scale extrapolated intensity to match data
-        Isph *= Iq[-50:,1].mean()/Isph[:20].mean()
-        ssph = Isph*1.e6 #try huge error bars
-        Iqe = np.concatenate((Iq,np.vstack((qsph,Isph,ssph)).T))
-        #save original Iq for plotting
-        Iq_orig = np.copy(Iq)
-        #now reset Iq to be the extrapolated Iq
-        Iq = np.copy(Iqe)
-    else:
-        Iq_orig = np.copy(Iq)
-
-    n1 = 0
-    n2 = len(Iq)
-
-    q = Iq[:,0]
-    #create a calculated q range for Sasrec
-    qmax = q.max()
-    qmin = q.min()
-    dq = (qmax-qmin)/(q.size-1)
-    nq = int(qmin/dq)
-    qc = np.concatenate(([0.0],np.arange(nq)*dq+(qmin-nq*dq),q))
-    Icerr = np.concatenate((np.ones(nq+1)*Iq[0,2],Iq[:,2]))
-
     if args.qfile is not None:
         qc = np.loadtxt(args.qfile,usecols=(0,))
+    else:
+        qc = None
 
-    sasrec = saxs.Sasrec(Iq, D, alpha=0.0)
+    if args.rfile is not None:
+        r = np.loadtxt(args.rfile,usecols=(0,))
+    else:
+        r = None
+
+    print("Dmax = %.2f"%D)
+    qmax = Iq[n1:n2,0].max()
+    if qc is None:
+        qmaxc = qmax*3.0
+    else:
+        qmaxc = qc.max()
+    nsh = qmax/(np.pi/D)
+    nshc = qmaxc/(np.pi/D)
+    print("Number of experimental Shannon channels: %d"%(nsh))
+    print("Number of calculated Shannon channels: %d"%(nshc))
+    if (nsh > 500) or (nshc>500):
+        print("WARNING: Nsh > 500. Calculation may take a while. Please double check Dmax is accurate.")
+        #give the user a few seconds to cancel with CTRL-C
+        waittime = 10
+        import time
+        try:
+            for i in range(waittime+1):
+                sys.stdout.write("\rTo cancel, press CTRL-C in the next %d seconds. "%(waittime-i))
+                sys.stdout.flush()
+                time.sleep(1)
+            print()
+        except KeyboardInterrupt:
+            print("Canceling...")
+            exit()
+
+    #calculate chi2 when alpha=0, to get the best possible chi2 for reference
+    sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=0.0, extrapolate=args.extrapolate)
     ideal_chi2 = sasrec.calc_chi2()
 
     if args.alpha is None:
@@ -152,31 +163,52 @@ if __name__ == "__main__":
         chi2 = []
         #here, alphas are actually the exponents, since the range can
         #vary from 10^-10 upwards of 10^20. This should cover nearly all likely values
-        alphas = np.arange(-10,20.)
+        alphas = np.arange(-20,20.)
+        i = 0
+        nalphas = len(alphas)
         for alpha in alphas:
-            #print("***** ALPHA ****** %.5e"%alpha)
-            sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=None, alpha=10.**alpha, ne=nes)
-            r = sasrec.r
+            i += 1
+            sys.stdout.write("\rScanning alphas... {:.0%} complete".format(i*1./nalphas))
+            sys.stdout.flush()
+            try:
+                sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=10.**alpha, ne=nes, extrapolate=args.extrapolate)
+            except:
+                continue
+            #r = sasrec.r
             pi = np.pi
             N = sasrec.N[:,None]
             In = sasrec.In[:,None]
             chi2value = sasrec.calc_chi2()
             al.append(alpha)
             chi2.append(chi2value)
+            #print("***** ALPHA ****** 10^%d : %.5e "%(alpha, chi2value))
+        al = np.array(al)
         chi2 = np.array(chi2)
-
-        #find optimal alpha value based on where chi2 begins to rise, to 10% above the ideal chi2 (where alpha=0)
-        x = np.linspace(alphas[0],alphas[-1],1000)
-        y = np.interp(x, alphas, chi2)
+        print()
+        #find optimal alpha value based on where chi2 begins to rise, to 10% above the ideal chi2
+        #interpolate between tested alphas to find more precise value
+        #x = np.linspace(alphas[0],alphas[-1],1000)
+        x = np.linspace(al[0],al[-1],1000)
+        y = np.interp(x, al, chi2)
         chif = 2.0
-        ali = np.argmin(y<=chif*ideal_chi2)
-        opt_alpha = 10.0**(np.interp(chif*ideal_chi2,[y[ali+1],y[ali]],[x[ali+1],x[ali]])-1)
+        #take the maximum alpha value (x) where the chi2 just starts to rise above ideal
+        try:
+            ali = np.argmax(x[y<=chif*ideal_chi2])
+        except:
+            #if it fails, it may mean that the lowest alpha value of 10^-20 is still too large, so just take that.
+            ali = 0
+        #set the optimal alpha to be 10^alpha, since we were actually using exponents
+        #but also subtract 1 from that exponent, just to be safe that we didn't oversmooth
+        #also interpolate between the two neighboring alpha values, to get closer to the chif*ideal_chi2
+        opt_alpha_exponent = np.interp(chif*ideal_chi2,[y[ali],y[ali-1]],[x[ali],x[ali-1]])
+        #print(opt_alpha_exponent)
+        opt_alpha = 10.0**(opt_alpha_exponent-1)
         alpha = opt_alpha
     else:
         alpha = args.alpha
-    sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=None, alpha=alpha, ne=nes)
-    #get a rough estimate for a reasonable alpha based on I(0)
-    #to set a maximum alpha range, so when users click in the slider
+    sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=alpha, ne=nes, extrapolate=args.extrapolate)
+
+    #set a maximum alpha range, so when users click in the slider
     #it at least does something reasonable, rather than either nothing
     #significant, or so huge it becomes difficult to find the right value
     if args.max_alpha is None:
@@ -221,9 +253,9 @@ if __name__ == "__main__":
         #add column headers to param_str for output
         param_str += 'q, I, error, fit'
         #quick, interpolate the raw data, sasrec.I, to the new qc values, but be sure to 
-        #put zeros in for the q values not measured behind the beamstop
-        Iinterp = np.interp(sasrec.qc, sasrec.q, sasrec.I, left=0.0, right=0.0)
-        np.savetxt(output+'.fit', np.vstack((sasrec.qc, Iinterp, Icerr, sasrec.Ic)).T,delimiter=' ',fmt='%.5e',header=param_str)
+        #put zeros in for the q values not measured
+        Iinterp = np.interp(sasrec.qc, sasrec.q_data, sasrec.I_data, left=0.0, right=0.0)
+        np.savetxt(output+'.fit', np.vstack((sasrec.qc, Iinterp, sasrec.Icerr, sasrec.Ic)).T,delimiter=' ',fmt='%.5e',header=param_str)
         np.savetxt(output+'_pr.dat', np.vstack((sasrec.r, sasrec.P, sasrec.Perr)).T,delimiter=' ',fmt='%.5e')
         print("%s and %s files saved" % (output+".fit",output+"_pr.dat"))
 
@@ -238,7 +270,9 @@ if __name__ == "__main__":
         axP = plt.subplot2grid((3,2), (0,1),rowspan=3)
         plt.subplots_adjust(left=0.068, bottom=0.25, right=0.98, top=0.95)
 
-        I_l1, = axI.plot(sasrec.q, sasrec.I, 'k.')
+        #add a plot of untouched light gray data for reference for the user
+        I_l0, = axI.plot(Iq_orig[:,0], Iq_orig[:,1], '.', c='0.8', ms=3)
+        I_l1, = axI.plot(sasrec.q_data, sasrec.I_data, 'k.', ms=3, label='test')
         I_l2, = axI.plot(sasrec.qc, sasrec.Ic, 'r-', lw=2)
         I_l3, = axI.plot(sasrec.qn, sasrec.In, 'bo', mec='b', mfc='none', mew=2)
         if args.log: axI.semilogy()
@@ -246,9 +280,17 @@ if __name__ == "__main__":
         axI.set_xlabel('q')
 
         #residuals
-        res = np.log10(np.abs(sasrec.I)) - np.log10(np.interp(sasrec.q, sasrec.qc, np.abs(sasrec.Ic)))
-        Ires_l0, = axR.plot(sasrec.q, sasrec.q*0, 'k--')
-        Ires_l1, = axR.plot(sasrec.q, res, 'r-')
+        #first, just ensure that we're comparing similar q ranges, so
+        #interpolate from qc to q_data to enable subtraction, since there's
+        #q values in qc that are not in q_data, and possibly vice versa
+        Icinterp = np.interp(sasrec.q_data, sasrec.qc, np.abs(sasrec.Ic))
+        res = sasrec.I_data/sasrec.Ierr_data - Icinterp/sasrec.Ierr_data
+        #in case qc were fewer points than the data, for whatever reason,
+        #only grab the points up to qc.max
+        ridx = np.where((sasrec.q_data<sasrec.qc.max()))
+        absolute_maximum_q = np.max([sasrec.qc.max(),sasrec.q.max(),Iq_orig[:,0].max()])
+        Ires_l0, = axR.plot([0,absolute_maximum_q], [0,0], 'k--')
+        Ires_l1, = axR.plot(sasrec.q_data[ridx], res[ridx], 'r.', ms=3)
         axR.set_ylabel('Residuals')
         axR.set_xlabel('q')
 
@@ -265,20 +307,27 @@ if __name__ == "__main__":
         axI.set_ylim([0.25*np.min(sasrec.Ic[sasrec.qc<Iq_orig[-1,0]]),2*np.max(sasrec.Ic[sasrec.qc<Iq_orig[-1,0]])])
         #axR.set_ylim([0,Iq_orig[-1,0]])
         #axP.set_ylim([0,1.1*np.max(sasrec.r)])
+        #the "q" axis label is a little low, so let's raise it up a bit
+        axR.xaxis.labelpad = -10
 
         axcolor = 'lightgoldenrodyellow'
+        #axn1n2 = plt.axes([0.05, 0.175, 0.4, 0.03], facecolor=axcolor)
         axdmax = plt.axes([0.05, 0.125, 0.4, 0.03], facecolor=axcolor)
         axalpha = plt.axes([0.05, 0.075, 0.4, 0.03], facecolor=axcolor)
         #axnes = plt.axes([0.05, 0.025, 0.4, 0.03], facecolor=axcolor)
 
-        axI0 = plt.figtext(.57, .125,   "I(0) = %.2e $\pm$ %.2e"%(sasrec.I0,sasrec.I0err),family='monospace')
-        axrg = plt.figtext(.57, .075,   "Rg   = %.2e $\pm$ %.2e"%(sasrec.rg,sasrec.rgerr),family='monospace')
+        axI0 = plt.figtext(.57, .125,   "$I(0)$  = %.2e $\pm$ %.2e"%(sasrec.I0,sasrec.I0err),family='monospace')
+        axrg = plt.figtext(.57, .075,   "$R_g$   = %.2e $\pm$ %.2e"%(sasrec.rg,sasrec.rgerr),family='monospace')
         axrav = plt.figtext(.57, .025,  "$\overline{r}$    = %.2e $\pm$ %.2e"%(sasrec.avgr,sasrec.avgrerr),family='monospace')
-        axVp = plt.figtext(.77, .125,   "Vp = %.2e $\pm$ %.2e"%(sasrec.Vp,sasrec.Vperr),family='monospace')
-        axVc = plt.figtext(.77, .075,   "Vc = %.2e $\pm$ %.2e"%(sasrec.Vc,sasrec.Vcerr),family='monospace')
-        axlc = plt.figtext(.77, .025,   "Lc = %.2e $\pm$ %.2e"%(sasrec.lc,sasrec.lcerr),family='monospace')
+        axVp = plt.figtext(.77, .125,   "$V_p$ = %.2e $\pm$ %.2e"%(sasrec.Vp,sasrec.Vperr),family='monospace')
+        axVc = plt.figtext(.77, .075,   "$V_c$ = %.2e $\pm$ %.2e"%(sasrec.Vc,sasrec.Vcerr),family='monospace')
+        axlc = plt.figtext(.77, .025,   "$\ell_c$ = %.2e $\pm$ %.2e"%(sasrec.lc,sasrec.lcerr),family='monospace')
         #axVpmw = plt.figtext(.55, .075, "Vp MW = %.2e $\pm$ %.2e"%(sasrec.mwVp,sasrec.mwVperr),family='monospace')
         #axVcmw = plt.figtext(.55, .025, "Vc MW = %.2e $\pm$ %.2e"%(sasrec.mwVc,sasrec.mwVcerr),family='monospace')
+
+        #RangeSlider is for very new versions of matplotlib, so for now ignore it
+        #sn1n2 = RangeSlider(axn1n2, 'n1n2', 0, Iq_orig.shape[0], valinit=(n1, n2))
+        #sn1n2.valtext.set_visible(False)
 
         sdmax = Slider(axdmax, 'Dmax', 0.0, args.max_dmax, valinit=D)
         sdmax.valtext.set_visible(False)
@@ -287,30 +336,30 @@ if __name__ == "__main__":
         #axdmax.xaxis.tick_top()
         axdmax.tick_params(labelbottom=False)
 
-        salpha = Slider(axalpha, 'Alpha', 0.0, max_alpha, valinit=alpha)
+        salpha = Slider(axalpha, r'$\alpha$', 0.0, max_alpha, valinit=alpha)
         salpha.valtext.set_visible(False)
-
-        #snes = Slider(axnes, 'NES', 0, args.max_nes, valinit=args.nes, valstep=1)
 
         dmax = D
         n1 = str(n1)
         n2 = str(n2)
 
-        def analyze(dmax,alpha,n1,n2):
+        def analyze(dmax,alpha,n1,n2,extrapolate):
             global sasrec
-            sasrec = saxs.Sasrec(Iq[n1:n2], dmax, qc=qc, r=None, alpha=alpha, ne=nes)
-            Icinterp = np.interp(sasrec.q, sasrec.qc, np.abs(sasrec.Ic))
-            res = np.log10(np.abs(sasrec.I)) - np.log10(Icinterp)
-            I_l2.set_data(sasrec.qc[:n2], sasrec.Ic[:n2])
+            sasrec = saxs.Sasrec(Iq_orig[n1:n2], dmax, qc=qc, r=r, nr=args.nr, alpha=alpha, ne=nes, extrapolate=extrapolate)
+            Icinterp = np.interp(sasrec.q_data, sasrec.qc, np.abs(sasrec.Ic))
+            res = sasrec.I_data/sasrec.Ierr_data - Icinterp/sasrec.Ierr_data
+            ridx = np.where((sasrec.q_data<sasrec.qc.max()))
+            I_l1.set_data(sasrec.q_data, sasrec.I_data)
+            I_l2.set_data(sasrec.qc, sasrec.Ic)
             I_l3.set_data(sasrec.qn, sasrec.In)
-            Ires_l1.set_data(sasrec.q, res)
+            Ires_l1.set_data(sasrec.q_data[ridx], res[ridx])
             P_l2.set_data(sasrec.r, sasrec.P)
-            axI0.set_text("I(0) = %.2e $\pm$ %.2e"%(sasrec.I0,sasrec.I0err))
-            axrg.set_text("Rg   = %.2e $\pm$ %.2e"%(sasrec.rg,sasrec.rgerr))
+            axI0.set_text("$I(0)$  = %.2e $\pm$ %.2e"%(sasrec.I0,sasrec.I0err))
+            axrg.set_text("$R_g$   = %.2e $\pm$ %.2e"%(sasrec.rg,sasrec.rgerr))
             axrav.set_text("$\overline{r}$    = %.2e $\pm$ %.2e"%(sasrec.avgr,sasrec.avgrerr))
-            axVp.set_text("Vp = %.2e $\pm$ %.2e"%(sasrec.Vp,sasrec.Vperr))
-            axVc.set_text("Vc = %.2e $\pm$ %.2e"%(sasrec.Vc,sasrec.Vcerr))
-            axlc.set_text("Lc = %.2e $\pm$ %.2e"%(sasrec.lc,sasrec.lcerr))
+            axVp.set_text("$V_p$ = %.2e $\pm$ %.2e"%(sasrec.Vp,sasrec.Vperr))
+            axVc.set_text("$V_c$ = %.2e $\pm$ %.2e"%(sasrec.Vc,sasrec.Vcerr))
+            axlc.set_text("$\ell_c$ = %.2e $\pm$ %.2e"%(sasrec.lc,sasrec.lcerr))
             #axVpmw.set_text("Vp MW = %.2e $\pm$ %.2e"%(sasrec.mwVp,sasrec.mwVperr))
             #axVcmw.set_text("Vc MW = %.2e $\pm$ %.2e"%(sasrec.mwVc,sasrec.mwVcerr))
 
@@ -319,7 +368,8 @@ if __name__ == "__main__":
             alpha = salpha.val
             n1 = int(text)
             n2 = int(n2_box.text)
-            analyze(dmax,alpha,n1,n2)
+            extrapolate = extrapolate_check.get_status()[0]
+            analyze(dmax,alpha,n1,n2,extrapolate)
             fig.canvas.draw_idle()
 
         def n2_submit(text):
@@ -327,7 +377,17 @@ if __name__ == "__main__":
             alpha = salpha.val
             n1 = int(n1_box.text)
             n2 = int(text)
-            analyze(dmax,alpha,n1,n2)
+            extrapolate = extrapolate_check.get_status()[0]
+            analyze(dmax,alpha,n1,n2,extrapolate)
+            fig.canvas.draw_idle()
+
+        def extrapolate_submit(text):
+            dmax = sdmax.val
+            alpha = salpha.val
+            n1 = int(n1_box.text)
+            n2 = int(n2_box.text)
+            extrapolate = extrapolate_check.get_status()[0]
+            analyze(dmax,alpha,n1,n2,extrapolate)
             fig.canvas.draw_idle()
 
         def D_submit(text):
@@ -335,10 +395,14 @@ if __name__ == "__main__":
             alpha = salpha.val
             n1 = int(n1_box.text)
             n2 = int(n2_box.text)
-            analyze(dmax,alpha,n1,n2)
+            extrapolate = extrapolate_check.get_status()[0]
+            analyze(dmax,alpha,n1,n2,extrapolate)
             # this updates the slider value based on text box value
             sdmax.set_val(dmax)
-            axdmax.set_xticks([0.9 * sdmax.valmax, 0.1 * sdmax.valmax])
+            if (dmax > 0.9 * sdmax.valmax) or (dmax < 0.1 * sdmax.valmax):
+                sdmax.valmax = 2 * dmax
+                sdmax.ax.set_xlim(sdmax.valmin, sdmax.valmax)
+                axdmax.set_xticks([0.9 * sdmax.valmax, 0.1 * sdmax.valmax])
             fig.canvas.draw_idle()
 
         def A_submit(text):
@@ -346,9 +410,20 @@ if __name__ == "__main__":
             alpha = float(text)
             n1 = int(n1_box.text)
             n2 = int(n2_box.text)
-            analyze(dmax,alpha,n1,n2)
+            extrapolate = extrapolate_check.get_status()[0]
+            analyze(dmax,alpha,n1,n2,extrapolate)
             # this updates the slider value based on text box value
             salpha.set_val(alpha)
+            # partions alpha slider
+            if (alpha > 0.9 * salpha.valmax) or (alpha < 0.1 * salpha.valmax):
+                salpha.valmax = 2 * alpha
+                # alpha starting at zero makes initial adjustment additive not multiplicative
+                if alpha != 0:
+                    salpha.ax.set_xlim(salpha.valmin, salpha.valmax)
+                elif alpha == 0:
+                    salpha.valmax = alpha + 10
+                    salpha.valmin = 0.0
+                    salpha.ax.set_xlim(salpha.valmin, salpha.valmax)
             fig.canvas.draw_idle()
 
         def update(val):
@@ -356,7 +431,9 @@ if __name__ == "__main__":
             alpha = salpha.val
             n1 = int(n1_box.text)
             n2 = int(n2_box.text)
-            analyze(dmax,alpha,n1,n2)
+            extrapolate = extrapolate_check.get_status()[0]
+            #print(extrapolate)
+            analyze(dmax,alpha,n1,n2,extrapolate)
             # partitions the slider, so clicking in the upper and lower range scale valmax
             if (dmax > 0.9 * sdmax.valmax) or (dmax < 0.1 * sdmax.valmax):
                 sdmax.valmax = 2 * dmax
@@ -404,9 +481,46 @@ if __name__ == "__main__":
         n2_box = TextBox(axIntn2, '', initial=n2)
         n2_box.on_submit(n2_submit)
 
+        # create a checkbox for extrapolation
+        axExtrap = plt.axes([0.35, 0.170, 0.015, 0.03], frameon=True)
+        axExtrap.margins(0.0)
+        extrapolate_check = CheckButtons(axExtrap, ["Extrapolate"], [args.extrapolate])
+        #the axes object for the checkbutton is crazy large, and actually
+        #blocks the sliders underneath even when frameon=False
+        #so we have to manually set the size and location of each of the
+        #elements of the checkbox after setting the axes margins to zero above
+        #including the rectangle checkbox, the lines for the X, and the label
+        check = extrapolate_check
+        size =  1.0 #size relative to axes axExtrap
+        for rect in extrapolate_check.rectangles:
+            rect.set_x(0.)
+            rect.set_y(0.)
+            rect.set_width(size)
+            rect.set_height(size)
+        first = True
+        for l in check.lines:
+            for ll in l:
+                llx = ll.get_xdata()
+                lly = ll.get_ydata()
+                #print(llx)
+                #print(lly)
+                ll.set_xdata([0.0,size])
+                if first:
+                    #there's two lines making
+                    #up the checkbox, so need
+                    #to set the y values separately
+                    #one going from bottom left to 
+                    #upper right, the other opposite
+                    ll.set_ydata([size,0.0])
+                    first = False
+                else:
+                    ll.set_ydata([0.0, size])
+        check.labels[0].set_position((1.5,.5))
+
         #here is the slider updating
         sdmax.on_changed(update)
         salpha.on_changed(update)
+        extrapolate_check.on_clicked(update)
         #snes.on_changed(update)
 
         axreset = plt.axes([0.05, 0.02, 0.1, 0.04])

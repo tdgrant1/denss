@@ -48,6 +48,7 @@ from functools import partial
 import multiprocessing
 import datetime, time
 from time import sleep
+import warnings
 
 import numpy as np
 from scipy import ndimage, interpolate, spatial, special, optimize, signal, stats
@@ -775,12 +776,39 @@ def calc_rg_I0_by_guinier(Iq,nb=None,ne=None):
         if m < 0.0: 
             break
         else:
+            #the slope should be negative
+            #if the slope is positive, shift the 
+            #region forward by one point and try again
             nb += 1
-            if nb>ne:
-                ne = nb+3
+            ne += 1
+            if nb>50:
+                raise ValueError("Guinier estimation failed. Guinier region slope is positive.")
     rg = (-3*m)**(0.5)
     I0 = np.exp(b)
     return rg, I0
+
+def calc_rg_by_guinier_peak(Iq,exp=1,nb=0,ne=None):
+    """roughly estimate Rg using the Guinier peak method.
+    Use only desired q range in input arrays.
+    exp - the exponent in q^exp * I(q)"""
+    d = exp
+    if ne is None:
+        ne = Iq.shape[0]
+    q = Iq[:,0] #[nb:ne,0]
+    I = Iq[:,1] #[nb:ne,1]
+    qdI = q**d * I
+    try:
+        #fit a quick quadratic for smoothness, ax^2 + bx + c
+        a,b,c = np.polyfit(q,qdI,2)
+        #get the peak position
+        qpeak = -b/(2*a) 
+    except:
+        #if polyfit fails, just grab the maximum position
+        qpeaki = np.argmax(qdI)
+        qpeak = q[qpeaki]
+    #calculate Rg from the peak position
+    rg = (3.*d/2.)**0.5 / qpeak
+    return rg
 
 def estimate_dmax(Iq,dmax=None,clean_up=True):
     """Attempt to roughly estimate Dmax directly from data."""
@@ -792,7 +820,10 @@ def estimate_dmax(Iq,dmax=None,clean_up=True):
     if dmax is None:
         #first, estimate a very rough rg from the first 20 data points
         nmax = 20
-        rg, I0 = calc_rg_I0_by_guinier(Iq,ne=nmax)
+        try:
+            rg, I0 = calc_rg_I0_by_guinier(Iq,ne=nmax)
+        except:
+            rg = calc_rg_by_guinier_peak(Iq,exp=1,ne=100)
         #next, dmax is roughly 3.5*rg for most particles
         #so calculate P(r) using a larger dmax, say twice as large, so 7*rg
         D = 7*rg
@@ -800,18 +831,25 @@ def estimate_dmax(Iq,dmax=None,clean_up=True):
         #allow user to give an initial estimate of Dmax
         #multiply by 2 to allow for enough large r values
         D = 2*dmax
-    #create a calculated q range for Sasrec
+    #create a calculated q range for Sasrec for low q out to q=0
     qmin = np.min(q)
     dq = (q.max()-q.min())/(q.size-1)
     nq = int(qmin/dq)
     qc = np.concatenate(([0.0],np.arange(nq)*dq+(qmin-nq*dq),q))
     #run Sasrec to perform IFT
-    sasrec = Sasrec(Iq, D, qc=qc, alpha=0.0)
+    sasrec = Sasrec(Iq, D, qc=None, alpha=0.0, extrapolate=False)
     #now filter the P(r) curve for estimating Dmax better
     r, Pfilt, sigrfilt = filter_P(sasrec.r, sasrec.P, sasrec.Perr, qmax=Iq[:,0].max())
     #estimate D as the first position where P becomes less than 0.01*P.max(), after P.max()
     Pargmax = Pfilt.argmax()
-    D_idx = np.where((Pfilt[Pargmax:]<(0.001*Pfilt.max())))[0][0] + Pargmax
+    #catch cases where the P(r) plot goes largely negative at large r values,
+    #as this indicates repulsion. Set the new Pargmax, which is really just an
+    #identifier for where to begin searching for Dmax, to be any P value whose
+    #absolute value is greater than at least 10% of Pfilt.max. The large 10% is to 
+    #avoid issues with oscillations in P(r).
+    above_idx = np.where((np.abs(Pfilt)>0.1*Pfilt.max())&(r>r[Pargmax]))
+    Pargmax = np.max(above_idx)
+    D_idx = np.where((np.abs(Pfilt[Pargmax:])<(0.001*Pfilt.max())))[0][0] + Pargmax
     D = r[D_idx]
     sasrec.D = D
     sasrec.update()
@@ -1414,6 +1452,13 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     my_logger.info('Final Chi2: %.3e', chi[j])
     my_logger.info('Final Rg: %3.3f', rg[j+1])
     my_logger.info('Final Support Volume: %3.3f', supportV[j+1])
+    my_logger.info('Mean Density (all voxels): %3.5f', np.mean(rho))
+    my_logger.info('Std. Dev. of Density (all voxels): %3.5f', np.std(rho))
+    my_logger.info('RMSD of Density (all voxels): %3.5f', np.sqrt(np.mean(np.square(rho))))
+    idx = np.where(np.abs(rho)>0.01*rho.max())
+    my_logger.info('Modified Mean Density (voxels >0.01*max): %3.5f', np.mean(rho[idx]))
+    my_logger.info('Modified Std. Dev. of Density (voxels >0.01*max): %3.5f', np.std(rho[idx]))
+    my_logger.info('Modified RMSD of Density (voxels >0.01*max): %3.5f', np.sqrt(np.mean(np.square(rho[idx]))))
     # my_logger.info('END')
 
     #return original unscaled values of Idata (and therefore Imean) for comparison with real data
@@ -1994,35 +2039,73 @@ def calc_fsc(rho1, rho2, side):
     qidx = np.where(qbins<qx_max)
     return  np.vstack((qbins[qidx],FSC[qidx])).T
 
+def fsc2res(fsc, cutoff=0.5, return_plot=False):
+    """Calculate resolution from the FSC curve using the cutoff given.
+
+    fsc - an Nx2 array, where the first column is the x axis given as
+          as 1/resolution (angstrom).
+    cutoff - the fsc value at which to estimate resolution, default=0.5.
+    return_plot - return additional arrays for plotting (x, y, resx)
+    """
+    x = np.linspace(fsc[0,0],fsc[-1,0],1000)
+    y = np.interp(x, fsc[:,0], fsc[:,1])
+    if np.min(fsc[:,1]) > 0.5:
+        #if the fsc curve never falls below zero, then
+        #set the resolution to be the maximum resolution
+        #value sampled by the fsc curve
+        resx = np.max(fsc[:,0])
+        resn = float(1./resx)
+        #print("Resolution: < %.1f A (maximum possible)" % resn)
+    else:
+        idx  = np.where(y>=0.5)
+        #resi = np.argmin(y>=0.5)
+        #resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
+        resx = np.max(x[idx])
+        resn = float(1./resx)
+        #print("Resolution: %.1f A" % resn)
+    if return_plot:
+        return resn, x, y, resx
+    else:
+        return resn
+
 class Sasrec(object):
-    def __init__(self, Iq, D, qc=None, r=None, alpha=0.0, ne=2):
+    def __init__(self, Iq, D, qc=None, r=None, nr=None, alpha=0.0, ne=2, extrapolate=True):
         self.q = Iq[:,0]
         self.I = Iq[:,1]
         self.Ierr = Iq[:,2]
         self.q.clip(1e-10)
         self.I[np.abs(self.I)<1e-10] = 1e-10
         self.Ierr.clip(1e-10)
+        self.q_data = np.copy(self.q)
+        self.I_data = np.copy(self.I)
+        self.Ierr_data = np.copy(self.Ierr)
+        if qc is None:
+            #self.qc = self.q
+            self.create_lowq()
+        else:
+            self.qc = qc
+        if extrapolate:
+            self.extrapolate()
         self.D = D
         self.qmin = np.min(self.q)
         self.qmax = np.max(self.q)
         self.nq = len(self.q)
         self.qi = np.arange(self.nq)
-        if qc is None:
-            self.qc = self.q
-        else:
-            self.qc = qc
-        if r is None:
-            self.nr = self.nq
-            self.r = np.linspace(0,self.D,self.nr)
-        else:
+        if r is not None:
             self.r = r
             self.nr = len(self.r)
+        elif nr is not None:
+            self.nr = nr
+            self.r = np.linspace(0,self.D,self.nr)
+        else:
+            self.nr = self.nq
+            self.r = np.linspace(0,self.D,self.nr)
         self.alpha = alpha
         self.ne = ne
         self.update()
 
     def update(self):
-        self.r = np.linspace(0,self.D,self.nr)
+        #self.r = np.linspace(0,self.D,self.nr)
         self.ri = np.arange(self.nr)
         self.n = self.shannon_channels(self.qmax,self.D) + self.ne
         self.Ni = np.arange(self.n)
@@ -2032,6 +2115,7 @@ class Sasrec(object):
         self.qn = np.pi/self.D * self.N
         self.In = np.zeros((self.nq))
         self.Inerr = np.zeros((self.nq))
+        self.B_data = self.Bt(q=self.q_data)
         self.B = self.Bt()
         #Bc is for the calculated q values in
         #cases where qc is not equal to q.
@@ -2039,9 +2123,12 @@ class Sasrec(object):
         self.S = self.St()
         self.Y = self.Yt()
         self.C = self.Ct2()
+        #print(self.C)
         self.Cinv = np.linalg.inv(self.C)
         self.In = np.linalg.solve(self.C,self.Y)
-        self.Inerr = np.diagonal(self.Cinv)**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            self.Inerr = np.diagonal(self.Cinv)**(0.5)
         self.Ic = self.Ish2Iq()
         self.Icerr = self.Icerrt()
         self.P = self.Ish2P()
@@ -2068,12 +2155,38 @@ class Sasrec(object):
         self.lc = self.Ish2lc()
         self.lcerr = self.lcerrf()
 
+    def create_lowq(self):
+        """Create a calculated q range for Sasrec for low q out to q=0.
+        Just the q values, not any extrapolation of intensities."""
+        dq = (self.q.max()-self.q.min())/(self.q.size-1)
+        nq = int(self.q.min()/dq)
+        self.qc = np.concatenate(([0.0],np.arange(nq)*dq+(self.q.min()-nq*dq),self.q))
+
+    def extrapolate(self):
+        """Extrapolate to high q values"""
+        #create a range of 1001 data points from 1*qmax to 3*qmax
+        qe = np.linspace(1.0*self.q[-1],3.0*self.q[-1],1001)
+        qe = qe[qe>self.q[-1]]
+        qce = np.linspace(1.0*self.qc[-1],3.0*self.q[-1],1001)
+        qce = qce[qce>self.qc[-1]]
+        #extrapolated intensities can be anything, since they will
+        #have infinite errors and thus no impact on the calculation
+        #of the fit, so just make them a constant
+        Ie = np.ones_like(qe)
+        #set infinite error bars so that the actual intensities don't matter
+        Ierre = Ie*np.inf
+        self.q = np.hstack((self.q, qe))
+        self.I = np.hstack((self.I, Ie))
+        self.Ierr = np.hstack((self.Ierr, Ierre))
+        self.qc = np.hstack((self.qc, qce))
+
     def calc_chi2(self):
         Ish = self.In
-        Bn = self.B
+        Bn = self.B_data
         #calculate Ic at experimental q vales for chi2 calculation
         Ic_qe = 2*np.einsum('n,nq->q',Ish,Bn)
-        return (1./(self.nq-self.n-1.))*np.sum(1/(self.Ierr**2)*(self.I-Ic_qe)**2)
+        chi2 = (1./(self.nq-self.n-1.))*np.sum(1/(self.Ierr_data**2)*(self.I_data-Ic_qe)**2)
+        return chi2
 
     def shannon_channels(self, D, qmax=0.5, qmin=0.0):
         """Return the number of Shannon channels given a q range and maximum particle dimension"""
@@ -2159,14 +2272,20 @@ class Sasrec(object):
         """Return the standard errors on I_c(q)."""
         Bn = self.Bc
         Bm = self.Bc
-        err = 2 * np.einsum('nq,mq,nm->q', Bn, Bm, self.Cinv)**(.5)
+        err2 = 2 * np.einsum('nq,mq,nm->q', Bn, Bm, self.Cinv)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            err = err2**(.5)
         return err
 
     def Perrt(self):
         """Return the standard errors on P(r)."""
         Sn = self.S
         Sm = self.S
-        err = np.einsum('nr,mr,nm->r', Sn, Sm, self.Cinv)**(.5)
+        err2 = np.einsum('nr,mr,nm->r', Sn, Sm, self.Cinv)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            err = err2**(.5)
         return err
 
     def Ish2I0(self):
@@ -2182,7 +2301,10 @@ class Sasrec(object):
         M = self.M
         Cinv = self.Cinv
         s2 = 2*np.einsum('n,m,nm->',(-1)**(N),(-1)**M,Cinv)
-        return s2**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            s = s2**(0.5)
+        return s
 
     def Ft(self):
         """Calculate Fn function, for use in Rg calculation"""
@@ -2198,7 +2320,9 @@ class Sasrec(object):
         I0 = self.I0
         F = self.F
         summation = np.sum(Ish*F)
-        rg = np.sqrt(D**2/I0 * summation)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            rg = np.sqrt(D**2/I0 * summation)
         return rg
 
     def rgerrfold(self):
@@ -2211,7 +2335,10 @@ class Sasrec(object):
         Fn = self.F
         Fm = self.F
         s2 = np.einsum('n,m,nm->',Fn,Fm,Cinv)
-        return D**2/(I0*rg)*s2**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            s = D**2/(I0*rg)*s2**(0.5)
+        return s
 
     def rgerrf(self):
         """Calculate error on Rg from Shannon intensities from inverse C variance-covariance matrix"""
@@ -2223,7 +2350,10 @@ class Sasrec(object):
         Fn = self.F
         Fm = self.F
         s2 = np.einsum('n,m,nm->',Fn,Fm,Cinv)
-        return D**2/(I0*rg)*s2**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            rgerr = D**2/(I0*rg)*s2**(0.5)
+        return rgerr
 
     def Et(self):
         """Calculate En function, for use in ravg calculation"""
@@ -2248,7 +2378,10 @@ class Sasrec(object):
         En = self.E
         Em = self.E
         s2 = np.einsum('n,m,nm->',En,Em,Cinv)
-        return 4*D/I0 * s2**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            avgrerr = 4*D/I0 * s2**(0.5)
+        return avgrerr
 
     def Ish2Q(self):
         """Calculate Porod Invariant Q from Shannon intensities"""
@@ -2265,7 +2398,10 @@ class Sasrec(object):
         N = self.N
         M = self.M
         s2 = np.einsum('n,m,nm->', N**2, M**2,Cinv)
-        return (np.pi/D)**3 * s2**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            s = (np.pi/D)**3 * s2**(0.5)
+        return s
 
     def gamma0(self):
         """Calculate gamma at r=0. gamma is P(r)/4*pi*r^2"""
@@ -2287,8 +2423,11 @@ class Sasrec(object):
         Q = self.Q
         I0s = self.I0err
         Qs = self.Qerr
-        s2 = (2*np.pi/Q)**2*(I0s)**2 + (2*np.pi*I0/Q**2)**2*Qs**2
-        return s2**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            Vperr2 = (2*np.pi/Q)**2*(I0s)**2 + (2*np.pi*I0/Q**2)**2*Qs**2
+            Vperr = Vperr2**(0.5)
+        return Vperr
 
     def Ish2mwVp(self):
         """Calculate molecular weight via Porod Volume from Shannon intensities"""
@@ -2322,7 +2461,10 @@ class Sasrec(object):
         Sin = special.sici(N*np.pi)[0]
         Sim = special.sici(M*np.pi)[0]
         s2 = np.einsum('n,m,nm->', N*Sin, M*Sim,Cinv)
-        return (2*np.pi*Vc**2/(D**2*I0)) * s2**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            Vcerr = (2*np.pi*Vc**2/(D**2*I0)) * s2**(0.5)
+        return Vcerr
 
     def Ish2Qr(self):
         """Calculate Rambo Invariant Qr (Vc^2/Rg) from Shannon intensities"""
@@ -2345,7 +2487,9 @@ class Sasrec(object):
         Rg = self.rg
         Vcs = self.Vcerr
         Rgs = self.rgerr
-        mwVcs = Vc/(0.1231*Rg) * (4*Vcs**2 + (Vc/Rg*Rgs)**2)**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            mwVcs = Vc/(0.1231*Rg) * (4*Vcs**2 + (Vc/Rg*Rgs)**2)**(0.5)
         return mwVcs
 
     def Ish2lc(self):
@@ -2362,11 +2506,26 @@ class Sasrec(object):
         Vps = self.Vperr
         Vcs = self.Vcerr
         s2 = Vps**2 + (Vp/Vc)**2*Vcs**2
-        return 1/(2*np.pi*Vc) * s2**(0.5)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            lcerr = 1/(2*np.pi*Vc) * s2**(0.5)
+        return lcerr
 
 class PDB(object):
     """Load pdb file."""
-    def __init__(self, filename, ignore_waters=False):
+    def __init__(self, filename=None, natoms=None, ignore_waters=False):
+        if isinstance(filename, int):
+            #if a user gives no keyword argument, but just an integer,
+            #assume the user means the argument is to be interpreted
+            #as natoms, rather than filename
+            natoms = filename
+            filename = None
+        if filename is not None:
+            self.read_pdb(filename, ignore_waters=ignore_waters)
+        elif natoms is not None:
+            self.generate_pdb_from_defaults(natoms)
+
+    def read_pdb(self, filename, ignore_waters=False):
         self.natoms = 0
         with open(filename) as f:
             for line in f:
@@ -2428,6 +2587,40 @@ class PDB(object):
                 self.charge[atom] = line[78:80].strip('\n')
                 self.nelectrons[atom] = electrons.get(self.atomtype[atom].upper(),6)
                 atom += 1
+
+    def generate_pdb_from_defaults(self, natoms):
+        self.natoms = natoms
+        #simple array of incrementing integers, starting from 1
+        self.atomnum = np.arange((self.natoms),dtype=int)+1
+        #all carbon atoms by default
+        self.atomname = np.full((self.natoms),"C",dtype=np.dtype((np.str,3)))
+        #no alternate conformations by default
+        self.atomalt = np.zeros((self.natoms),dtype=np.dtype((np.str,1)))
+        #all Alanines by default
+        self.resname = np.full((self.natoms),"ALA",dtype=np.dtype((np.str,3)))
+        #each atom belongs to a new residue by default
+        self.resnum = np.arange((self.natoms),dtype=int)
+        #chain A by default
+        self.chain = np.full((self.natoms),"A",dtype=np.dtype((np.str,1)))
+        #all atoms at (0,0,0) by default
+        self.coords = np.zeros((self.natoms, 3))
+        #all atoms 1.0 occupancy by default
+        self.occupancy = np.ones((self.natoms))
+        #all atoms 20 A^2 by default
+        self.b = np.ones((self.natoms))*20.0
+        #all atom types carbon by default
+        self.atomtype = np.full((self.natoms),"C",dtype=np.dtype((np.str,2)))
+        #all atoms neutral by default
+        self.charge = np.zeros((self.natoms),dtype=np.dtype((np.str,2)))
+        #all atoms carbon so have six electrons by default
+        self.nelectrons = np.ones((self.natoms),dtype=int)*6
+        #for CRYST1 card, use default defined by PDB, but 100 A side
+        self.cella = 100.0
+        self.cellb = 100.0
+        self.cellc = 100.0
+        self.cellalpha = 90.0
+        self.cellbeta = 90.0
+        self.cellgamma = 90.0
 
     def remove_waters(self):
         idx = np.where((self.resname=="HOH") | (self.resname=="TIP"))
@@ -2848,22 +3041,29 @@ def sphere(R, q=np.linspace(0,0.5,501), I0=1.,amp=False):
     else:
         return I0 * a**2
 
-def formfactor(element, q=(np.arange(500)+1)/1000.):
+def formfactor(element, q=(np.arange(500)+1)/1000.,B=0):
     """Calculate atomic form factors"""
     q = np.atleast_1d(q)
     ff = np.zeros(q.shape)
     for i in range(4):
         ff += ffcoeff[element]['a'][i] * np.exp(-ffcoeff[element]['b'][i]*(q/(4*np.pi))**2)
     ff += ffcoeff[element]['c']
+    ff *= np.exp(-B*q**2)
     return ff
 
 def u2B(u):
     """Calculate B-factor from atomic displacement, u"""
-    return 8 * np.pi**2 * u**2
+    if u<0:
+        return -8 * np.pi**2 * np.abs(u)**2
+    else:
+        return 8 * np.pi**2 * u**2
 
 def B2u(B):
     """Calculate atomic displacement, u, from B-factor"""
-    return (B/(8*np.pi**2))**0.5
+    if B<0:
+        return -(np.abs(B)/(8*np.pi**2))**0.5
+    else:
+        return (B/(8*np.pi**2))**0.5
 
 def realspace_formfactor(element, r=(np.arange(501))/1000., B=0.0):
     """Calculate real space atomic form factors"""

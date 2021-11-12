@@ -30,14 +30,14 @@ def parse_arguments(parser):
     parser.add_argument("-d", "--dmax", default=None, type=float, help="Estimated maximum dimension")
     parser.add_argument("-n", "--nsamples", default=None, type=int, help="Number of samples, i.e. grid points, along a single dimension. (Sets voxel size, overridden by --voxel. Best optimization with n=power of 2. Default=64)")
     parser.add_argument("-ncs", "--ncs", default=0, type=int, help="Rotational symmetry")
-    parser.add_argument("-ncs_steps","--ncs_steps", default=[3000,5000,7000,9000], nargs='+', help="List of steps for applying NCS averaging (default=3000,5000,7000,9000)")
-    parser.add_argument("-ncs_axis", "--ncs_axis", default=1, type=int, help="Rotational symmetry axis (options: 1, 2, or 3 corresponding to (long,medium,short) principal axes)")
+    parser.add_argument("-ncs_steps","--ncs_steps", default=[3000,5000,7000,9000], nargs='+', help="Space separated list of steps for applying NCS averaging (default=3000 5000 7000 9000)")
+    parser.add_argument("-ncs_axis", "--ncs_axis", default="1", type=str, help="Rotational symmetry axis (options: 1, 2, or 3 corresponding to (long,medium,short) principal axes)")
     parser.add_argument("-ncs_type", "--ncs_type", default="C", type=str, help="Symmetry type, either cyclical (default) or dihedral (i.e. C or D, dihedral (Dn) adds n 2-fold perpendicular axes)")
     parser.add_argument("-s", "--steps", default=None, help="Maximum number of steps (iterations)")
     parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
     parser.add_argument("-v", "--voxel", default=None, type=float, help="Set desired voxel size, setting resolution of map")
     parser.add_argument("-os","--oversampling", default=3., type=float, help="Sampling ratio")
-    parser.add_argument("--ne", default=10000, type=float, help="Number of electrons in object")
+    parser.add_argument("--ne", default=10000, type=float, help="Number of electrons in object (default 10000, set to negative number to ignore.)")
     parser.add_argument("--seed", default=None, help="Random seed to initialize the map")
     parser.add_argument("-ld_on","-ld_on","--limit_dmax_on", dest="limit_dmax", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("-ld_off","--limit_dmax_off", dest="limit_dmax", action="store_false", help=argparse.SUPPRESS)
@@ -142,17 +142,40 @@ def parse_arguments(parser):
         dmax, sasrec = saxs.estimate_dmax(Iq)
     else:
         dmax = file_dmax
+    D = dmax
 
     if is_raw_data:
         #in case a user gives raw experimental data, first, fit the data
         #using Sasrec and dmax
-        #create a calculated q range for Sasrec
-        qmin = np.min(q)
-        qmax = np.max(q)
-        dq = (qmax-qmin)/(q.size-1)
-        nq = int(qmin/dq)
-        qc = np.concatenate(([0.0],np.arange(nq)*dq+(qmin-nq*dq),q))
-        sasrec = saxs.Sasrec(Iq, dmax, qc=qc)
+        sasrec = saxs.Sasrec(Iq, D, alpha=0.0)
+        ideal_chi2 = sasrec.calc_chi2()
+        al = []
+        chi2 = []
+        #here, alphas are actually the exponents, since the range can
+        #vary from 10^-10 upwards of 10^20. This should cover nearly all likely values
+        alphas = np.arange(-10,20.)
+        for alpha in alphas:
+            #print("***** ALPHA ****** %.5e"%alpha)
+            sasrec = saxs.Sasrec(Iq, D, alpha=10.**alpha)
+            r = sasrec.r
+            pi = np.pi
+            N = sasrec.N[:,None]
+            In = sasrec.In[:,None]
+            chi2value = sasrec.calc_chi2()
+            al.append(alpha)
+            chi2.append(chi2value)
+        chi2 = np.array(chi2)
+
+        #find optimal alpha value based on where chi2 begins to rise, to 10% above the ideal chi2 (where alpha=0)
+        x = np.linspace(alphas[0],alphas[-1],1000)
+        y = np.interp(x, alphas, chi2)
+        chif = 2.0
+        ali = np.argmin(y<=chif*ideal_chi2)
+        opt_alpha = 10.0**(np.interp(chif*ideal_chi2,[y[ali+1],y[ali]],[x[ali+1],x[ali]])-1)
+        alpha = opt_alpha
+
+        sasrec = saxs.Sasrec(Iq, D, alpha=alpha)
+        #sasrec = saxs.Sasrec(Iq, dmax, qc=None, extrapolate=False)
         #now, set the Iq values to be the new fitted q values
         q = sasrec.qc
         I = sasrec.Ic
@@ -187,6 +210,17 @@ def parse_arguments(parser):
     else:
         args.ncs_type = "cyclical"
 
+    if args.ncs_axis[0].upper() == "L" or args.ncs_axis[0] == "1":
+        #if "1" or "long" or "LONG" or "L" or similar is given
+        #assume the long axis, i.e. axis = 1
+        args.ncs_axis = 1
+    elif args.ncs_axis[0].upper() == "S" or args.ncs_axis[0] == "3":
+        #if "3" or "short" or "SHORT" or "S" or similar is given
+        #assume the short axis, i.e. axis = 3
+        args.ncs_axis = 3
+    else:
+        #default to long axis
+        args.ncs_axis = 1
 
     #old default sw_start was 3.0
     #however, in cases where the voxel size is smaller than default,
@@ -322,6 +356,12 @@ def parse_arguments(parser):
 
     if args.steps is not None:
         steps = args.steps
+
+    if args.ne <= 0.0:
+        #if args.ne is negative, then assume that the user
+        #does not want to set the number of electrons, and just
+        #set it equal to the square root of the forward scattering I(0)
+        args.ne = I[0]**0.5
 
     #now recollect all the edited options back into args
     args.nsamples = nsamples
