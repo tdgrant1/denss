@@ -713,10 +713,10 @@ def loadProfile(fname, units="a"):
         isfit = True
     elif os.path.splitext(fname)[1] == '.fit':
         q, I, Ierr, Ifit, results = loadFitFile(fname)
-        isfit = False
+        isfit = True
     elif "_fit.dat" in fname:
         q, I, Ierr, Ifit, results = loadOldFitFile(fname)
-        isfit = False
+        isfit = True
     else:
         #Ifit here is just I, since it's just a data file
         q, I, Ierr, Ifit, results = loadDatFile(fname)
@@ -1226,7 +1226,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                 rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(newrho)))
             gridcenter = np.array(newrho.shape)/2.
             shift = gridcenter-rhocom
-            shift = shift.astype(int)
+            shift = np.rint(shift).astype(int)
             newrho = np.roll(np.roll(np.roll(newrho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
             support = np.roll(np.roll(np.roll(support, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
 
