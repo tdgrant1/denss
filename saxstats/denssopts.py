@@ -115,7 +115,7 @@ def parse_arguments(parser):
                "has been re-enabled until a bug fix is released. ")
         args.extrapolate = True
 
-    q, I, sigq, Ifit, file_dmax, isout = saxs.loadProfile(args.file, units=args.units)
+    q, I, sigq, Ifit, file_dmax, isfit = saxs.loadProfile(args.file, units=args.units)
     Iq = np.zeros((q.size,3))
     #for denss, I is actually the fit, since we want the smooth data
     #for reconstructions
@@ -125,6 +125,9 @@ def parse_arguments(parser):
     Iq[:,2] = sigq
     qraw = np.copy(q)
     Iraw = np.copy(I)
+    if Iq.shape[0] < 3:
+        print("Not enough data points (check that data has 3 columns: q, I, errors).")
+        exit()
 
     Iq = saxs.clean_up_data(Iq)
     is_raw_data = saxs.check_if_raw_data(Iq)

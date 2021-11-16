@@ -713,10 +713,10 @@ def loadProfile(fname, units="a"):
         isfit = True
     elif os.path.splitext(fname)[1] == '.fit':
         q, I, Ierr, Ifit, results = loadFitFile(fname)
-        isfit = False
+        isfit = True
     elif "_fit.dat" in fname:
         q, I, Ierr, Ifit, results = loadOldFitFile(fname)
-        isfit = False
+        isfit = True
     else:
         #Ifit here is just I, since it's just a data file
         q, I, Ierr, Ifit, results = loadDatFile(fname)
