@@ -127,21 +127,35 @@ if __name__ == "__main__":
         rho = saxs.denss_3DFs(rho_start=rho,dmax=side,voxel=dx,oversampling=1.,shrinkwrap=False,support=support)
     print()
 
-    #subtract solvent density value
-    #first, identify which voxels have particle
-    support = np.zeros(rho.shape,dtype=bool)
-    #set a threshold for selecting which voxels have density
-    #say, some low percent of the maximum
-    #this becomes important for estimating solvent content
-    support[rho>=args.solv*dV] = True
-    rho[~support] = 0
-    #scale map to total number of electrons while still in vacuum
-    #to adjust for some small fraction of electrons just flattened
-    rho *= np.sum(pdb.nelectrons) / rho.sum()
-    #convert total electron count to density
+
+    #copy particle pdb
+    import copy
+    solvpdb = copy.deepcopy(pdb)
+    #change all atom types O, should update to water form factor in future
+    solvpdb.atomtype = np.array(['O' for i in solvpdb.atomtype],dtype=np.dtype((np.str,2)))
+    solv, supportsolv = saxs.pdb2map_multigauss(solvpdb,x=x,y=y,z=z,resolution=resolution,ignore_waters=args.ignore_waters)
+    #now we need to fit some parameters
+    #maybe a simple scale factor would get us close?
+    c1 = 0.5
+    rho -= solv*c1
     rho /= dV
-    #now, subtract the solvent density from the particle voxels
-    rho[support] -= args.solv
+
+
+    # #subtract solvent density value
+    # #first, identify which voxels have particle
+    # support = np.zeros(rho.shape,dtype=bool)
+    # #set a threshold for selecting which voxels have density
+    # #say, some low percent of the maximum
+    # #this becomes important for estimating solvent content
+    # support[rho>=args.solv*dV] = True
+    # rho[~support] = 0
+    # #scale map to total number of electrons while still in vacuum
+    # #to adjust for some small fraction of electrons just flattened
+    # rho *= np.sum(pdb.nelectrons) / rho.sum()
+    # #convert total electron count to density
+    # rho /= dV
+    # #now, subtract the solvent density from the particle voxels
+    # rho[support] -= args.solv
 
 
     #use support, which is 0s and 1s, to simulate the effect of a 
