@@ -133,7 +133,7 @@ if __name__ == "__main__":
     #set a threshold for selecting which voxels have density
     #say, some low percent of the maximum
     #this becomes important for estimating solvent content
-    support[rho>0.0001*rho.max()] = True
+    support[rho>=args.solv*dV] = True
     rho[~support] = 0
     #scale map to total number of electrons while still in vacuum
     #to adjust for some small fraction of electrons just flattened
