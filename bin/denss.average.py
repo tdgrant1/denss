@@ -75,18 +75,11 @@ if __name__ == "__main__":
     saxs.write_mrc(average_rho,side, output+"_avg.mrc")
     print("%s_avg.mrc written." % output)
 
-    """
-    #split maps into 2 halves--> enan, align, average independently with same refrho
-    avg_rho1 = np.mean(aligned[::2],axis=0)
-    avg_rho2 = np.mean(aligned[1::2],axis=0)
-    fsc = saxs.calc_fsc(avg_rho1,avg_rho2,sides[0])
-    np.savetxt(args.output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="qbins, FSC")
-    """
     #rather than compare two halves, average all fsc's to the reference
     fscs = []
     resns = []
-    for calc_map in range(len(aligned)):
-        fsc_map = saxs.calc_fsc(aligned[calc_map],refrho,sides[0])
+    for calc_map in range(nmaps):
+        fsc_map = saxs.calc_fsc(rhos[calc_map],average_rho,side)
         fscs.append(fsc_map)
         resn_map = saxs.fsc2res(fsc_map)
         resns.append(resn_map)
