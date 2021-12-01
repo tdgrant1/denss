@@ -39,9 +39,6 @@ def parse_arguments(parser):
     parser.add_argument("-os","--oversampling", default=3., type=float, help="Sampling ratio")
     parser.add_argument("--ne", default=10000, type=float, help="Number of electrons in object (default 10000, set to negative number to ignore.)")
     parser.add_argument("--seed", default=None, help="Random seed to initialize the map")
-    parser.add_argument("-ld_on","-ld_on","--limit_dmax_on", dest="limit_dmax", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("-ld_off","--limit_dmax_off", dest="limit_dmax", action="store_false", help=argparse.SUPPRESS)
-    parser.add_argument("-ld_steps","--limit_dmax_steps", default=None, type=int, nargs='+', help=argparse.SUPPRESS)
     parser.add_argument("-rc","-rc_on", "--recenter_on", dest="recenter", action="store_true", help="Recenter electron density when updating support. (default)")
     parser.add_argument("-rc_off", "--recenter_off", dest="recenter", action="store_false", help="Do not recenter electron density when updating support.")
     parser.add_argument("-rc_steps", "--recenter_steps", default=None, type=int, nargs='+', help="List of steps to recenter electron density.")
@@ -76,7 +73,6 @@ def parse_arguments(parser):
     parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not create simple plots of results. (Default if Matplotlib does not exist)")
     parser.add_argument("-q", "--quiet", action="store_true", help="Do not display running statistics. (default False)")
     parser.add_argument("-gpu", "--gpu", dest="DENSS_GPU", action="store_true", help="Use GPU acceleration (requires CuPy). (default False)")
-    parser.set_defaults(limit_dmax=False)
     parser.set_defaults(shrinkwrap=True)
     parser.set_defaults(shrinkwrap_old_method=False)
     parser.set_defaults(recenter=True)
@@ -350,13 +346,6 @@ def parse_arguments(parser):
     if not isinstance(recenter_steps, list):
         recenter_steps = [ recenter_steps ]
 
-    if args.limit_dmax_steps is not None:
-        limit_dmax_steps = args.limit_dmax_steps
-    else:
-        limit_dmax_steps = [502]
-    if not isinstance(limit_dmax_steps, list):
-        limit_dmax_steps = [ limit_dmax_steps ]
-
     if args.steps is not None:
         steps = args.steps
 
@@ -375,7 +364,6 @@ def parse_arguments(parser):
     args.shrinkwrap_sigma_end = shrinkwrap_sigma_end_in_vox
     args.enforce_connectivity_steps = enforce_connectivity_steps
     args.recenter_steps = recenter_steps
-    args.limit_dmax_steps = limit_dmax_steps
     args.dmax = dmax
     args.voxel = voxel
     args.q = q

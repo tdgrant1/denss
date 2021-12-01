@@ -883,8 +883,7 @@ def filter_P(r,P,sigr=None,qmax=0.5,cutoff=0.75,qmin=0.0,cutoffmin=1.25):
         else:
             return r, Pfilt
 
-def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False,
-    limit_dmax_steps=[500], recenter=True, recenter_steps=None,
+def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
     recenter_mode="com", positivity=True, extrapolate=True, output="map",
     steps=None, seed=None, flatten_low_density=True, rho_start=None, add_noise=None,
     shrinkwrap=True, shrinkwrap_old_method=False,shrinkwrap_sigma_start=3,
@@ -1033,8 +1032,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     my_logger.info('Sampling ratio: %3.3f', oversampling)
     my_logger.info('Requested real space voxel size: %3.3f', voxel)
     my_logger.info('Number of electrons: %3.3f', ne)
-    my_logger.info('Limit Dmax: %s', limit_dmax)
-    my_logger.info('Limit Dmax Steps: %s', limit_dmax_steps)
     my_logger.info('Recenter: %s', recenter)
     my_logger.info('Recenter Steps: %s', recenter_steps)
     my_logger.info('Recenter Mode: %s', recenter_mode)

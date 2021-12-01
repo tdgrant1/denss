@@ -67,8 +67,6 @@ if __name__ == "__main__":
         ne=args.ne,
         voxel=args.voxel,
         oversampling=args.oversampling,
-        limit_dmax=args.limit_dmax,
-        limit_dmax_steps=args.limit_dmax_steps,
         recenter=args.recenter,
         recenter_steps=args.recenter_steps,
         recenter_mode=args.recenter_mode,
