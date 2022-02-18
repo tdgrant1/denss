@@ -56,8 +56,10 @@ parser.add_argument("--max_nes", default=10, type=int, help=argparse.SUPPRESS)
 parser.add_argument("--no_gui", dest="plot", action="store_false", help="Do not run the interactive GUI mode.")
 parser.add_argument("--no_log", dest="log", action="store_false", help="Do not plot on log y axis.")
 parser.add_argument("--no_extrapolation", dest="extrapolate", action="store_false", help="Do not extrapolate high q data.")
+parser.add_argument("--write_shannon", dest="write_shannon", action="store_true", help="Write a file containing only the Shannon intensities.")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
 parser.set_defaults(plot=True)
+parser.set_defaults(write_shannon=False)
 args = parser.parse_args()
 
 if args.plot:
@@ -131,8 +133,10 @@ if __name__ == "__main__":
 
     print("Dmax = %.2f"%D)
     qmax = Iq[n1:n2,0].max()
-    if qc is None:
+    if (qc is None) and (args.extrapolate):
         qmaxc = qmax*3.0
+    elif qc is None:
+        qmaxc = qmax
     else:
         qmaxc = qc.max()
     nsh = qmax/(np.pi/D)
@@ -190,7 +194,7 @@ if __name__ == "__main__":
         #x = np.linspace(alphas[0],alphas[-1],1000)
         x = np.linspace(al[0],al[-1],1000)
         y = np.interp(x, al, chi2)
-        chif = 2.0
+        chif = 1.1
         #take the maximum alpha value (x) where the chi2 just starts to rise above ideal
         try:
             ali = np.argmax(x[y<=chif*ideal_chi2])
@@ -258,6 +262,9 @@ if __name__ == "__main__":
         np.savetxt(output+'.fit', np.vstack((sasrec.qc, Iinterp, sasrec.Icerr, sasrec.Ic)).T,delimiter=' ',fmt='%.5e',header=param_str)
         np.savetxt(output+'_pr.dat', np.vstack((sasrec.r, sasrec.P, sasrec.Perr)).T,delimiter=' ',fmt='%.5e')
         print("%s and %s files saved" % (output+".fit",output+"_pr.dat"))
+        if args.write_shannon:
+            np.savetxt(output+'_Shannon.dat', np.vstack((sasrec.qn, sasrec.In, sasrec.Inerr)).T,delimiter=' ',fmt='%.5e',header=param_str)
+
 
     if args.plot:
 
