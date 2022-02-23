@@ -2067,6 +2067,7 @@ def fsc2res(fsc, cutoff=0.5, return_plot=False):
 
 class Sasrec(object):
     def __init__(self, Iq, D, qc=None, r=None, nr=None, alpha=0.0, ne=2, extrapolate=True):
+        self.Iq = Iq
         self.q = Iq[:,0]
         self.I = Iq[:,1]
         self.Ierr = Iq[:,2]
@@ -2177,6 +2178,54 @@ class Sasrec(object):
         self.Ierr = np.hstack((self.Ierr, Ierre))
         self.qc = np.hstack((self.qc, qce))
 
+    def optimize_alpha(self):
+        """Scan alpha values to find optimal alpha"""
+        ideal_chi2 = self.calc_chi2()
+        al = []
+        chi2 = []
+        #here, alphas are actually the exponents, since the range can
+        #vary from 10^-20 upwards of 10^20. This should cover nearly all likely values
+        alphas = np.arange(-20,20.)
+        i = 0
+        nalphas = len(alphas)
+        for alpha in alphas:
+            i += 1
+            sys.stdout.write("\rScanning alphas... {:.0%} complete".format(i*1./nalphas))
+            sys.stdout.flush()
+            try:
+                #sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=10.**alpha, ne=nes, extrapolate=args.extrapolate)
+                self.alpha = 10.**alpha
+                self.update()
+            except:
+                continue
+            chi2value = self.calc_chi2()
+            al.append(alpha)
+            chi2.append(chi2value)
+        al = np.array(al)
+        chi2 = np.array(chi2)
+        print()
+        #find optimal alpha value based on where chi2 begins to rise, to 10% above the ideal chi2
+        #interpolate between tested alphas to find more precise value
+        #x = np.linspace(alphas[0],alphas[-1],1000)
+        x = np.linspace(al[0],al[-1],1000)
+        y = np.interp(x, al, chi2)
+        chif = 1.1
+        #take the maximum alpha value (x) where the chi2 just starts to rise above ideal
+        try:
+            ali = np.argmax(x[y<=chif*ideal_chi2])
+        except:
+            #if it fails, it may mean that the lowest alpha value of 10^-20 is still too large, so just take that.
+            ali = 0
+        #set the optimal alpha to be 10^alpha, since we were actually using exponents
+        #but also subtract 1 from that exponent, just to be safe that we didn't oversmooth
+        #also interpolate between the two neighboring alpha values, to get closer to the chif*ideal_chi2
+        opt_alpha_exponent = np.interp(chif*ideal_chi2,[y[ali],y[ali-1]],[x[ali],x[ali-1]])
+        #print(opt_alpha_exponent)
+        opt_alpha = 10.0**(opt_alpha_exponent-1)
+        self.alpha = opt_alpha
+        self.update()
+        return self.alpha
+
     def calc_chi2(self):
         Ish = self.In
         Bn = self.B_data
@@ -2184,6 +2233,34 @@ class Sasrec(object):
         Ic_qe = 2*np.einsum('n,nq->q',Ish,Bn)
         chi2 = (1./(self.nq-self.n-1.))*np.sum(1/(self.Ierr_data**2)*(self.I_data-Ic_qe)**2)
         return chi2
+
+    def estimate_Vp_etal(self):
+        """Estimate Porod volume using modified method based on oversmoothing.
+
+        Oversmooth the P(r) curve with a high alpha. This helps to remove shape 
+        scattering that distorts Porod assumptions. """
+        #how much to oversmooth by, i.e. multiply alpha times this factor
+        oversmoothing = 10.**2
+        #use a different qmax to limit effects of shape scattering.
+        #use 8/Rg as the new qmax, but be sure to keep these effects
+        #separate from the rest of sasrec, as it is only used for estimating
+        #porod volume.
+        qmax = 8./self.rg
+        Iq = np.vstack((self.q,self.I,self.Ierr)).T
+        sasrec4vp = Sasrec(Iq[self.q<qmax], self.D, alpha=self.alpha*oversmoothing, extrapolate=self.extrapolate)
+        self.Q = sasrec4vp.Q
+        self.Qerr = sasrec4vp.Qerr
+        self.Vp = sasrec4vp.Vp
+        self.Vperr = sasrec4vp.Vperr
+        self.mwVp = sasrec4vp.mwVp
+        self.mwVperr = sasrec4vp.mwVperr
+        self.Vc = sasrec4vp.Vc
+        self.Vcerr = sasrec4vp.Vcerr
+        self.Qr = sasrec4vp.Qr
+        self.mwVc = sasrec4vp.mwVc
+        self.mwVcerr = sasrec4vp.mwVcerr
+        self.lc = sasrec4vp.lc
+        self.lcerr = sasrec4vp.lcerr
 
     def shannon_channels(self, D, qmax=0.5, qmin=0.0):
         """Return the number of Shannon channels given a q range and maximum particle dimension"""

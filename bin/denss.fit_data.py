@@ -163,54 +163,13 @@ if __name__ == "__main__":
     ideal_chi2 = sasrec.calc_chi2()
 
     if args.alpha is None:
-        al = []
-        chi2 = []
-        #here, alphas are actually the exponents, since the range can
-        #vary from 10^-10 upwards of 10^20. This should cover nearly all likely values
-        alphas = np.arange(-20,20.)
-        i = 0
-        nalphas = len(alphas)
-        for alpha in alphas:
-            i += 1
-            sys.stdout.write("\rScanning alphas... {:.0%} complete".format(i*1./nalphas))
-            sys.stdout.flush()
-            try:
-                sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=10.**alpha, ne=nes, extrapolate=args.extrapolate)
-            except:
-                continue
-            #r = sasrec.r
-            pi = np.pi
-            N = sasrec.N[:,None]
-            In = sasrec.In[:,None]
-            chi2value = sasrec.calc_chi2()
-            al.append(alpha)
-            chi2.append(chi2value)
-            #print("***** ALPHA ****** 10^%d : %.5e "%(alpha, chi2value))
-        al = np.array(al)
-        chi2 = np.array(chi2)
-        print()
-        #find optimal alpha value based on where chi2 begins to rise, to 10% above the ideal chi2
-        #interpolate between tested alphas to find more precise value
-        #x = np.linspace(alphas[0],alphas[-1],1000)
-        x = np.linspace(al[0],al[-1],1000)
-        y = np.interp(x, al, chi2)
-        chif = 1.1
-        #take the maximum alpha value (x) where the chi2 just starts to rise above ideal
-        try:
-            ali = np.argmax(x[y<=chif*ideal_chi2])
-        except:
-            #if it fails, it may mean that the lowest alpha value of 10^-20 is still too large, so just take that.
-            ali = 0
-        #set the optimal alpha to be 10^alpha, since we were actually using exponents
-        #but also subtract 1 from that exponent, just to be safe that we didn't oversmooth
-        #also interpolate between the two neighboring alpha values, to get closer to the chif*ideal_chi2
-        opt_alpha_exponent = np.interp(chif*ideal_chi2,[y[ali],y[ali-1]],[x[ali],x[ali-1]])
-        #print(opt_alpha_exponent)
-        opt_alpha = 10.0**(opt_alpha_exponent-1)
-        alpha = opt_alpha
+        alpha = sasrec.optimize_alpha()
     else:
         alpha = args.alpha
     sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=alpha, ne=nes, extrapolate=args.extrapolate)
+
+    #implement method of estimating Vp, Vc, etc using oversmoothing
+    sasrec.estimate_Vp_etal()
 
     #set a maximum alpha range, so when users click in the slider
     #it at least does something reasonable, rather than either nothing
@@ -353,6 +312,7 @@ if __name__ == "__main__":
         def analyze(dmax,alpha,n1,n2,extrapolate):
             global sasrec
             sasrec = saxs.Sasrec(Iq_orig[n1:n2], dmax, qc=qc, r=r, nr=args.nr, alpha=alpha, ne=nes, extrapolate=extrapolate)
+            sasrec.estimate_Vp_etal()
             Icinterp = np.interp(sasrec.q_data, sasrec.qc, np.abs(sasrec.Ic))
             res = sasrec.I_data/sasrec.Ierr_data - Icinterp/sasrec.Ierr_data
             ridx = np.where((sasrec.q_data<sasrec.qc.max()))
