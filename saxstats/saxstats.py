@@ -619,6 +619,7 @@ def loadFitFile(filename):
             line = each_line.split()
             hdr_str=hdr_str + "\""+line[1]+"\""+":"+line[3]+","
         hdr_str = hdr_str.rstrip(',')+"}"
+        hdr_str = re.sub(r'\bnan\b', 'NaN', hdr_str)
         try:
             hdict = dict(json.loads(hdr_str))
         except Exception:
@@ -849,7 +850,9 @@ def estimate_dmax(Iq,dmax=None,clean_up=True):
     #avoid issues with oscillations in P(r).
     above_idx = np.where((np.abs(Pfilt)>0.1*Pfilt.max())&(r>r[Pargmax]))
     Pargmax = np.max(above_idx)
-    D_idx = np.where((np.abs(Pfilt[Pargmax:])<(0.001*Pfilt.max())))[0][0] + Pargmax
+    near_zero_idx = np.where((np.abs(Pfilt[Pargmax:])<(0.001*Pfilt.max())))[0]
+    near_zero_idx += Pargmax
+    D_idx = near_zero_idx[0]
     D = r[D_idx]
     sasrec.D = D
     sasrec.update()
@@ -2121,7 +2124,6 @@ class Sasrec(object):
         self.S = self.St()
         self.Y = self.Yt()
         self.C = self.Ct2()
-        #print(self.C)
         self.Cinv = np.linalg.inv(self.C)
         self.In = np.linalg.solve(self.C,self.Y)
         with warnings.catch_warnings():
@@ -2217,11 +2219,10 @@ class Sasrec(object):
             #if it fails, it may mean that the lowest alpha value of 10^-20 is still too large, so just take that.
             ali = 0
         #set the optimal alpha to be 10^alpha, since we were actually using exponents
-        #but also subtract 1 from that exponent, just to be safe that we didn't oversmooth
         #also interpolate between the two neighboring alpha values, to get closer to the chif*ideal_chi2
         opt_alpha_exponent = np.interp(chif*ideal_chi2,[y[ali],y[ali-1]],[x[ali],x[ali-1]])
         #print(opt_alpha_exponent)
-        opt_alpha = 10.0**(opt_alpha_exponent-1)
+        opt_alpha = 10.0**(opt_alpha_exponent)
         self.alpha = opt_alpha
         self.update()
         return self.alpha
@@ -2240,12 +2241,14 @@ class Sasrec(object):
         Oversmooth the P(r) curve with a high alpha. This helps to remove shape 
         scattering that distorts Porod assumptions. """
         #how much to oversmooth by, i.e. multiply alpha times this factor
-        oversmoothing = 10.**2
+        oversmoothing = 1.0e1
         #use a different qmax to limit effects of shape scattering.
         #use 8/Rg as the new qmax, but be sure to keep these effects
         #separate from the rest of sasrec, as it is only used for estimating
         #porod volume.
         qmax = 8./self.rg
+        if np.isnan(qmax):
+            qmax = 8./(self.D/3.5)
         Iq = np.vstack((self.q,self.I,self.Ierr)).T
         sasrec4vp = Sasrec(Iq[self.q<qmax], self.D, alpha=self.alpha*oversmoothing, extrapolate=self.extrapolate)
         self.Q = sasrec4vp.Q
@@ -2312,6 +2315,7 @@ class Sasrec(object):
         D = self.D
         gmn = np.zeros((self.n,self.n))
         mm, nn = np.meshgrid(M,N,indexing='ij')
+        #two cases, one where m!=n, one where m==n. Do both separately.
         idx = np.where(mm!=nn)
         gmn[idx] = np.pi**2/(2*D**5) * (mm[idx]*nn[idx])**2 * (mm[idx]**4+nn[idx]**4)/(mm[idx]**2-nn[idx]**2)**2 * (-1)**(mm[idx]+nn[idx])
         idx = np.where(mm==nn)
@@ -2396,7 +2400,8 @@ class Sasrec(object):
         summation = np.sum(Ish*F)
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=RuntimeWarning)
-            rg = np.sqrt(D**2/I0 * summation)
+            rg2 = D**2/I0 * summation
+            rg = np.sqrt(rg2)
         return rg
 
     def rgerrfold(self):
