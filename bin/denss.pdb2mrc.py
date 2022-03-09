@@ -136,9 +136,19 @@ if __name__ == "__main__":
     solv, supportsolv = saxs.pdb2map_multigauss(solvpdb,x=x,y=y,z=z,resolution=resolution,ignore_waters=args.ignore_waters)
     #now we need to fit some parameters
     #maybe a simple scale factor would get us close?
-    c1 = 0.5
-    rho -= solv*c1
-    rho /= dV
+    from scipy import ndimage
+    saxs.write_mrc((rho)/dV,side,output+"_0.0.mrc")
+    for i in np.linspace(0.1,1.0,10):
+        solv_blur = ndimage.filters.gaussian_filter(solv,sigma=i,mode='wrap')
+        # rho -= solv_blur*0.5
+        # rho /= dV
+        for j in np.linspace(0.1,1.0,10):
+            saxs.write_mrc((rho-solv_blur*j)/dV,side,output+"_%.1f_%.1f.mrc"%(i,j))
+        saxs.write_mrc(solv_blur/dV,side,output+"_solv_%.1f.mrc"%i)
+    # c1 = 0.5
+    # rho -= solv
+    # rho /= dV
+    exit()
 
 
     # #subtract solvent density value
