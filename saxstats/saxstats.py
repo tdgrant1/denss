@@ -149,7 +149,8 @@ def rho2rg(rho,side=None,r=None,support=None,dx=None):
     if dx is None:
         print("Error: To calculate Rg, must provide dx")
         sys.exit()
-    rhocom = (np.array(ndimage.measurements.center_of_mass(np.abs(rho)))-np.array(rho.shape)/2.)*dx
+    gridcenter = (np.array(rho.shape)-1.)/2.
+    rhocom = (np.array(ndimage.measurements.center_of_mass(np.abs(rho)))-gridcenter)*dx
     rg2 = np.sum(r[support]**2*rho[support])/np.sum(rho[support])
     rg2 = rg2 - np.linalg.norm(rhocom)**2
     rg = np.sign(rg2)*np.abs(rg2)**0.5
@@ -788,6 +789,14 @@ def calc_rg_I0_by_guinier(Iq,nb=None,ne=None):
     I0 = np.exp(b)
     return rg, I0
 
+def calc_rg_by_guinier_first_2_points(q, I):
+    """calculate Rg using Guinier law, but only use the 
+    first two data points. This is meant to be used with a 
+    calculated scattering profile, such as Imean from denss()."""
+    m = (np.log(I[1])-np.log(I[0]))/(q[1]**2-q[0]**2)
+    rg = (-3*m)**(0.5)
+    return rg
+
 def calc_rg_by_guinier_peak(Iq,exp=1,nb=0,ne=None):
     """roughly estimate Rg using the Guinier peak method.
     Use only desired q range in input arrays.
@@ -1133,7 +1142,15 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
             except:
                 rg[j] = 1.0
         else:
-            rg[j] = rho2rg(rhoprime,r=r,support=support,dx=dx)
+            #rg[j] = rho2rg(rhoprime,r=r,support=support,dx=dx)
+            #use Guinier's law instead to approximate quickly?
+            #what if we just use the first two data points?
+            #since this is a calculated curve from a density map,
+            #we know exactly the values of the intensities, so we
+            #don't need as many data points as in real data that is noisy
+            #slope = (y2-y1)/(x2-x1) = (ln(I1)-ln(I0))/(q1**2-q0**2)
+            rg[j] = calc_rg_by_guinier_first_2_points(qbinsc, Imean)
+
 
         newrho = myzeros(rho.shape, DENSS_GPU=DENSS_GPU)
 
@@ -1396,7 +1413,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     if ne is not None:
         rho *= ne / np.sum(rho)
 
-    rg[j+1] = rho2rg(rho=rho,r=r,support=support,dx=dx)
+    # rg[j+1] = rho2rg(rho=rho,r=r,support=support,dx=dx)
+    rg[j+1] = calc_rg_by_guinier_first_2_points(qbinsc, Imean)
     supportV[j+1] = supportV[j]
 
     #change rho to be the electron density in e-/angstroms^3, rather than number of electrons,
