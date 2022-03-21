@@ -1224,7 +1224,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
                 rhocom = np.unravel_index(newrho.argmax(), newrho.shape)
             else:
                 rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(newrho)))
-            gridcenter = np.array(newrho.shape)/2.
+            gridcenter = (np.array(newrho.shape)-1.)/2.
             shift = gridcenter-rhocom
             shift = np.rint(shift).astype(int)
             newrho = np.roll(np.roll(np.roll(newrho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
@@ -1546,7 +1546,7 @@ def center_rho(rho, centering="com", return_shift=False):
         rhocom = np.unravel_index(rho.argmax(), rho.shape)
     else:
         rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
-    gridcenter = np.array(rho.shape)/2.
+    gridcenter = (np.array(rho.shape)-1.)/2.
     shift = gridcenter-rhocom
     rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
     rho = rho*ne_rho/np.sum(rho)
@@ -1565,7 +1565,7 @@ def center_rho_roll(rho, recenter_mode="com", return_shift=False):
         rhocom = np.unravel_index(np.abs(rho).argmax(), rho.shape)
     else:
         rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
-    gridcenter = np.array(rho.shape)/2.
+    gridcenter = (np.array(rho.shape)-1.)/2.
     shift = gridcenter-rhocom
     shift = np.rint(shift).astype(int)
     rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
@@ -1762,7 +1762,7 @@ def principal_axis_alignment(refrho,movrho):
     ne_movrho = np.sum((movrho))
     #first center refrho and movrho, save refrho shift
     rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(refrho)))
-    gridcenter = np.array(refrho.shape)/2.
+    gridcenter = (np.array(rho.shape)-1.)/2.
     shift = gridcenter-rhocom
     refrho = ndimage.interpolation.shift(refrho,shift,order=3,mode='wrap')
     #calculate, save and perform rotation of refrho to xyz for later
@@ -1795,7 +1795,7 @@ def align2xyz(rho, return_transform=False):
     ne_rho = np.sum(rho)
     #shift refrho to the center
     rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
-    gridcenter = np.array(rho.shape)/2.
+    gridcenter = (np.array(rho.shape)-1.)/2.
     shift = gridcenter-rhocom
     rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
     #calculate, save and perform rotation of refrho to xyz for later
@@ -1811,10 +1811,15 @@ def align2xyz(rho, return_transform=False):
         w,v = np.linalg.eigh(I) #principal axes
         R = v.T #rotation matrix
         c_in = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
-        c_out = np.array(rho.shape)/2.
+        c_out = (np.array(rho.shape)-1.)/2.
         offset=c_in-c_out.dot(R)
         rho = ndimage.interpolation.affine_transform(rho, R.T, order=3,
             offset=offset, mode='wrap')
+    #also need to run recentering a few times
+    for i in range(3):
+        rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
+        shift = gridcenter-rhocom
+        rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
     rho *= ne_rho/np.sum(rho)
     if return_transform:
         return rho, refR, refshift
