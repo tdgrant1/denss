@@ -1714,7 +1714,7 @@ def transform_rho(rho, T, order=1):
     ne_rho= np.sum((rho))
     R = euler2matrix(T[0],T[1],T[2])
     c_in = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
-    c_out = np.array(rho.shape)/2.
+    c_out = (np.array(rho.shape)-1.)/2.
     offset = c_in-c_out.dot(R)
     offset += T[3:]
     rho = ndimage.interpolation.affine_transform(rho,R.T, order=order,
@@ -1799,7 +1799,7 @@ def principal_axis_alignment(refrho,movrho):
     #now rotate movrho by the inverse of the refrho rotation
     R = np.linalg.inv(refR)
     c_in = np.array(ndimage.measurements.center_of_mass(np.abs(movrho)))
-    c_out = np.array(movrho.shape)/2.
+    c_out = (np.array(movrho.shape)-1.)/2.
     offset=c_in-c_out.dot(R)
     movrho = ndimage.interpolation.affine_transform(movrho,R.T,order=3,offset=offset,mode='wrap')
     #now shift it back to where refrho was originally
