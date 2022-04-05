@@ -27,9 +27,9 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+from __future__ import print_function
 import sys, os, argparse, logging
 import numpy as np
-from scipy import ndimage
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 
@@ -42,7 +42,8 @@ args = parser.parse_args()
 if __name__ == "__main__":
 
     if args.output is None:
-        basename, ext = os.path.splitext(args.files[0])
+        fname_nopath = os.path.basename(args.files[0])
+        basename, ext = os.path.splitext(fname_nopath)
         output = basename
     else:
         output = args.output
@@ -50,7 +51,8 @@ if __name__ == "__main__":
     logging.basicConfig(filename=output+'_avg.log',level=logging.INFO,filemode='w',
                         format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
     logging.info('BEGIN')
-    logging.info('Script name: %s', sys.argv[0])
+    logging.info('Command: %s', ' '.join(sys.argv))
+    #logging.info('Script name: %s', sys.argv[0])
     logging.info('DENSS Version: %s', __version__)
 
     rhosum = None
@@ -67,34 +69,34 @@ if __name__ == "__main__":
             rhosum = rho
         else:
             rhosum += rho
-    print
+    print()
     rhos = np.array(rhos)
     average_rho = rhosum / nmaps
     saxs.write_mrc(average_rho,side, output+"_avg.mrc")
-    print "%s_avg.mrc written." % output
+    print("%s_avg.mrc written." % output)
 
-    """
-    #split maps into 2 halves--> enan, align, average independently with same refrho
-    avg_rho1 = np.mean(aligned[::2],axis=0)
-    avg_rho2 = np.mean(aligned[1::2],axis=0)
-    fsc = saxs.calc_fsc(avg_rho1,avg_rho2,sides[0])
-    np.savetxt(args.output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="qbins, FSC")
-    """
     #rather than compare two halves, average all fsc's to the reference
     fscs = []
-    for map in range(nmaps):
-        fscs.append(saxs.calc_fsc(rhos[map],average_rho,side))
-    fscs = np.array(fscs)
-    fsc = np.mean(fscs,axis=0)
-    np.savetxt(args.output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC")
-    x = np.linspace(fsc[0,0],fsc[-1,0],100)
-    y = np.interp(x, fsc[:,0], fsc[:,1])
-    resi = np.argmin(y>=0.5)
-    resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
-    resn = round(float(1./resx),1)
-    print "Resolution: %.1f" % resn, u'\u212B'.encode('utf-8')
+    resns = []
+    for calc_map in range(nmaps):
+        fsc_map = saxs.calc_fsc(rhos[calc_map],average_rho,side)
+        fscs.append(fsc_map)
+        resn_map = saxs.fsc2res(fsc_map)
+        resns.append(resn_map)
 
-    logging.info('Resolution: %.1f '+ u'\u212B'.encode('utf-8'), resn )
+    fscs = np.array(fscs)
+    resns = np.array(resns)
+    fsc = np.mean(fscs,axis=0)
+    resn, x, y, resx = saxs.fsc2res(fsc, return_plot=True)
+    resn_sd = np.std(resns)
+    if np.min(fsc[:,1]) > 0.5:
+        print("Resolution: < %.1f +- %.1f A (maximum possible)" % (resn,resn_sd))
+    else:
+        print("Resolution: %.1f +- %.1f A " % (resn,resn_sd))
+
+    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC; Resolution=%.1f +- %.1f A" % (resn,resn_sd))
+
+    logging.info('Resolution: %.1f '+ 'A', resn )
     logging.info('END')
 
     logging.info('END')

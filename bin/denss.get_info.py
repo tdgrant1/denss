@@ -27,9 +27,9 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+from __future__ import print_function
 import os, sys, logging
 import numpy as np
-from scipy import ndimage
 import argparse
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
@@ -44,10 +44,19 @@ if __name__ == "__main__":
     rho, (a,b,c) = saxs.read_mrc(args.file, returnABC=True)
     vx, vy, vz = np.array((a,b,c))/np.array(rho.shape)
 
-    print " Grid size:   %i x %i x %i" % (rho.shape[0],rho.shape[1],rho.shape[2])
-    print " Side length: %f x %f x %f" % (a,b,c)
-    print " Voxel size:  %f x %f x %f" % (vx, vy, vz)
-    print " Total number of electrons:  %f" % (rho.sum()*vx*vy*vz)
+    print(" Grid size:   %i x %i x %i" % (rho.shape[0],rho.shape[1],rho.shape[2]))
+    print(" Side length: %f x %f x %f" % (a,b,c))
+    print(" Voxel size:  %f x %f x %f" % (vx, vy, vz))
+    print(" Voxel volume: %f" % (vx*vy*vz))
+    print(" Total number of electrons:  %f" % (rho.sum()*vx*vy*vz))
+    print(" Mean Density (all voxels): %3.5f" % np.mean(rho))
+    print(" Std. Dev. of Density (all voxels): %3.5f" % np.std(rho))
+    print(" RMSD of Density (all voxels): %3.5f" % np.sqrt(np.mean(np.square(rho))))
+    idx = np.where(np.abs(rho)>0.01*rho.max())
+    print(" Modified Mean Density (voxels >0.01*max): %3.5f" % np.mean(rho[idx]))
+    print(" Modified Std. Dev. of Density (voxels >0.01*max): %3.5f" % np.std(rho[idx]))
+    print(" Modified RMSD of Density (voxels >0.01*max): %3.5f" % np.sqrt(np.mean(np.square(rho[idx]))))
+
 
 
 

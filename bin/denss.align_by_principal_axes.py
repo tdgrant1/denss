@@ -28,9 +28,9 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+from __future__ import print_function
 import os, sys, logging
 import numpy as np
-from scipy import ndimage
 import argparse
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
@@ -49,7 +49,8 @@ args = parser.parse_args()
 if __name__ == "__main__":
 
     if args.output is None:
-        basename, ext = os.path.splitext(args.file)
+        fname_nopath = os.path.basename(args.file)
+        basename, ext = os.path.splitext(fname_nopath)
         output = basename+"_alignedbyPA"
     else:
         output = args.output
@@ -57,7 +58,8 @@ if __name__ == "__main__":
     logging.basicConfig(filename=output+'.log',level=logging.INFO,filemode='w',
                         format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
     logging.info('BEGIN')
-    logging.info('Script name: %s', sys.argv[0])
+    logging.info('Command: %s', ' '.join(sys.argv))
+    #logging.info('Script name: %s', sys.argv[0])
     logging.info('DENSS Version: %s', __version__)
     logging.info('Map filename(s): %s', args.file)
     logging.info('Reference filename: %s', args.ref)
@@ -65,13 +67,14 @@ if __name__ == "__main__":
     rho, side = saxs.read_mrc(args.file)
 
     if args.ref is None:
-        print "Need reference file (.mrc or .pdb)"
+        print("Need reference file (.mrc or .pdb)")
         sys.exit(1)
     else:
         if args.ref.endswith('.pdb'):
             logging.info('Center PDB reference: %s', args.center)
             logging.info('PDB reference map resolution: %.2f', args.resolution)
-            refbasename, refext = os.path.splitext(args.ref)
+            reffname_nopath = os.path.basename(args.ref)
+            refbasename, refext = os.path.splitext(reffname_nopath)
             refoutput = refbasename+"_centered.pdb"
             refside = side
             voxel = (refside/movrho.shape)[0]
@@ -85,19 +88,21 @@ if __name__ == "__main__":
             if args.center:
                 pdb.coords -= pdb.coords.mean(axis=0)
                 pdb.write(filename=refoutput)
-            refrho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution)
+            #use the new fastgauss function
+            #refrho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution)
+            refrho = saxs.pdb2map_fastgauss(pdb,x=x,y=y,z=z,sigma=args.resolution,r=args.resolution*2)
             refrho = refrho*np.sum(movrho)/np.sum(refrho)
             saxs.write_mrc(refrho,side,filename=refbasename+'_pdb.mrc')
         if args.ref.endswith('.mrc'):
             refrho, refside = saxs.read_mrc(args.ref)
         if (not args.ref.endswith('.mrc')) and (not args.ref.endswith('.pdb')):
-            print "Invalid reference filename given. .mrc or .pdb file required"
+            print("Invalid reference filename given. .mrc or .pdb file required")
             sys.exit(1)
 
     aligned = saxs.principal_axis_alignment(refrho,rho)
 
     saxs.write_mrc(aligned, side, output+'.mrc')
-    print "%s.mrc written. " % (output,)
+    print("%s.mrc written. " % (output,))
 
     logging.info('END')
 

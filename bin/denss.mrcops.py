@@ -28,10 +28,10 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+from __future__ import print_function
 import os, argparse, sys, imp
 import logging
 import numpy as np
-from scipy import ndimage
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 
@@ -43,38 +43,68 @@ parser.add_argument("-n", "--n", default=None, type=int, help="Desired number of
 parser.add_argument("-s", "--side", default=None, type=float, help="Desired length of side of map (creates cubic map by padding with zeros or clipping, after any resampling)")
 parser.add_argument("-t","--threshold", default=None, type=float, help="Minimum density threshold (given as e-/A^3; sets lesser values to zero).")
 parser.add_argument("-ne","--ne", default=None, type=float, help="Desired number of electrons in map.")
+parser.add_argument("-zflip","--zflip", action="store_true", help="Generate the enantiomer by flipping map over Z axis.")
+parser.add_argument("-u", "--units", default=None, type=str, help="Change units (\"a\": [from nm to angstrom] or \"nm\": [from angstrom to nanometer])")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
 args = parser.parse_args()
 
 if __name__ == "__main__":
 
     if args.output is None:
-        basename, ext = os.path.splitext(args.file)
+        fname_nopath = os.path.basename(args.file)
+        basename, ext = os.path.splitext(fname_nopath)
         output = basename + '_resampled'
     else:
         output = args.output
 
     rho, (a,b,c) = saxs.read_mrc(args.file,returnABC=True)
-    ne = np.sum(rho)
+    #float32 is not precise enough for some calculations, convert to float64
+    rho = rho.astype(np.float64)
     vx, vy, vz = np.array((a,b,c))/np.array(rho.shape)
-    #print vx, vy, vz
+    #assume electron density map is given in density (e-/A^3), not number of electrons
+    #multiply by voxel volume to get total number of electrons
+    V = a*b*c
+    dV = vx*vy*vz
+    ne = np.sum(rho) * dV
+
+    print("Original number of electrons:", ne)
+    print("prezoom")
+    print("Shape:  ", rho.shape)
+    print("Sides:  ", a, b, c)
+    print("Voxels: ", vx, vy, vz)
+
+    #change units. By default sf (scale factor) is 1.0 so no change
+    sf = 1.0
+    if args.units == "a":
+        sf = 10.0
+    if args.units == "nm":
+        sf = 0.1
+    a *= sf
+    b *= sf
+    c *= sf
+    vx *= sf
+    vy *= sf
+    vz *= sf
+    V = a*b*c
+    dV = vx*vy*vz
 
     if args.voxel is None:
         voxel = min((vx, vy, vz))
     else:
         voxel = args.voxel
 
-    print "prezoom"
-    print "Shape:  ", rho.shape
-    print "Sides:  ", a, b, c
-    print "Voxels: ", vx, vy, vz
-    rho = saxs.zoom_rho(rho,(vx,vy,vz),voxel)
+    if args.voxel is not None:
+        #only resample if voxel option is defined by user
+        rho = saxs.zoom_rho(rho,(vx,vy,vz),voxel)
+        #the zooming isn't exact due to integer voxels
+        #so reset voxel sizes here
+        vx, vy, vz = np.array((a,b,c))/np.array(rho.shape)
+        dV = vx*vy*vz
 
-    vx, vy, vz = np.array((a,b,c))/np.array(rho.shape)
-    print "postzoom"
-    print "Shape:  ", rho.shape
-    print "Sides:  ", a, b, c
-    print "Voxels: ", vx, vy, vz
+    print("postzoom")
+    print("Shape:  ", rho.shape)
+    print("Sides:  ", a, b, c)
+    print("Voxels: ", vx, vy, vz)
 
     if args.side is None:
         newside = max((a,b,c))
@@ -89,28 +119,33 @@ if __name__ == "__main__":
 
     newshape = (n, n, n)
 
-    rho = saxs.pad_rho(rho,newshape)
-    a,b,c = vx * newshape[0], vy * newshape[1], vz*newshape[2]
-    print "postpad"
-    print "Shape:  ", rho.shape
-    print "Sides:  ", a, b, c
-    print "Voxels: ", vx, vy, vz
+    if (args.side is not None) or (args.n is not None):
+        rho = saxs.pad_rho(rho,newshape)
+        a,b,c = vx * newshape[0], vy * newshape[1], vz*newshape[2]
+    print("postpad")
+    print("Shape:  ", rho.shape)
+    print("Sides:  ", a, b, c)
+    print("Voxels: ", vx, vy, vz)
 
-    #rescale map after interpolation
-    if args.ne is not None:
-        ne = args.ne
-    rho *= ne/np.sum(rho)
-
-    #convert to density in e-/A^3 for thresholding
-    rho /= vx*vy*vz
 
     if args.threshold is not None:
+        #note that threshold must be given as density in e-/A^3
         rho[rho < args.threshold] = 0
 
-    rho *= ne/np.sum(rho) #rescale to the total number of electrons
-    rho /= vx*vy*vz #now divide by total volume to convert to electron density
+    #rescale map to total number of electrons desired (args.ne if set, otherwise original number)
+    if args.ne is not None:
+        ne = args.ne
+    
+    #now that we're in density, rather than total e-, must also multiply by total volume
+    #won't keep this in the args.ne condition since we want to at least rescale to the 
+    #original total number of electrons even if args.ne is not given
+    rho *= ne/np.sum(rho) #total number of electrons
+    rho /= dV #convert to density
 
-    print rho.sum()*vx*vy*vz
+    if args.zflip:
+        rho = rho[:,:,::-1]
+
+    print("Final number of electrons:", np.sum(rho)*dV)
 
     saxs.write_mrc(rho,(a,b,c),filename=output+'.mrc')
 

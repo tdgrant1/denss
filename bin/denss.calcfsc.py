@@ -28,18 +28,12 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import os, argparse, sys, imp
+from __future__ import print_function
+import os, argparse, sys
 import logging
 import numpy as np
-from scipy import ndimage
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
-try:
-    imp.find_module('matplotlib')
-    import matplotlib.pyplot as plt
-    matplotlib_found = True
-except ImportError:
-    matplotlib_found = False
 
 parser = argparse.ArgumentParser(description="A tool for calculating the Fourier Shell Correlation between two pre-aligned MRC formatted electron density maps", formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
@@ -48,16 +42,22 @@ parser.add_argument("-ref", "--ref", type=str, help="Reference electron density 
 parser.add_argument("--plot_on", dest="plot", action="store_true", help="Plot the profile (requires Matplotlib, default if module exists).")
 parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not plot the profile. (Default if Matplotlib does not exist)")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
-if matplotlib_found:
-    parser.set_defaults(plot=True)
-else:
-    parser.set_defaults(plot=False)
+parser.set_defaults(plot=True)
 args = parser.parse_args()
+
+if args.plot:
+    #if plotting is enabled, try to import matplotlib
+    #if import fails, set plotting to false
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        args.plot = False
 
 if __name__ == "__main__":
 
     if args.output is None:
-        basename, ext = os.path.splitext(args.file)
+        fname_nopath = os.path.basename(args.file)
+        basename, ext = os.path.splitext(fname_nopath)
         output = basename + '_fsc'
     else:
         output = args.output
@@ -66,22 +66,20 @@ if __name__ == "__main__":
     rho, side = saxs.read_mrc(args.file)
     refrho, refside = saxs.read_mrc(args.ref)
     if rho.shape[0] != refrho.shape[0]:
-        print "Shape of rho and ref are not equal."
+        print("Shape of rho and ref are not equal.")
         sys.exit()
     if side != refside:
-        print "Side length of rho and ref are not equal."
+        print("Side length of rho and ref are not equal.")
         sys.exit()
 
     fsc = saxs.calc_fsc(rho,refrho,side)
+    resn, x, y, resx = saxs.fsc2res(fsc, return_plot=True)
+    if np.min(fsc[:,1]) > 0.5:
+        print("Resolution: < %.1f A (maximum possible)" % resn)
+    else:
+        print("Resolution: %.1f A" % resn)
 
-    np.savetxt(output+'.dat', fsc, delimiter=' ', fmt='% .5e')
-
-    x = np.linspace(fsc[0,0],fsc[-1,0],100)
-    y = np.interp(x, fsc[:,0], fsc[:,1])
-    resi = np.argmin(y>=0.5)
-    resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
-    resn = round(float(1./resx),1)
-    print "Resolution: %.1f" % resn, u'\u212B'.encode('utf-8')
+    np.savetxt(output+'.dat', fsc, delimiter=' ', fmt='% .5e', header="1/resolution, FSC; Resolution=%.1f A" % resn)
 
     if args.plot:
         plt.plot(fsc[:,0],fsc[:,0]*0+0.5,'k--')
@@ -91,7 +89,7 @@ if __name__ == "__main__":
         plt.legend()
         plt.xlabel('Resolution (1/$\mathrm{\AA}$)')
         plt.ylabel('Fourier Shell Correlation')
-        plt.savefig(output,ext='png',dpi=150)
+        plt.savefig(output+'.png',dpi=150)
         plt.close()
 
 

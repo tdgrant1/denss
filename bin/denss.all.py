@@ -27,7 +27,7 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-
+from __future__ import print_function
 import multiprocessing
 import logging
 import sys
@@ -43,40 +43,6 @@ import saxstats.denssopts as dopts
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 
-#have to run parser twice, first just to get filename for loadProfile
-#then have to run it after deciding what the correct dmax should be
-#so that the voxel size, box size, nsamples, etc are set correctly
-initparser = argparse.ArgumentParser(description="Generate, align, and average many electron density maps from solution scattering data.", formatter_class=argparse.RawTextHelpFormatter)
-initparser.add_argument("-nm", "--nmaps",default = 20,type =int, help="Number of maps to be generated (default 20)")
-initparser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
-initparser.add_argument("-en_on", "--enantiomer_on", action = "store_true", dest="enan", help="Generate and select best enantiomers (default). ")
-initparser.add_argument("-en_off", "--enantiomer_off", action = "store_false", dest="enan", help="Do not generate and select best enantiomers.")
-initparser.add_argument("-ref", "--ref", default=None, type=str, help="Input reference model (.mrc or .pdb file, optional).")
-initparser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center reference PDB map.")
-initparser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center reference PDB map (default).")
-initparser.add_argument("-r", "--resolution", default=15.0, type=float, help="Resolution of map calculated from reference PDB file (default 15 angstroms).")
-initparser.set_defaults(enan = True)
-initparser.set_defaults(center = True)
-initargs = dopts.parse_arguments(initparser, gnomdmax=None)
-
-q, I, sigq, dmax, isout = saxs.loadProfile(initargs.file, units=initargs.units)
-
-if not initargs.force_run:
-    if min(q) != 0.0:
-        print "CAUTION: Minimum q value = %f " % min(q)
-        print "is not 0.0. It is STRONGLY recommended to include"
-        print "I(q=0) in your given scattering profile. You can use"
-        print "denss.fit_data.py to calculate a scattering profile fit"
-        print "which will include I(q=0), or you can also use the GNOM"
-        print "program from ATSAS to create a .out file."
-        print
-        print "If you are positive you would like to continue, "
-        print "rerun with the --force_run option."
-        sys.exit()
-
-if dmax <= 0:
-    dmax = None
-
 parser = argparse.ArgumentParser()
 parser.add_argument("-nm", "--nmaps",default = 20,type =int, help="Number of maps to be generated (default 20)")
 parser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
@@ -88,8 +54,11 @@ parser.add_argument("-c_off", "--center_off", dest="center", action="store_false
 parser.add_argument("-r", "--resolution", default=15.0, type=float, help="Resolution of map calculated from reference PDB file (default 15 angstroms).")
 parser.set_defaults(enan = True)
 parser.set_defaults(center = True)
-superargs = dopts.parse_arguments(parser, gnomdmax=dmax)
+superargs = dopts.parse_arguments(parser)
 
+#these are arguments specifically for the denss() function
+#it cannot contain keyword arguments that are not listed
+#in the denss() function, so remove any of those here
 args = copy.copy(superargs)
 del args.units
 del args.cores
@@ -102,10 +71,17 @@ del args.nsamples
 del args.mode
 del args.resolution
 del args.center
-del args.force_run
+del args.shrinkwrap_sigma_start_in_A
+del args.shrinkwrap_sigma_end_in_A
+del args.shrinkwrap_sigma_start_in_vox
+del args.shrinkwrap_sigma_end_in_vox
+del args.qraw
+del args.Iraw
 
 def multi_denss(niter, **kwargs):
     try:
+        time.sleep(1)
+
         # Processing keyword args for compatibility with RAW GUI
         kwargs['path'] = '.'
 
@@ -119,7 +95,7 @@ def multi_denss(niter, **kwargs):
             sys.stdout.flush()
 
         fname = kwargs['output']+'.log'
-        logger = logging.getLogger("")
+        logger = logging.getLogger(kwargs['output'])
         logger.setLevel(logging.INFO)
         fh = logging.FileHandler(fname)
         formatter = logging.Formatter('%(asctime)s - %(message)s')
@@ -128,27 +104,29 @@ def multi_denss(niter, **kwargs):
 
         kwargs['my_logger'] = logger
 
-        logging.info('BEGIN')
-        logging.info('Script name: %s', sys.argv[0])
-        logging.info('DENSS Version: %s', __version__)
-        logging.info('Data filename: %s', superargs.file)
-        logging.info('Output prefix: %s', kwargs['output'])
-        logging.info('Mode: %s', superargs.mode)
+        logger.info('BEGIN')
+        logger.info('Script name: %s', sys.argv[0])
+        logger.info('DENSS Version: %s', __version__)
+        logger.info('Data filename: %s', superargs.file)
+        logger.info('Output prefix: %s', kwargs['output'])
+        logger.info('Mode: %s', superargs.mode)
         result = saxs.denss(**kwargs)
-        logging.info('END')
+        logger.info('END')
         return result
-        time.sleep(1)
+
     except KeyboardInterrupt:
+        print("KeyboardInterrupt")
         pass
 
 
 if __name__ == "__main__":
 
     if superargs.nmaps<2:
-        print "Not enough maps to align"
+        print("Not enough maps to align")
         sys.exit(1)
 
-    basename, ext = os.path.splitext(superargs.file)
+    fname_nopath = os.path.basename(superargs.file)
+    basename, ext = os.path.splitext(fname_nopath)
     if (superargs.output is None) or (superargs.output == basename):
         output = basename
     else:
@@ -160,37 +138,40 @@ if __name__ == "__main__":
         out_dir = output + "_" + str(dirn)
         dirn += 1
 
-    print out_dir
+    print(out_dir)
     os.mkdir(out_dir)
-    output = out_dir+'/'+out_dir
+    output = out_dir+'/'+output
     args.output = output
     superargs.output = output
 
     fname = output+'_final.log'
-    superlogger = logging.getLogger("")
+    superlogger = logging.getLogger(output+'_final')
     superlogger.setLevel(logging.INFO)
     fh = logging.FileHandler(fname)
     formatter = logging.Formatter('%(asctime)s - %(message)s')
     fh.setFormatter(formatter)
     superlogger.addHandler(fh)
 
-    logging.info('BEGIN')
-    logging.info('Script name: %s', sys.argv[0])
-    logging.info('DENSS Version: %s', __version__)
-    logging.info('Data filename: %s', superargs.file)
-    logging.info('Enantiomer selection: %r', superargs.enan)
+    superlogger.info('BEGIN')
+    superlogger.info('Command: %s', ' '.join(sys.argv))
+    #superlogger.info('Script name: %s', sys.argv[0])
+    superlogger.info('DENSS Version: %s', __version__)
+    superlogger.info('Data filename: %s', superargs.file)
+    superlogger.info('Enantiomer selection: %r', superargs.enan)
 
-    denss_inputs = {'I':I,'sigq':sigq,'q':q}
+    denss_inputs = {'I':superargs.I,'sigq':superargs.sigq,'q':superargs.q}
 
     for arg in vars(args):
         denss_inputs[arg]= getattr(args, arg)
 
     pool = multiprocessing.Pool(superargs.cores)
 
+    superlogger.info('Starting DENSS runs')
+
     try:
         mapfunc = partial(multi_denss, **denss_inputs)
-        denss_outputs = pool.map(mapfunc, range(superargs.nmaps))
-        print "\r Finishing denss job: %i / %i" % (superargs.nmaps,superargs.nmaps)
+        denss_outputs = pool.map(mapfunc, list(range(superargs.nmaps)))
+        print("\r Finishing denss job: %i / %i" % (superargs.nmaps,superargs.nmaps))
         sys.stdout.flush()
         pool.close()
         pool.join()
@@ -198,6 +179,8 @@ if __name__ == "__main__":
         pool.terminate()
         pool.close()
         sys.exit(1)
+
+    superlogger.info('Finished DENSS runs')
 
     qdata = denss_outputs[0][0]
     Idata = denss_outputs[0][1]
@@ -215,10 +198,20 @@ if __name__ == "__main__":
         header.append("I_fit_"+str(map))
 
     np.savetxt(output+'_map.fit',fit,delimiter=" ",fmt="%.5e", header=" ".join(header))
-    chi_header, rg_header, supportV_header = zip(*[('chi_'+str(i), 'rg_'+str(i),'supportV_'+str(i)) for i in range(superargs.nmaps)])
+    chi_header, rg_header, supportV_header = list(zip(*[('chi_'+str(i), 'rg_'+str(i),'supportV_'+str(i)) for i in range(superargs.nmaps)]))
     all_chis = np.array([denss_outputs[i][5] for i in np.arange(superargs.nmaps)])
     all_rg = np.array([denss_outputs[i][6] for i in np.arange(superargs.nmaps)])
     all_supportV = np.array([denss_outputs[i][7] for i in np.arange(superargs.nmaps)])
+    final_chis = np.zeros(superargs.nmaps)
+    final_rgs = np.zeros(superargs.nmaps)
+    final_supportVs = np.zeros(superargs.nmaps)
+    for i in range(superargs.nmaps):
+        final_rgs[i] = all_rg[i,all_rg[i]>0][-1]
+        final_chis[i] = all_chis[i,all_chis[i]>0][-1]
+        final_supportVs[i] = all_supportV[i,all_supportV[i]>0][-1]
+    superlogger.info('Average Rg...............: %3.3f +- %3.3f', np.mean(final_rgs), np.std(final_rgs))
+    superlogger.info('Average Chi2.............: %.3e +- %.3e', np.mean(final_chis), np.std(final_chis))
+    superlogger.info('Average Support Volume...: %3.3f +- %3.3f', np.mean(final_supportVs), np.std(final_supportVs))
 
     np.savetxt(output+'_chis_by_step.fit',all_chis.T,delimiter=" ",fmt="%.5e",header=",".join(chi_header))
     np.savetxt(output+'_rg_by_step.fit',all_rg.T,delimiter=" ",fmt="%.5e",header=",".join(rg_header))
@@ -247,23 +240,30 @@ if __name__ == "__main__":
             refrho, refside = saxs.read_mrc(superargs.ref)
 
     if superargs.enan:
-        print
-        print " Selecting best enantiomers..."
+        print()
+        print(" Selecting best enantiomers...")
+        superlogger.info('Selecting best enantiomers')
         try:
             allrhos, scores = saxs.select_best_enantiomers(allrhos, cores=superargs.cores)
         except KeyboardInterrupt:
             sys.exit(1)
+        for i in range(superargs.nmaps):
+            ioutput = output+"_"+str(i)+"_enan"
+            saxs.write_mrc(allrhos[i], sides[0], ioutput+".mrc")
 
     if superargs.ref is None:
-        print
-        print " Generating reference..."
+        print()
+        print(" Generating reference...")
+        superlogger.info('Generating reference')
         try:
             refrho = saxs.binary_average(allrhos, superargs.cores)
+            saxs.write_mrc(refrho, sides[0], output+"_reference.mrc")
         except KeyboardInterrupt:
             sys.exit(1)
 
-    print
-    print " Aligning all maps to reference..."
+    print()
+    print(" Aligning all maps to reference...")
+    superlogger.info('Aligning all maps to reference')
     try:
         aligned, scores = saxs.align_multiple(refrho, allrhos, superargs.cores)
     except KeyboardInterrupt:
@@ -274,8 +274,8 @@ if __name__ == "__main__":
     std = np.std(scores)
     threshold = mean - 2*std
     filtered = np.empty(len(scores),dtype=str)
-    print "Mean of correlation scores: %.3f" % mean
-    print "Standard deviation of scores: %.3f" % std
+    print("Mean of correlation scores: %.3f" % mean)
+    print("Standard deviation of scores: %.3f" % std)
     for i in range(superargs.nmaps):
         if scores[i] < threshold:
             filtered[i] = 'Filtered'
@@ -283,39 +283,74 @@ if __name__ == "__main__":
             filtered[i] = ' '
         ioutput = output+"_"+str(i)+"_aligned"
         saxs.write_mrc(aligned[i], sides[0], ioutput+".mrc")
-        print "%s.mrc written. Score = %0.3f %s " % (ioutput,scores[i],filtered[i])
-        logging.info('Correlation score to reference: %s.mrc %.3f %s', ioutput, scores[i], filtered[i])
+        print("%s.mrc written. Score = %0.3f %s " % (ioutput,scores[i],filtered[i]))
+        superlogger.info('Correlation score to reference: %s.mrc %.3f %s', ioutput, scores[i], filtered[i])
 
-    aligned = aligned[scores>threshold]
+    idx_keep = np.where(scores>threshold)
+    kept_ids = np.arange(superargs.nmaps)[idx_keep]
+    aligned = aligned[idx_keep]
     average_rho = np.mean(aligned,axis=0)
 
-    logging.info('Mean of correlation scores: %.3f', mean)
-    logging.info('Standard deviation of the scores: %.3f', std)
-    logging.info('Total number of input maps for alignment: %i',allrhos.shape[0])
-    logging.info('Number of aligned maps accepted: %i', aligned.shape[0])
-    logging.info('Correlation score between average and reference: %.3f', 1/saxs.rho_overlap_score(average_rho, refrho))
+    superlogger.info('Mean of correlation scores: %.3f', mean)
+    superlogger.info('Standard deviation of the scores: %.3f', std)
+    superlogger.info('Total number of input maps for alignment: %i',allrhos.shape[0])
+    superlogger.info('Number of aligned maps accepted: %i', aligned.shape[0])
+    superlogger.info('Correlation score between average and reference: %.3f', -saxs.rho_overlap_score(average_rho, refrho))
+    superlogger.info('Mean Density of Avg Map (all voxels): %3.5f', np.mean(average_rho))
+    superlogger.info('Std. Dev. of Density (all voxels): %3.5f', np.std(average_rho))
+    superlogger.info('RMSD of Density (all voxels): %3.5f', np.sqrt(np.mean(np.square(average_rho))))
+    idx = np.where(np.abs(average_rho)>0.01*average_rho.max())
+    superlogger.info('Modified Mean Density (voxels >0.01*max): %3.5f', np.mean(average_rho[idx]))
+    superlogger.info('Modified Std. Dev. of Density (voxels >0.01*max): %3.5f', np.std(average_rho[idx]))
+    superlogger.info('Modified RMSD of Density (voxels >0.01*max): %3.5f', np.sqrt(np.mean(np.square(average_rho[idx]))))
     saxs.write_mrc(average_rho, sides[0], output+'_avg.mrc')
 
-    """
-    #split maps into 2 halves--> enan, align, average independently with same refrho
-    avg_rho1 = np.mean(aligned[::2],axis=0)
-    avg_rho2 = np.mean(aligned[1::2],axis=0)
-    fsc = saxs.calc_fsc(avg_rho1,avg_rho2,sides[0])
-    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="qbins, FSC")
-    """
     #rather than compare two halves, average all fsc's to the reference
     fscs = []
+    resns = []
     for calc_map in range(len(aligned)):
-        fscs.append(saxs.calc_fsc(aligned[calc_map],refrho,sides[0]))
-    fscs = np.array(fscs)
-    fsc = np.mean(fscs,axis=0)
-    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC")
-    x = np.linspace(fsc[0,0],fsc[-1,0],100)
-    y = np.interp(x, fsc[:,0], fsc[:,1])
-    resi = np.argmin(y>=0.5)
-    resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
-    resn = round(float(1./resx),1)
-    print "Resolution: %.1f" % resn, u'\u212B'.encode('utf-8')
+        fsc_map = saxs.calc_fsc(aligned[calc_map],refrho,sides[0])
+        fscs.append(fsc_map)
+        resn_map = saxs.fsc2res(fsc_map)
+        resns.append(resn_map)
 
-    logging.info('Resolution: %.1f '+ u'\u212B'.encode('utf-8'), resn )
-    logging.info('END')
+    fscs = np.array(fscs)
+
+    #save a file containing all fsc curves
+    fscs_header = ['res(1/A)']
+    for i in kept_ids:
+        ioutput = output+"_"+str(i)+"_aligned"
+        fscs_header.append(ioutput)
+    #add the resolution as the first column
+    fscs_for_file = np.vstack((fscs[0,:,0],fscs[:,:,1])).T
+    np.savetxt(output+'_allfscs.dat',fscs_for_file,delimiter=" ",fmt="%.5e",header=",".join(fscs_header))
+
+    resns = np.array(resns)
+    fsc = np.mean(fscs,axis=0)
+    resn, x, y, resx = saxs.fsc2res(fsc, return_plot=True)
+    resn_sd = np.std(resns)
+    if np.min(fsc[:,1]) > 0.5:
+        print("Resolution: < %.1f +- %.1f A (maximum possible)" % (resn,resn_sd))
+    else:
+        print("Resolution: %.1f +- %.1f A " % (resn,resn_sd))
+
+    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC; Resolution=%.1f +- %.1f A" % (resn,resn_sd))
+
+    superlogger.info('Resolution = %.1f +- %.1f A' % (resn,resn_sd))
+    superlogger.info('END')
+
+    if superargs.plot:
+        import matplotlib.pyplot as plt
+        plt.plot(fsc[:,0],fsc[:,0]*0+0.5,'k--')
+        for i in range(len(aligned)):
+            plt.plot(fscs[i,:,0],fscs[i,:,1],'k--',alpha=0.1)
+        plt.plot(fsc[:,0],fsc[:,1],'bo-')
+        #plt.plot(x,y,'k-')
+        plt.plot([resx],[0.5],'ro',label='Resolution = '+str(resn)+r'$\mathrm{\AA}$')
+        plt.legend()
+        plt.xlabel('Resolution (1/$\mathrm{\AA}$)')
+        plt.ylabel('Fourier Shell Correlation')
+        pltoutput = os.path.splitext(output)[0]
+        print(pltoutput)
+        plt.savefig(pltoutput+'_fsc.png',dpi=150)
+        plt.close()

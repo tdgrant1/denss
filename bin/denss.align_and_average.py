@@ -27,10 +27,9 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+from __future__ import print_function
 import sys, os, argparse, logging
 import numpy as np
-from scipy import ndimage
-from multiprocessing import Pool
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 
@@ -52,7 +51,8 @@ args = parser.parse_args()
 if __name__ == "__main__":
 
     if args.output is None:
-        basename, ext = os.path.splitext(args.files[0])
+        fname_nopath = os.path.basename(args.files[0])
+        basename, ext = os.path.splitext(fname_nopath)
         output = basename
     else:
         output = args.output
@@ -60,7 +60,8 @@ if __name__ == "__main__":
     logging.basicConfig(filename=output+'_final.log',level=logging.INFO,filemode='w',
                         format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
     logging.info('BEGIN')
-    logging.info('Script name: %s', sys.argv[0])
+    logging.info('Command: %s', ' '.join(sys.argv))
+    #logging.info('Script name: %s', sys.argv[0])
     logging.info('DENSS Version: %s', __version__)
     logging.info('Map filename(s): %s', args.files)
     logging.info('Reference filename: %s', args.ref)
@@ -78,7 +79,7 @@ if __name__ == "__main__":
     sides = np.array(sides)
 
     if nmaps<2:
-        print "Not enough maps to align. Please input more maps again..."
+        print("Not enough maps to align. Please input more maps again...")
         sys.exit(1)
 
     if args.ref is not None:
@@ -86,7 +87,8 @@ if __name__ == "__main__":
         if args.ref.endswith('.pdb'):
             logging.info('Center PDB reference: %s', args.center)
             logging.info('PDB reference map resolution: %.2f', args.resolution)
-            refbasename, refext = os.path.splitext(args.ref)
+            reffname_nopath = os.path.basename(args.ref)
+            refbasename, refext = os.path.splitext(reffname_nopath)
             refoutput = refbasename+"_centered.pdb"
             refside = sides[0]
             voxel = (refside/allrhos[0].shape)[0]
@@ -100,17 +102,19 @@ if __name__ == "__main__":
             if args.center:
                 pdb.coords -= pdb.coords.mean(axis=0)
                 pdb.write(filename=refoutput)
-            refrho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution)
+            #use the new fastgauss function
+            #refrho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution)
+            refrho = saxs.pdb2map_fastgauss(pdb,x=x,y=y,z=z,sigma=args.resolution,r=args.resolution*2)
             refrho = refrho*np.sum(allrhos[0])/np.sum(refrho)
             saxs.write_mrc(refrho,sides[0],filename=refbasename+'_pdb.mrc')
         if args.ref.endswith('.mrc'):
             refrho, refside = saxs.read_mrc(args.ref)
         if (not args.ref.endswith('.mrc')) and (not args.ref.endswith('.pdb')):
-            print "Invalid reference filename given. .mrc or .pdb file required"
+            print("Invalid reference filename given. .mrc or .pdb file required")
             sys.exit(1)
 
     if args.enan:
-        print " Selecting best enantiomers..."
+        print(" Selecting best enantiomers...")
         try:
             if args.ref:
                 allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
@@ -120,13 +124,14 @@ if __name__ == "__main__":
             sys.exit(1)
 
     if args.ref is None:
-        print " Generating reference..."
+        print(" Generating reference...")
         try:
             refrho = saxs.binary_average(allrhos, args.cores)
+            saxs.write_mrc(refrho, sides[0], output+"_reference.mrc")
         except KeyboardInterrupt:
             sys.exit(1)
 
-    print " Aligning all maps to reference..."
+    print(" Aligning all maps to reference...")
     try:
         aligned, scores = saxs.align_multiple(refrho, allrhos, args.cores)
     except KeyboardInterrupt:
@@ -137,53 +142,67 @@ if __name__ == "__main__":
     std = np.std(scores)
     threshold = mean - 2*std
     filtered = np.empty(len(scores),dtype=str)
-    print
-    print "Mean of correlation scores: %.3f" % mean
-    print "Standard deviation of scores: %.3f" % std
+    print()
+    print("Mean of correlation scores: %.3e" % mean)
+    print("Standard deviation of scores: %.3e" % std)
     for i in range(nmaps):
         if scores[i] < threshold:
             filtered[i] = 'Filtered'
         else:
             filtered[i] = ' '
-        basename, ext = os.path.splitext(args.files[i])
+        fname_nopath = os.path.basename(args.files[i])
+        basename, ext = os.path.splitext(fname_nopath)
         ioutput = basename+"_aligned"
         saxs.write_mrc(aligned[i], sides[0], ioutput+'.mrc')
-        print "%s.mrc written. Score = %0.3f %s " % (ioutput,scores[i],filtered[i])
-        logging.info('Correlation score to reference: %s.mrc %.3f %s', ioutput, scores[i], filtered[i])
+        print("%s.mrc written. Score = %0.3e %s " % (ioutput,scores[i],filtered[i]))
+        logging.info('Correlation score to reference: %s.mrc %.3e %s', ioutput, scores[i], filtered[i])
 
-    aligned = aligned[scores>threshold]
+    idx_keep = np.where(scores>threshold)
+    kept_ids = np.arange(nmaps)[idx_keep]
+    aligned = aligned[idx_keep]
     average_rho = np.mean(aligned,axis=0)
 
-    logging.info('Mean of correlation scores: %.3f', mean)
-    logging.info('Standard deviation of the scores: %.3f', std)
+    logging.info('Mean of correlation scores: %.3e', mean)
+    logging.info('Standard deviation of the scores: %.3e', std)
     logging.info('Total number of input maps for alignment: %i',allrhos.shape[0])
     logging.info('Number of aligned maps accepted: %i', aligned.shape[0])
-    logging.info('Correlation score between average and reference: %.3f', 1/saxs.rho_overlap_score(average_rho, refrho))
+    logging.info('Correlation score between average and reference: %.3e', -saxs.rho_overlap_score(average_rho, refrho))
     saxs.write_mrc(average_rho, sides[0], output+'_avg.mrc')
     logging.info('END')
 
-    """
-    #split maps into 2 halves--> enan, align, average independently with same refrho
-    avg_rho1 = np.mean(aligned[::2],axis=0)
-    avg_rho2 = np.mean(aligned[1::2],axis=0)
-    fsc = saxs.calc_fsc(avg_rho1,avg_rho2,sides[0])
-    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="qbins, FSC")
-    """
+
     #rather than compare two halves, average all fsc's to the reference
     fscs = []
-    for map in range(len(aligned)):
-        fscs.append(saxs.calc_fsc(aligned[map],refrho,sides[0]))
-    fscs = np.array(fscs)
-    fsc = np.mean(fscs,axis=0)
-    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC")
-    x = np.linspace(fsc[0,0],fsc[-1,0],100)
-    y = np.interp(x, fsc[:,0], fsc[:,1])
-    resi = np.argmin(y>=0.5)
-    resx = np.interp(0.5,[y[resi+1],y[resi]],[x[resi+1],x[resi]])
-    resn = round(float(1./resx),1)
-    print "Resolution: %.1f" % resn, u'\u212B'.encode('utf-8')
+    resns = []
+    for calc_map in range(len(aligned)):
+        fsc_map = saxs.calc_fsc(aligned[calc_map],refrho,sides[0])
+        fscs.append(fsc_map)
+        resn_map = saxs.fsc2res(fsc_map)
+        resns.append(resn_map)
 
-    logging.info('Resolution: %.1f '+ u'\u212B'.encode('utf-8'), resn )
+    fscs = np.array(fscs)
+
+    #save a file containing all fsc curves
+    fscs_header = ['res(1/A)']
+    for i in kept_ids:
+        ioutput = output+"_"+str(i)+"_aligned"
+        fscs_header.append(ioutput)
+    #add the resolution as the first column
+    fscs_for_file = np.vstack((fscs[0,:,0],fscs[:,:,1])).T
+    np.savetxt(output+'_allfscs.dat',fscs_for_file,delimiter=" ",fmt="%.5e",header=",".join(fscs_header))
+
+    resns = np.array(resns)
+    fsc = np.mean(fscs,axis=0)
+    resn, x, y, resx = saxs.fsc2res(fsc, return_plot=True)
+    resn_sd = np.std(resns)
+    if np.min(fsc[:,1]) > 0.5:
+        print("Resolution: < %.1f +- %.1f A (maximum possible)" % (resn,resn_sd))
+    else:
+        print("Resolution: %.1f +- %.1f A " % (resn,resn_sd))
+
+    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC; Resolution=%.1f +- %.1f A" % (resn,resn_sd))
+
+    logging.info('Resolution: %.1f A', resn )
     logging.info('END')
 
 

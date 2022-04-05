@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 #
-#    denss.align2xyz.py
-#    A tool for aligning an electron density map such that its principal
-#    axes of inertia are aligned with the x,y,z axes.
+#    denss.align_and_average.py
+#    A tool for aligning and averaging multiple electron density maps.
 #
 #    Part of DENSS
 #    DENSS: DENsity from Solution Scattering
@@ -29,49 +28,51 @@
 #
 
 from __future__ import print_function
-import os, sys, logging
+import sys, os, argparse, logging
 import numpy as np
-import argparse
+from scipy import ndimage
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 
-parser = argparse.ArgumentParser(description="A tool for aligning an electron density map such that its principal axes of inertia are aligned with the x,y,z axes.", formatter_class=argparse.RawTextHelpFormatter)
+parser = argparse.ArgumentParser(description="A tool for generating a reference from multiple electron density maps.", formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
-parser.add_argument("-f", "--file", type=str, help="List of MRC files for alignment to reference.")
-parser.add_argument("-o", "--output", default = None, type=str, help="output filename prefix")
+parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files")
+parser.add_argument("-o", "--output", type=str, help="output filename prefix")
+parser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
+parser.set_defaults(enan = True)
+parser.set_defaults(center = True)
 args = parser.parse_args()
 
 if __name__ == "__main__":
 
     if args.output is None:
-        fname_nopath = os.path.basename(args.file)
+        fname_nopath = os.path.basename(args.files[0])
         basename, ext = os.path.splitext(fname_nopath)
-        output = basename+"_aligned2xyz"
+        output = basename
     else:
         output = args.output
 
-    logging.basicConfig(filename=output+'.log',level=logging.INFO,filemode='w',
-                        format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
-    logging.info('BEGIN')
-    logging.info('Command: %s', ' '.join(sys.argv))
-    #logging.info('Script name: %s', sys.argv[0])
-    logging.info('DENSS Version: %s', __version__)
-    logging.info('Map filename(s): %s', args.file)
+    nmaps = len(args.files)
 
-    rho, side = saxs.read_mrc(args.file)
+    allrhos = []
+    sides = []
+    for file in args.files:
+        rho, side = saxs.read_mrc(file)
+        allrhos.append(rho)
+        sides.append(side)
+    allrhos = np.array(allrhos)
+    sides = np.array(sides)
 
-    aligned = saxs.align2xyz(rho)
+    if nmaps<2:
+        print("Not enough maps to generate reference. Please input more maps again...")
+        sys.exit(1)
 
-    saxs.write_mrc(aligned, side, output+'.mrc')
-    print("%s.mrc written. " % (output,))
-
-    logging.info('END')
-
-
-
-
-
-
+    print(" Generating reference...")
+    try:
+        refrho = saxs.binary_average(allrhos, args.cores)
+        saxs.write_mrc(refrho, sides[0], output+"_reference.mrc")
+    except KeyboardInterrupt:
+        sys.exit(1)
 
 
 
