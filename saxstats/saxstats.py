@@ -1602,14 +1602,16 @@ def euler_grid_search(refrho, movrho, topn=1, abort_event=None):
     phi = np.arccos(1 - 2*indices/num_pts)
     theta = np.pi * (1 + 5**0.5) * indices
     scores = np.zeros((len(phi),len(theta)))
+    refrho2 = ndimage.gaussian_filter(refrho, sigma=1.0, mode='wrap')
+    movrho2 = ndimage.gaussian_filter(movrho, sigma=1.0, mode='wrap')
+    n = refrho2.shape[0]
+    b,e = (int(n/4),int(3*n/4))
+    refrho3 = refrho2[b:e,b:e,b:e]
+    movrho3 = movrho2[b:e,b:e,b:e]
     for p in range(len(phi)):
         for t in range(len(theta)):
-            ns = 16
-            refF = np.abs(np.fft.fftn(refrho))[:ns,:ns,:ns]
-            movF = np.abs(np.fft.fftn(movrho))[:ns,:ns,:ns]
             scores[p,t] = -minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],
-                                            refrho=refF,
-                                            movrho=movF
+                                            refrho=refrho3,movrho=movrho3
                                             )
             #scores[p,t] = -minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],refrho=np.abs(refrho),movrho=np.abs(movrho))
             # scores[p,t] = -minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],refrho=refrho,movrho=movrho)
@@ -1620,7 +1622,6 @@ def euler_grid_search(refrho, movrho, topn=1, abort_event=None):
 
     #best_pt = np.unravel_index(scores.argmin(), scores.shape)
     best_pt = largest_indices(scores, topn)
-    print best_pt
     best_scores = scores[best_pt]
     movrhos = np.zeros((topn,movrho.shape[0],movrho.shape[1],movrho.shape[2]))
 
@@ -1677,17 +1678,20 @@ def minimize_rho(refrho, movrho, T = np.zeros(6)):
     bounds[3:,1] = 5
     save_movrho = np.copy(movrho)
     save_refrho = np.copy(refrho)
-    ns = 16
-    refF = np.abs(np.fft.fftn(refrho))[:ns,:ns,:ns]
-    movF = np.abs(np.fft.fftn(movrho))[:ns,:ns,:ns]
-    print 1/rho_overlap_score(save_refrho,save_movrho)
+    #for alignment only, run a low-pass filter to remove noise
+    refrho2 = ndimage.gaussian_filter(refrho, sigma=1.0, mode='wrap')
+    movrho2 = ndimage.gaussian_filter(movrho, sigma=1.0, mode='wrap')
+    n = refrho2.shape[0]
+    #to speed it up crop out the solvent
+    b,e = (int(n/4),int(3*n/4))
+    refrho3 = refrho2[b:e,b:e,b:e]
+    movrho3 = movrho2[b:e,b:e,b:e]
     result = optimize.fmin_l_bfgs_b(minimize_rho_score, T, factr= 0.1,
         maxiter=100, maxfun=200, epsilon=0.05,
-        args=(refF,movF), approx_grad=True)
+        args=(refrho3,movrho3), approx_grad=True)
     Topt = result[0]
     newrho = transform_rho(save_movrho, Topt)
-    finalscore = 1/rho_overlap_score(save_refrho,newrho)
-    print finalscore
+    finalscore = -1.*rho_overlap_score(save_refrho,newrho)
     return newrho, finalscore
 
 def minimize_rho_score(T, refrho, movrho):
