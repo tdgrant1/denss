@@ -1597,13 +1597,25 @@ def euler_grid_search(refrho, movrho, topn=1, abort_event=None):
         Return the topn candidate maps (default=1, i.e. the best candidate)."""
     #taken from https://stackoverflow.com/a/44164075/2836338
 
+    #the euler angles search implicitly assumes the object is located
+    #at the center of the grid, which may not be the case
+    #first translate both refrho and movrho to center of grid, then
+    #calculate optimal coarse rotations, the translate back
+    gridcenter = (np.array(refrho.shape)-1.)/2.
+    refrhocom = np.array(ndimage.measurements.center_of_mass(np.abs(refrho)))
+    movrhocom = np.array(ndimage.measurements.center_of_mass(np.abs(movrho)))
+    refshift = gridcenter-refrhocom
+    movshift = gridcenter-movrhocom
+    refrhocen = ndimage.interpolation.shift(refrho,refshift,order=3,mode='wrap')
+    movrhocen = ndimage.interpolation.shift(movrho,movshift,order=3,mode='wrap')
+
     num_pts = 18 #~20 degrees between points
     indices = np.arange(0, num_pts, dtype=float) + 0.5
     phi = np.arccos(1 - 2*indices/num_pts)
     theta = np.pi * (1 + 5**0.5) * indices
     scores = np.zeros((len(phi),len(theta)))
-    refrho2 = ndimage.gaussian_filter(refrho, sigma=1.0, mode='wrap')
-    movrho2 = ndimage.gaussian_filter(movrho, sigma=1.0, mode='wrap')
+    refrho2 = ndimage.gaussian_filter(refrhocen, sigma=1.0, mode='wrap')
+    movrho2 = ndimage.gaussian_filter(movrhocen, sigma=1.0, mode='wrap')
     n = refrho2.shape[0]
     b,e = (int(n/4),int(3*n/4))
     refrho3 = refrho2[b:e,b:e,b:e]
@@ -1627,6 +1639,9 @@ def euler_grid_search(refrho, movrho, topn=1, abort_event=None):
 
     for i in range(topn):
         movrhos[i] = transform_rho(movrho, T=[phi[best_pt[0][i]],theta[best_pt[1][i]],0,0,0,0])
+        #now that the top five rotations are calculated, move each one back
+        #to the same center of mass as the original refrho, i.e. by -refrhoshift
+        movrhos[i] = ndimage.interpolation.shift(movrhos[i],-refshift,order=3,mode='wrap')
 
         if abort_event is not None:
             if abort_event.is_set():
@@ -1678,6 +1693,17 @@ def minimize_rho(refrho, movrho, T = np.zeros(6)):
     bounds[3:,1] = 5
     save_movrho = np.copy(movrho)
     save_refrho = np.copy(refrho)
+
+    #first translate both to center
+    #then afterwards translate back by -refshift
+    gridcenter = (np.array(refrho.shape)-1.)/2.
+    refrhocom = np.array(ndimage.measurements.center_of_mass(np.abs(refrho)))
+    movrhocom = np.array(ndimage.measurements.center_of_mass(np.abs(movrho)))
+    refshift = gridcenter-refrhocom
+    movshift = gridcenter-movrhocom
+    refrho = ndimage.interpolation.shift(refrho,refshift,order=3,mode='wrap')
+    movrho = ndimage.interpolation.shift(movrho,movshift,order=3,mode='wrap')
+
     #for alignment only, run a low-pass filter to remove noise
     refrho2 = ndimage.gaussian_filter(refrho, sigma=1.0, mode='wrap')
     movrho2 = ndimage.gaussian_filter(movrho, sigma=1.0, mode='wrap')
@@ -1690,7 +1716,9 @@ def minimize_rho(refrho, movrho, T = np.zeros(6)):
         maxiter=100, maxfun=200, epsilon=0.05,
         args=(refrho3,movrho3), approx_grad=True)
     Topt = result[0]
-    newrho = transform_rho(save_movrho, Topt)
+    newrho = transform_rho(movrho, Topt)
+    #now move newrho back by -refshift
+    newrho = ndimage.interpolation.shift(movrho,-refshift,order=3,mode='wrap')
     finalscore = -1.*rho_overlap_score(save_refrho,newrho)
     return newrho, finalscore
 
