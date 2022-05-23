@@ -150,7 +150,8 @@ def rho2rg(rho,side=None,r=None,support=None,dx=None):
         print("Error: To calculate Rg, must provide dx")
         sys.exit()
     gridcenter = (np.array(rho.shape)-1.)/2.
-    rhocom = (np.array(ndimage.measurements.center_of_mass(np.abs(rho)))-gridcenter)*dx
+    com = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
+    rhocom = (gridcenter-com)*dx
     rg2 = np.sum(r[support]**2*rho[support])/np.sum(rho[support])
     rg2 = rg2 - np.linalg.norm(rhocom)**2
     rg = np.sign(rg2)*np.abs(rg2)**0.5
@@ -1009,7 +1010,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     prng = np.random.RandomState(seed)
 
     if rho_start is not None:
-        rho = rho_start
+        rho = rho_start*dV
         if add_noise is not None:
             rho += prng.random_sample(size=x.shape)*add_noise
     else:
@@ -1123,6 +1124,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         F *= factors[qbin_labels]
 
         chi[j] = mysum(((Imean[qba]-Idata[qba])/sigqdata[qba])**2, DENSS_GPU=DENSS_GPU)/Idata[qba].size
+
         #APPLY REAL SPACE RESTRAINTS
         rhoprime = myifftn(F, DENSS_GPU=DENSS_GPU)
         rhoprime = rhoprime.real
@@ -1553,42 +1555,66 @@ def find_nearest_i(array,value):
     """Return the index of the array item nearest to specified value"""
     return (np.abs(array-value)).argmin()
 
-def center_rho(rho, centering="com", return_shift=False):
+def center_rho(rho, centering="com", return_shift=False, maxfirst=True, iterations=1):
     """Move electron density map so its center of mass aligns with the center of the grid
 
     centering - which part of the density to center on. By default, center on the
                 center of mass ("com"). Can also center on maximum density value ("max").
     """
     ne_rho= np.sum((rho))
-    if centering == "max":
-        rhocom = np.unravel_index(rho.argmax(), rho.shape)
-    else:
-        rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
     gridcenter = (np.array(rho.shape)-1.)/2.
-    shift = gridcenter-rhocom
-    rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
-    rho = rho*ne_rho/np.sum(rho)
+    total_shift = np.zeros(3)
+    if maxfirst:
+        #sometimes the density crosses the box boundary, meaning
+        #the center of mass calculation becomes an issue
+        #first roughly center using the maximum density value (by
+        #rolling to avoid interpolation artifacts). Then perform
+        #the center of mass translation.
+        rho, shift = center_rho_roll(rho, recenter_mode="max", return_shift=True)
+        total_shift += shift.astype(float)
+    for i in range(iterations):
+        if centering == "max":
+            rhocom = np.unravel_index(rho.argmax(), rho.shape)
+        else:
+            rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
+        shift = gridcenter-rhocom
+        rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
+        rho = rho*ne_rho/np.sum(rho)
+        total_shift += shift
     if return_shift:
-        return rho, shift
+        return rho, total_shift
     else:
         return rho
 
-def center_rho_roll(rho, recenter_mode="com", return_shift=False):
+def center_rho_roll(rho, recenter_mode="com", maxfirst=True, return_shift=False):
     """Move electron density map so its center of mass aligns with the center of the grid
 
     rho - electron density array
     recenter_mode - a string either com (center of mass) or max (maximum density)
     """
+    total_shift = np.zeros(3,dtype=int)
+    gridcenter = (np.array(rho.shape)-1.)/2.
+    if maxfirst:
+        #sometimes the density crosses the box boundary, meaning
+        #the center of mass calculation becomes an issue
+        #first roughly center using the maximum density value (by
+        #rolling to avoid interpolation artifacts). Then perform
+        #the center of mass translation.
+        rhoargmax = np.unravel_index(np.abs(rho).argmax(), rho.shape)
+        shift = gridcenter - rhoargmax
+        shift = np.rint(shift).astype(int)
+        rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
+        total_shift += shift
     if recenter_mode == "max":
         rhocom = np.unravel_index(np.abs(rho).argmax(), rho.shape)
     else:
         rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
-    gridcenter = (np.array(rho.shape)-1.)/2.
     shift = gridcenter-rhocom
     shift = np.rint(shift).astype(int)
     rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
+    total_shift += shift
     if return_shift:
-        return rho, shift
+        return rho, total_shift
     else:
         return rho
 

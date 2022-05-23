@@ -92,7 +92,7 @@ if __name__ == "__main__":
     qx, qy, qz = np.meshgrid(qx_,qx_,qx_,indexing='ij')
     qr = np.sqrt(qx**2+qy**2+qz**2)
     qmax = np.max(qr)
-    qstep = np.min(qr[qr>0])
+    qstep = np.min(qr[qr>0]) - 1e-8
     nbins = int(qmax/qstep)
     qbins = np.linspace(0,nbins*qstep,nbins+1)
     #create modified qbins and put qbins in center of bin rather than at left edge of bin.
@@ -108,8 +108,11 @@ if __name__ == "__main__":
 
     #calculate scattering profile from density
     F = np.fft.fftn(rho)
-    I3D = np.abs(F)**2
-    Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
+    F[np.abs(F)==0] = 1e-16
+    # I3D = np.abs(F)**2
+    # Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
+    I3D = saxs.myabs(F, DENSS_GPU=False)**2
+    Imean = saxs.mybinmean(I3D, qbin_labels, DENSS_GPU=False)
 
     if args.plot: plt.plot(qbinsc, Imean, label='Default dq = %.4f' % (2*np.pi/side))
     print('Default dq = %.4f' % (2*np.pi/side))
@@ -145,7 +148,7 @@ if __name__ == "__main__":
         qx, qy, qz = np.meshgrid(qx_,qx_,qx_,indexing='ij')
         qr = np.sqrt(qx**2+qy**2+qz**2)
         qmax = np.max(qr)
-        qstep = np.min(qr[qr>0])
+        qstep = np.min(qr[qr>0]) - 1e-8
         nbins = int(qmax/qstep)
         qbins = np.linspace(0,nbins*qstep,nbins+1)
         #create modified qbins and put qbins in center of bin rather than at left edge of bin.
@@ -169,8 +172,8 @@ if __name__ == "__main__":
     qbinsc_to_use = qbinsc[qbinsc<qmax_to_use]
     Imean_to_use = Imean[qbinsc<qmax_to_use]
 
-    qbinsc = np.copy(qbinsc_to_use)
-    Imean = np.copy(Imean_to_use)
+    # qbinsc = np.copy(qbinsc_to_use)
+    # Imean = np.copy(Imean_to_use)
 
     Iq = np.vstack((qbinsc, Imean, Imean*.03)).T
 

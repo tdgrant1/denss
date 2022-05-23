@@ -32,6 +32,7 @@ from __future__ import print_function
 import os, argparse, sys, imp
 import logging
 import numpy as np
+from scipy import ndimage
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 
@@ -44,6 +45,10 @@ parser.add_argument("-s", "--side", default=None, type=float, help="Desired leng
 parser.add_argument("-t","--threshold", default=None, type=float, help="Minimum density threshold (given as e-/A^3; sets lesser values to zero).")
 parser.add_argument("-ne","--ne", default=None, type=float, help="Desired number of electrons in map.")
 parser.add_argument("-zflip","--zflip", action="store_true", help="Generate the enantiomer by flipping map over Z axis.")
+parser.add_argument("-rc","--recenter", action="store_true", help="Recenter the density by center of mass.")
+parser.add_argument("-rc_type","--recenter_type", default='roll', type=str, help="Recenter by interpolation or roll (default=roll).")
+parser.add_argument("-shift","--shift", default=None, nargs=3, help="Translate density by this vector (x y z, space separated list in units of angstroms).")
+parser.add_argument("-shift_type","--shift_type", default='roll', type=str, help="Translate by interpolation or roll (default=roll).")
 parser.add_argument("-u", "--units", default=None, type=str, help="Change units (\"a\": [from nm to angstrom] or \"nm\": [from angstrom to nanometer])")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
 args = parser.parse_args()
@@ -127,6 +132,26 @@ if __name__ == "__main__":
     print("Sides:  ", a, b, c)
     print("Voxels: ", vx, vy, vz)
 
+    #recenter density
+    if args.recenter:
+        if args.recenter_type[0].upper() == "I":
+            rho, shift = saxs.center_rho(rho, return_shift=True,iterations=1)
+        else:
+            rho, shift = saxs.center_rho_roll(rho, return_shift=True)
+            shift = shift.astype(float)
+        print("Translation Vector: [ %f %f %f ]" % (shift[0]*vx,shift[1]*vy,shift[2]*vz))
+
+    #translate density by a given vector
+    if args.shift is not None:
+        shift = np.array(args.shift,dtype=np.float64)
+        #convert from angstroms to voxels
+        gridcenter = (np.array(rho.shape)-1.)/2.
+        shift /= np.array((vx,vy,vz))
+        if args.shift_type[0].upper() == "I":
+            rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
+        else:
+            shift = np.rint(shift).astype(int)
+            rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
 
     if args.threshold is not None:
         #note that threshold must be given as density in e-/A^3
