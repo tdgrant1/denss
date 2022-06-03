@@ -47,6 +47,8 @@ parser.add_argument("-a", "--alpha", default=None, type=float, help="Set alpha s
 parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use")
 parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use")
 parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional)")
+parser.add_argument("-qmax", "--qmax", default=None, type=float, help="Maximum q value for calculated intensities (optional)")
+parser.add_argument("-nq", "--nq", default=None, type=int, help="Number of data points in calculated intensity profile (optional)")
 parser.add_argument("-r", "--rfile", default=None, type=str, help=argparse.SUPPRESS)
 parser.add_argument("-nr", "--nr", default=None, type=int, help="Number of points in P(r) curve (default = number of points in I(q) profile).")
 parser.add_argument("--nes", default=2, type=int, help=argparse.SUPPRESS)
@@ -121,24 +123,41 @@ if __name__ == "__main__":
     if args.max_dmax is None:
         args.max_dmax = 2.*D
 
-    if args.qfile is not None:
-        qc = np.loadtxt(args.qfile,usecols=(0,))
-    else:
-        qc = None
-
     if args.rfile is not None:
         r = np.loadtxt(args.rfile,usecols=(0,))
     else:
         r = None
 
+    if args.qfile is not None:
+        qc = np.loadtxt(args.qfile,usecols=(0,))
+    else:
+        qc = None
+
     print("Dmax = %.2f"%D)
     qmax = Iq[n1:n2,0].max()
     if (qc is None) and (args.extrapolate):
         qmaxc = qmax*3.0
-    elif qc is None:
+    elif (qc is None):
         qmaxc = qmax
     else:
         qmaxc = qc.max()
+
+    #let a user set a desired set of q values to be calculated
+    #based on a given qmax and nq
+    if (args.qmax is not None) or (args.nq is not None):
+        if args.qmax is not None:
+            qmaxc = args.qmax
+        else:
+            qmaxc = qmaxc
+        if args.nq is not None:
+            nqc = args.nq
+        else:
+            nqc = 501
+        qc = np.linspace(0,qmaxc,nqc)
+        #assume if they are giving args.qmax or args.nq, that they want to
+        #disable extrapolation
+        args.extrapolate = False
+
     nsh = qmax/(np.pi/D)
     nshc = qmaxc/(np.pi/D)
     print("Number of experimental Shannon channels: %d"%(nsh))
