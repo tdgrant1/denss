@@ -268,8 +268,8 @@ if __name__ == "__main__":
         #first, just ensure that we're comparing similar q ranges, so
         #interpolate from qc to q_data to enable subtraction, since there's
         #q values in qc that are not in q_data, and possibly vice versa
-        Icinterp = np.interp(sasrec.q_data, sasrec.qc, np.abs(sasrec.Ic))
-        res = sasrec.I_data/sasrec.Ierr_data - Icinterp/sasrec.Ierr_data
+        Icinterp = np.interp(sasrec.q_data, sasrec.qc, sasrec.Ic)
+        res = (sasrec.I_data - Icinterp)/sasrec.Ierr_data
         #in case qc were fewer points than the data, for whatever reason,
         #only grab the points up to qc.max
         ridx = np.where((sasrec.q_data<sasrec.qc.max()))
@@ -332,8 +332,8 @@ if __name__ == "__main__":
             global sasrec
             sasrec = saxs.Sasrec(Iq_orig[n1:n2], dmax, qc=qc, r=r, nr=args.nr, alpha=alpha, ne=nes, extrapolate=extrapolate)
             sasrec.estimate_Vp_etal()
-            Icinterp = np.interp(sasrec.q_data, sasrec.qc, np.abs(sasrec.Ic))
-            res = sasrec.I_data/sasrec.Ierr_data - Icinterp/sasrec.Ierr_data
+            Icinterp = np.interp(sasrec.q_data, sasrec.qc, sasrec.Ic)
+            res = (sasrec.I_data - Icinterp)/sasrec.Ierr_data
             ridx = np.where((sasrec.q_data<sasrec.qc.max()))
             I_l1.set_data(sasrec.q_data, sasrec.I_data)
             I_l2.set_data(sasrec.qc, sasrec.Ic)

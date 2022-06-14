@@ -226,6 +226,7 @@ def read_mrc(filename="map.mrc",returnABC=False):
         a, b, c = struct.unpack_from('<fff',MRCdata,40)
         side = a
 
+        #header is 1024 bytes long. To read data, skip ahead to that point in the file
         fin.seek(1024, os.SEEK_SET)
         rho = np.fromfile(file=fin, dtype=np.dtype(np.float32)).reshape((nx,ny,nz),order='F')
         fin.close()
@@ -1635,36 +1636,33 @@ def euler_grid_search(refrho, movrho, topn=1, abort_event=None):
     refrhocen = ndimage.interpolation.shift(refrho,refshift,order=3,mode='wrap')
     movrhocen = ndimage.interpolation.shift(movrho,movshift,order=3,mode='wrap')
 
-    num_pts = 18 #~20 degrees between points
+    num_pts = 100 #~20 degrees between points
     indices = np.arange(0, num_pts, dtype=float) + 0.5
     phi = np.arccos(1 - 2*indices/num_pts)
     theta = np.pi * (1 + 5**0.5) * indices
-    scores = np.zeros((len(phi),len(theta)))
+    scores = np.zeros(num_pts)
     refrho2 = ndimage.gaussian_filter(refrhocen, sigma=1.0, mode='wrap')
     movrho2 = ndimage.gaussian_filter(movrhocen, sigma=1.0, mode='wrap')
     n = refrho2.shape[0]
     b,e = (int(n/4),int(3*n/4))
     refrho3 = refrho2[b:e,b:e,b:e]
     movrho3 = movrho2[b:e,b:e,b:e]
-    for p in range(len(phi)):
-        for t in range(len(theta)):
-            scores[p,t] = -minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],
-                                            refrho=refrho3,movrho=movrho3
-                                            )
-            #scores[p,t] = -minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],refrho=np.abs(refrho),movrho=np.abs(movrho))
-            # scores[p,t] = -minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],refrho=refrho,movrho=movrho)
 
-            if abort_event is not None:
-                if abort_event.is_set():
-                    return None, None
+    for i in range(num_pts):
+        scores[i] = -minimize_rho_score(T=[phi[i],theta[i],0,0,0,0],
+                                        refrho=refrho3,movrho=movrho3
+                                        )
 
-    #best_pt = np.unravel_index(scores.argmin(), scores.shape)
+        if abort_event is not None:
+            if abort_event.is_set():
+                return None, None
+
     best_pt = largest_indices(scores, topn)
     best_scores = scores[best_pt]
     movrhos = np.zeros((topn,movrho.shape[0],movrho.shape[1],movrho.shape[2]))
 
     for i in range(topn):
-        movrhos[i] = transform_rho(movrho, T=[phi[best_pt[0][i]],theta[best_pt[1][i]],0,0,0,0])
+        movrhos[i] = transform_rho(movrho, T=[phi[best_pt[0][i]],theta[best_pt[0][i]],0,0,0,0])
         #now that the top five rotations are calculated, move each one back
         #to the same center of mass as the original refrho, i.e. by -refrhoshift
         movrhos[i] = ndimage.interpolation.shift(movrhos[i],-refshift,order=3,mode='wrap')
@@ -1744,7 +1742,7 @@ def minimize_rho(refrho, movrho, T = np.zeros(6)):
     Topt = result[0]
     newrho = transform_rho(movrho, Topt)
     #now move newrho back by -refshift
-    newrho = ndimage.interpolation.shift(movrho,-refshift,order=3,mode='wrap')
+    newrho = ndimage.interpolation.shift(newrho,-refshift,order=3,mode='wrap')
     finalscore = -1.*rho_overlap_score(save_refrho,newrho)
     return newrho, finalscore
 
@@ -1931,8 +1929,7 @@ def align(refrho, movrho, coarse=True, abort_event=None):
     try:
         sleep(1)
         ne_rho = np.sum((movrho))
-        #movrho, score = minimize_rho(refrho, movrho)
-        movrho, score = coarse_then_fine_alignment(refrho=refrho, movrho=movrho, coarse=coarse, topn=5,
+        movrho, score = coarse_then_fine_alignment(refrho=refrho, movrho=movrho, coarse=coarse, topn=1,
             abort_event=abort_event)
 
         if movrho is not None:
