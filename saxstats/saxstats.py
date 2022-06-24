@@ -222,6 +222,8 @@ def read_mrc(filename="map.mrc",returnABC=False):
         ny = struct.unpack_from('<i',MRCdata, 4)[0]
         nz = struct.unpack_from('<i',MRCdata, 8)[0]
 
+
+
         #side = struct.unpack_from('<f',MRCdata,40)[0]
         a, b, c = struct.unpack_from('<fff',MRCdata,40)
         side = a
@@ -1848,7 +1850,7 @@ def principal_axis_alignment(refrho,movrho):
     ne_movrho = np.sum((movrho))
     #first center refrho and movrho, save refrho shift
     rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(refrho)))
-    gridcenter = (np.array(rho.shape)-1.)/2.
+    gridcenter = (np.array(refrho.shape)-1.)/2.
     shift = gridcenter-rhocom
     refrho = ndimage.interpolation.shift(refrho,shift,order=3,mode='wrap')
     #calculate, save and perform rotation of refrho to xyz for later
