@@ -130,6 +130,12 @@ def mymean(x, DENSS_GPU=False):
     else:
         return np.mean(x)
 
+def mylog(x, DENSS_GPU=False):
+    if DENSS_GPU:
+        return cp.log(x)
+    else:
+        return np.log(x)
+
 def chi2(exp, calc, sig):
     """Return the chi2 discrepancy between experimental and calculated data"""
     return np.sum(np.square(exp - calc) / np.square(sig))
@@ -793,11 +799,11 @@ def calc_rg_I0_by_guinier(Iq,nb=None,ne=None):
     I0 = np.exp(b)
     return rg, I0
 
-def calc_rg_by_guinier_first_2_points(q, I):
+def calc_rg_by_guinier_first_2_points(q, I, DENSS_GPU=False):
     """calculate Rg using Guinier law, but only use the 
     first two data points. This is meant to be used with a 
     calculated scattering profile, such as Imean from denss()."""
-    m = (np.log(I[1])-np.log(I[0]))/(q[1]**2-q[0]**2)
+    m = (mylog(I[1],DENSS_GPU)-mylog(I[0],DENSS_GPU))/(q[1]**2-q[0]**2)
     rg = (-3*m)**(0.5)
     return rg
 
@@ -1137,24 +1143,13 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
                 write_xplor(rhoprime/dV, side, fprefix+"_current.xplor")
             write_mrc(rhoprime/dV, side, fprefix+"_current.mrc")
 
-        if DENSS_GPU:
-            #havent yet updated rho2rg to work with cupy
-            try:
-                rg[j] = rg[j-1]
-                #also, for now, at least we can calculate rg
-                #when running shrinkwrap, since we have
-                #to move to the cpu for numpy anyways there.
-            except:
-                rg[j] = 1.0
-        else:
-            #rg[j] = rho2rg(rhoprime,r=r,support=support,dx=dx)
-            #use Guinier's law instead to approximate quickly?
-            #what if we just use the first two data points?
-            #since this is a calculated curve from a density map,
-            #we know exactly the values of the intensities, so we
-            #don't need as many data points as in real data that is noisy
-            #slope = (y2-y1)/(x2-x1) = (ln(I1)-ln(I0))/(q1**2-q0**2)
-            rg[j] = calc_rg_by_guinier_first_2_points(qbinsc, Imean)
+        #use Guinier's law instead to approximate quickly?
+        #what if we just use the first two data points?
+        #since this is a calculated curve from a density map,
+        #we know exactly the values of the intensities, so we
+        #don't need as many data points as in real data that is noisy
+        #slope = (y2-y1)/(x2-x1) = (ln(I1)-ln(I0))/(q1**2-q0**2)
+        rg[j] = calc_rg_by_guinier_first_2_points(qbinsc, Imean, DENSS_GPU=DENSS_GPU)
 
 
         newrho = myzeros(rho.shape, DENSS_GPU=DENSS_GPU)
