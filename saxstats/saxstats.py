@@ -1021,7 +1021,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     if rho_start is not None:
         rho = rho_start*dV
         if add_noise is not None:
-            rho += prng.random_sample(size=x.shape)*add_noise
+            noise_factor = rho.max() * add_noise
+            noise = prng.random_sample(size=x.shape)*noise_factor
+            rho += noise
     else:
         rho = prng.random_sample(size=x.shape) #- 0.5
 
