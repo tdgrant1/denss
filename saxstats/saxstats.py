@@ -912,7 +912,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
     shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01,
     write_xplor_format=False, write_freq=100, enforce_connectivity=True,
-    enforce_connectivity_steps=[500], cutout=True, quiet=False, ncs=0,
+    enforce_connectivity_steps=[500], max_features=1, cutout=True, quiet=False, ncs=0,
     ncs_steps=[500],ncs_axis=1, ncs_type="cyclical",abort_event=None, my_logger=logging.getLogger(),
     path='.', gui=False, DENSS_GPU=False):
     """Calculate electron density from scattering data."""
@@ -1333,15 +1333,17 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
             sums = np.zeros((num_features))
             if not quiet:
                 if not gui:
-                    print(num_features)
+                    print("EC: %d -> %d " % (num_features,np.min([num_features,max_features])))
 
             #find the feature with the greatest number of electrons
             for feature in range(num_features+1):
                 sums[feature-1] = np.sum(newrho[labeled_support==feature])
             big_feature = np.argmax(sums)+1
+            features_sorted = np.argsort(sums) + 1
 
             #remove features from the support that are not the primary feature
-            support[labeled_support != big_feature] = False
+            # support[labeled_support != big_feature] = False
+            support[labeled_support >= max_features] = False
             newrho[~support] = 0
 
             #reset the support to be the entire grid again

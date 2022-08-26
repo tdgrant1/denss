@@ -64,6 +64,7 @@ def parse_arguments(parser):
     parser.add_argument("-ec","-ec_on","--enforce_connectivity_on", dest="enforce_connectivity", action="store_true", help="Enforce connectivity of support, i.e. remove extra blobs (default)")
     parser.add_argument("-ec_off","--enforce_connectivity_off", dest="enforce_connectivity", action="store_false", help="Do not enforce connectivity of support")
     parser.add_argument("-ec_steps","--enforce_connectivity_steps", default=None, type=int, nargs='+', help="List of steps to enforce connectivity")
+    parser.add_argument("-ec_max","--enforce_connectivity_max_features", default=1, type=int, help="Maximum number of features (i.e. disconnected blobs) allowed in support during enforce_connectivity step.")
     parser.add_argument("-cef", "--chi_end_fraction", default=0.001, type=float, help="Convergence criterion. Minimum threshold of chi2 std dev, as a fraction of the median chi2 of last 100 steps.")
     parser.add_argument("--write_xplor_format", default=False, action="store_true", help="Write out XPLOR map format (default only write MRC format).")
     parser.add_argument("--write_freq", default=100, type=int, help="How often to write out current density map (in steps, default 100).")
