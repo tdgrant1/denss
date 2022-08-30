@@ -912,7 +912,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
     shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01,
     write_xplor_format=False, write_freq=100, enforce_connectivity=True,
-    enforce_connectivity_steps=[500], max_features=1, cutout=True, quiet=False, ncs=0,
+    enforce_connectivity_steps=[500], enforce_connectivity_max_features=1, cutout=True, quiet=False, ncs=0,
     ncs_steps=[500],ncs_axis=1, ncs_type="cyclical",abort_event=None, my_logger=logging.getLogger(),
     path='.', gui=False, DENSS_GPU=False):
     """Calculate electron density from scattering data."""
@@ -1331,23 +1331,31 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
             struct = ndimage.generate_binary_structure(3, 3)
             labeled_support, num_features = ndimage.label(support, structure=struct)
             sums = np.zeros((num_features))
+            num_features_to_keep = np.min([num_features,enforce_connectivity_max_features])
             if not quiet:
                 if not gui:
-                    print("EC: %d -> %d " % (num_features,np.min([num_features,max_features])))
+                    print("EC: %d -> %d " % (num_features,num_features_to_keep))
 
             #find the feature with the greatest number of electrons
             for feature in range(num_features+1):
                 sums[feature-1] = np.sum(newrho[labeled_support==feature])
             big_feature = np.argmax(sums)+1
-            features_sorted = np.argsort(sums) + 1
+            #order the indices of the features in descending order based on their sum/total density
+            sums_order = np.argsort(sums)[::-1]
+            sums_sorted = sums[sums_order]
+            #now grab the actual feature numbers (rather than the indices)
+            features_sorted = sums_order + 1
 
             #remove features from the support that are not the primary feature
             # support[labeled_support != big_feature] = False
-            support[labeled_support >= max_features] = False
-            newrho[~support] = 0
+            #reset support to zeros everywhere
+            #then progressively add in regions of support up to num_features_to_keep
+            support *= False
+            for feature in range(num_features_to_keep):
+                support[labeled_support == features_sorted[feature]] = True
 
-            #reset the support to be the entire grid again
-            #support = np.ones(newrho.shape,dtype=bool)
+            #clean up density based on new support
+            newrho[~support] = 0
 
             if DENSS_GPU:
                 newrho = cp.array(newrho)
