@@ -49,10 +49,13 @@ import multiprocessing
 import datetime, time
 from time import sleep
 import warnings
+import pickle
 
 import numpy as np
-from scipy import ndimage, interpolate, spatial, special, optimize, signal, stats
+from scipy import ndimage, interpolate, spatial, special, optimize, signal, stats, fft
 from functools import reduce
+
+# import numba
 
 try:
     import cupy as cp
@@ -60,26 +63,82 @@ try:
 except ImportError:
     CUPY_LOADED = False
 
+# try:
+#     import pyfftw
+#     pyfftw.config.NUM_THREADS = multiprocessing.cpu_count()
+#     pyfftw.interfaces.cache.enable()
+#     PYFFTW = True
+#     # Try to load FFTW wisdom but don't panic if we can't
+#     try:
+#         with open("fft.wisdom", "rb") as the_file:
+#             wisdom = pickle.load(the_file)
+#             pyfftw.import_wisdom(wisdom)
+#             print("pyfftw wisdom imported")
+#     except FileNotFoundError:
+#         print("Warning: pyfftw wisdom could not be imported")
+# except:
+#     PYFFTW = False
+
+#disable pyfftw until we can make it more stable
+#it works, but often results in nans randomly
+PYFFTW = False
+
+
 def myfftn(x, DENSS_GPU=False):
     if DENSS_GPU:
         return cp.fft.fftn(x)
     else:
-        return np.fft.fftn(x)
+        if PYFFTW:
+            return pyfftw.interfaces.numpy_fft.fftn(x)
+        else:
+            try:
+                #try running the parallelized version of scipy fft
+                return fft.fftn(x,workers=-1)
+            except:
+                #fall back to numpy
+                return np.fft.fftn(x)
 
-def myabs(x, DENSS_GPU=False):
+def myifftn(x, DENSS_GPU=False):
     if DENSS_GPU:
-        return cp.abs(x)
+        return cp.fft.ifftn(x)
     else:
-        return np.abs(x)
+        if PYFFTW:
+            return pyfftw.interfaces.numpy_fft.ifftn(x)
+        else:
+            try:
+                #try running the parallelized version of scipy fft
+                return fft.ifftn(x,workers=-1)
+            except:
+                #fall back to numpy
+                return np.fft.ifftn(x)
 
-def mybinmean(x,bins, DENSS_GPU=False):
+def myabs(x, out=None,DENSS_GPU=False):
     if DENSS_GPU:
-        xsum = cp.bincount(bins.ravel(), x.ravel())
-        xcount = cp.bincount(bins.ravel())
+        return cp.abs(x,out=out)
+    else:
+        return np.abs(x,out=out)
+
+# @numba.vectorize([numba.float64(numba.complex128),numba.float32(numba.complex64)])
+def abs2(x):
+    #a faster way to calculate abs(x)**2, for calculating intensities
+    return x.real**2 + x.imag**2
+
+# @numba.jit(nopython=True)
+# def mybincount(x, weights):
+#     result = np.zeros(x.max() + 1, int)
+#     for i in x:
+#         result[i] += weights[i]
+
+def mybinmean(xravel,binsravel,xcount=None,DENSS_GPU=False):
+    if DENSS_GPU:
+        xsum = cp.bincount(binsravel, xravel)
+        if xcount is None:
+            xcount = cp.bincount(binsravel)
         return xsum/xcount
     else:
-        xsum = np.bincount(bins.ravel(), x.ravel())
-        xcount = np.bincount(bins.ravel())
+        xsum = np.bincount(binsravel, xravel)
+        if xcount is None:
+            xcount = np.bincount(binsravel)
         return xsum/xcount
 
 def myones(x, DENSS_GPU=False):
@@ -100,17 +159,11 @@ def mysqrt(x, DENSS_GPU=False):
     else:
         return np.sqrt(x)
 
-def mysum(x, DENSS_GPU=False):
+def mysum(x, out=None,DENSS_GPU=False):
     if DENSS_GPU:
-        return cp.sum(x)
+        return cp.sum(x,out=out)
     else:
-        return np.sum(x)
-
-def myifftn(x, DENSS_GPU=False):
-    if DENSS_GPU:
-        return cp.fft.ifftn(x)
-    else:
-        return np.fft.ifftn(x)
+        return np.sum(x,out=out)
 
 def myzeros_like(x, DENSS_GPU=False):
     if DENSS_GPU:
@@ -1003,7 +1056,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     else:
         steps = np.int(steps)
 
-    Imean = np.zeros((steps+1,len(qbins)))
+    Imean = np.zeros((len(qbins)))
     chi = np.zeros((steps+1))
     rg = np.zeros((steps+1))
     supportV = np.zeros((steps+1))
@@ -1026,6 +1079,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
             rho += noise
     else:
         rho = prng.random_sample(size=x.shape) #- 0.5
+    newrho = np.zeros_like(rho)
 
     sigma = shrinkwrap_sigma_start
 
@@ -1099,6 +1153,34 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
             print("\n Step     Chi2     Rg    Support Volume")
             print(" ----- --------- ------- --------------")
 
+    if PYFFTW:
+        a = np.copy(rho)
+        rho = pyfftw.empty_aligned(a.shape, dtype='complex64')
+        rho[:] = a
+        rhoprime = pyfftw.empty_aligned(a.shape, dtype='complex64')
+        newrho = pyfftw.empty_aligned(a.shape, dtype='complex64')
+        try:
+            # Try to plan our transforms with the wisdom we have already
+            fftw_object = pyfftw.FFTW(rho,
+                                      rhoprime,
+                                      direction="FFTW_FORWARD",
+                                      flags=("FFTW_WISDOM_ONLY",))
+        except RuntimeError as e:
+            # If we don't have enough wisdom, print a warning and proceed.
+            print(e)
+            start = time.perf_counter()
+            fftw_object = pyfftw.FFTW(rho,
+                                      rhoprime,
+                                      direction="FFTW_FORWARD",
+                                      flags=("FFTW_MEASURE",))
+            print("Generating wisdom took {}s".format(time.perf_counter() - start))
+            with open("fft.wisdom", "wb") as the_file:
+                wisdom = pyfftw.export_wisdom()
+                pickle.dump(wisdom, the_file)
+
+    xcount = np.bincount(qbin_labels.ravel())
+    qblravel = qbin_labels.ravel()
+
     if DENSS_GPU:
         rho = cp.array(rho)
         qbin_labels = cp.array(qbin_labels)
@@ -1122,50 +1204,38 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         #sometimes, when using denss.refine.py with non-random starting rho,
         #the resulting Fs result in zeros in some locations and the algorithm to break
         #here just make those values to be 1e-16 to be non-zero
-        F[np.abs(F)==0] = 1e-16
+        # F[np.abs(F)==0] = 1e-16
 
         #APPLY RECIPROCAL SPACE RESTRAINTS
         #calculate spherical average of intensities from 3D Fs
-        I3D = myabs(F, DENSS_GPU=DENSS_GPU)**2
-        Imean = mybinmean(I3D, qbin_labels, DENSS_GPU=DENSS_GPU)
+        # I3D = myabs(F, out=I3D, DENSS_GPU=DENSS_GPU)**2
+        I3D = abs2(F)
+        Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=DENSS_GPU)
 
         #scale Fs to match data
-        #factors = myones((len(qbins)))
         factors = mysqrt(Idata/Imean, DENSS_GPU=DENSS_GPU)
         F *= factors[qbin_labels]
 
         chi[j] = mysum(((Imean[qba]-Idata[qba])/sigqdata[qba])**2, DENSS_GPU=DENSS_GPU)/Idata[qba].size
 
         #APPLY REAL SPACE RESTRAINTS
-        rhoprime = myifftn(F, DENSS_GPU=DENSS_GPU)
-        rhoprime = rhoprime.real
+        rhoprime = myifftn(F, DENSS_GPU=DENSS_GPU).real
 
         if not DENSS_GPU and j%write_freq == 0:
             if write_xplor_format:
                 write_xplor(rhoprime/dV, side, fprefix+"_current.xplor")
             write_mrc(rhoprime/dV, side, fprefix+"_current.mrc")
 
-        #use Guinier's law instead to approximate quickly?
-        #what if we just use the first two data points?
-        #since this is a calculated curve from a density map,
-        #we know exactly the values of the intensities, so we
-        #don't need as many data points as in real data that is noisy
-        #slope = (y2-y1)/(x2-x1) = (ln(I1)-ln(I0))/(q1**2-q0**2)
+        # use Guinier's law to approximate quickly
         rg[j] = calc_rg_by_guinier_first_2_points(qbinsc, Imean, DENSS_GPU=DENSS_GPU)
 
-
-        newrho = myzeros(rho.shape, DENSS_GPU=DENSS_GPU)
-
         #Error Reduction
+        newrho *= 0
         newrho[support] = rhoprime[support]
-        newrho[~support] = 0.0
 
-        #enforce positivity by making all negative density points zero.
+        # enforce positivity by making all negative density points zero.
         if positivity:
-            netmp = mysum(newrho, DENSS_GPU=DENSS_GPU)
             newrho[newrho<0] = 0.0
-            if mysum(newrho, DENSS_GPU=DENSS_GPU) != 0:
-                newrho *= netmp / mysum(newrho, DENSS_GPU=DENSS_GPU)
 
         #apply non-crystallographic symmetry averaging
         if ncs != 0 and j in ncs_steps:
