@@ -120,6 +120,7 @@ def multi_denss(niter, **kwargs):
 
 
 if __name__ == "__main__":
+    __spec__ = None
 
     if superargs.nmaps<2:
         print("Not enough maps to align")

@@ -36,6 +36,7 @@ parser = argparse.ArgumentParser(description="DENSS: DENsity from Solution Scatt
 args = dopts.parse_arguments(parser)
 
 if __name__ == "__main__":
+    __spec__ = None
     my_logger = logging.getLogger()
     my_logger.setLevel(logging.DEBUG)
 

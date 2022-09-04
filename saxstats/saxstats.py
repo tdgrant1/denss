@@ -1022,6 +1022,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     #create an array labeling each voxel according to which qbin it belongs
     qbin_labels = np.searchsorted(qbins,qr,"right")
     qbin_labels -= 1
+    qblravel = qbin_labels.ravel()
+    xcount = np.bincount(qblravel)
 
     #allow for any range of q data
     qdata = qbinsc[np.where( (qbinsc>=q.min()) & (qbinsc<=q.max()) )]
@@ -1177,9 +1179,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
             with open("fft.wisdom", "wb") as the_file:
                 wisdom = pyfftw.export_wisdom()
                 pickle.dump(wisdom, the_file)
-
-    xcount = np.bincount(qbin_labels.ravel())
-    qblravel = qbin_labels.ravel()
 
     if DENSS_GPU:
         rho = cp.array(rho)
