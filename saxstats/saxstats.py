@@ -1326,9 +1326,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         if shrinkwrap and j >= shrinkwrap_minstep and j%shrinkwrap_iter==1:
             if DENSS_GPU:
                 newrho = cp.asnumpy(newrho)
-                if j > shrinkwrap_minstep+1:
-                    support = cp.asnumpy(support)
-                    rg[j] = rho2rg(newrho,r=r,support=support,dx=dx)
+                support = cp.asnumpy(support)
 
             if shrinkwrap_old_method:
                 #run the old method
@@ -3138,7 +3136,7 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
             tmpvalues *= electrons[element] / np.sum(tmpvalues)
         else:
             print()
-            print("Atom %d outside boundary of cell ignored."%i)
+            print("Voxel spacing too coarse. No density for atom %d."%i)
 
         values[slc] += tmpvalues.reshape(nx,ny,nz)
         support[slc] = True
