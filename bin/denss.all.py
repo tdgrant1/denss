@@ -120,6 +120,7 @@ def multi_denss(niter, **kwargs):
 
 
 if __name__ == "__main__":
+    __spec__ = None
 
     if superargs.nmaps<2:
         print("Not enough maps to align")
@@ -346,7 +347,7 @@ if __name__ == "__main__":
             plt.plot(fscs[i,:,0],fscs[i,:,1],'k--',alpha=0.1)
         plt.plot(fsc[:,0],fsc[:,1],'bo-')
         #plt.plot(x,y,'k-')
-        plt.plot([resx],[0.5],'ro',label='Resolution = '+str(resn)+r'$\mathrm{\AA}$')
+        plt.plot([resx],[0.5],'ro',label='Resolution = %.2f $\mathrm{\AA}$'%resn)
         plt.legend()
         plt.xlabel('Resolution (1/$\mathrm{\AA}$)')
         plt.ylabel('Fourier Shell Correlation')

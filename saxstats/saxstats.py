@@ -49,10 +49,13 @@ import multiprocessing
 import datetime, time
 from time import sleep
 import warnings
+import pickle
 
 import numpy as np
-from scipy import ndimage, interpolate, spatial, special, optimize, signal, stats
+from scipy import ndimage, interpolate, spatial, special, optimize, signal, stats, fft
 from functools import reduce
+
+# import numba
 
 try:
     import cupy as cp
@@ -60,26 +63,82 @@ try:
 except ImportError:
     CUPY_LOADED = False
 
+# try:
+#     import pyfftw
+#     pyfftw.config.NUM_THREADS = multiprocessing.cpu_count()
+#     pyfftw.interfaces.cache.enable()
+#     PYFFTW = True
+#     # Try to load FFTW wisdom but don't panic if we can't
+#     try:
+#         with open("fft.wisdom", "rb") as the_file:
+#             wisdom = pickle.load(the_file)
+#             pyfftw.import_wisdom(wisdom)
+#             print("pyfftw wisdom imported")
+#     except FileNotFoundError:
+#         print("Warning: pyfftw wisdom could not be imported")
+# except:
+#     PYFFTW = False
+
+#disable pyfftw until we can make it more stable
+#it works, but often results in nans randomly
+PYFFTW = False
+
+
 def myfftn(x, DENSS_GPU=False):
     if DENSS_GPU:
         return cp.fft.fftn(x)
     else:
-        return np.fft.fftn(x)
+        if PYFFTW:
+            return pyfftw.interfaces.numpy_fft.fftn(x)
+        else:
+            try:
+                #try running the parallelized version of scipy fft
+                return fft.fftn(x,workers=-1)
+            except:
+                #fall back to numpy
+                return np.fft.fftn(x)
 
-def myabs(x, DENSS_GPU=False):
+def myifftn(x, DENSS_GPU=False):
     if DENSS_GPU:
-        return cp.abs(x)
+        return cp.fft.ifftn(x)
     else:
-        return np.abs(x)
+        if PYFFTW:
+            return pyfftw.interfaces.numpy_fft.ifftn(x)
+        else:
+            try:
+                #try running the parallelized version of scipy fft
+                return fft.ifftn(x,workers=-1)
+            except:
+                #fall back to numpy
+                return np.fft.ifftn(x)
 
-def mybinmean(x,bins, DENSS_GPU=False):
+def myabs(x, out=None,DENSS_GPU=False):
     if DENSS_GPU:
-        xsum = cp.bincount(bins.ravel(), x.ravel())
-        xcount = cp.bincount(bins.ravel())
+        return cp.abs(x,out=out)
+    else:
+        return np.abs(x,out=out)
+
+# @numba.vectorize([numba.float64(numba.complex128),numba.float32(numba.complex64)])
+def abs2(x):
+    #a faster way to calculate abs(x)**2, for calculating intensities
+    return x.real**2 + x.imag**2
+
+# @numba.jit(nopython=True)
+# def mybincount(x, weights):
+#     result = np.zeros(x.max() + 1, int)
+#     for i in x:
+#         result[i] += weights[i]
+
+def mybinmean(xravel,binsravel,xcount=None,DENSS_GPU=False):
+    if DENSS_GPU:
+        xsum = cp.bincount(binsravel, xravel)
+        if xcount is None:
+            xcount = cp.bincount(binsravel)
         return xsum/xcount
     else:
-        xsum = np.bincount(bins.ravel(), x.ravel())
-        xcount = np.bincount(bins.ravel())
+        xsum = np.bincount(binsravel, xravel)
+        if xcount is None:
+            xcount = np.bincount(binsravel)
         return xsum/xcount
 
 def myones(x, DENSS_GPU=False):
@@ -100,17 +159,11 @@ def mysqrt(x, DENSS_GPU=False):
     else:
         return np.sqrt(x)
 
-def mysum(x, DENSS_GPU=False):
+def mysum(x, out=None,DENSS_GPU=False):
     if DENSS_GPU:
-        return cp.sum(x)
+        return cp.sum(x,out=out)
     else:
-        return np.sum(x)
-
-def myifftn(x, DENSS_GPU=False):
-    if DENSS_GPU:
-        return cp.fft.ifftn(x)
-    else:
-        return np.fft.ifftn(x)
+        return np.sum(x,out=out)
 
 def myzeros_like(x, DENSS_GPU=False):
     if DENSS_GPU:
@@ -129,6 +182,12 @@ def mymean(x, DENSS_GPU=False):
         return cp.mean(x)
     else:
         return np.mean(x)
+
+def mylog(x, DENSS_GPU=False):
+    if DENSS_GPU:
+        return cp.log(x)
+    else:
+        return np.log(x)
 
 def chi2(exp, calc, sig):
     """Return the chi2 discrepancy between experimental and calculated data"""
@@ -149,7 +208,9 @@ def rho2rg(rho,side=None,r=None,support=None,dx=None):
     if dx is None:
         print("Error: To calculate Rg, must provide dx")
         sys.exit()
-    rhocom = (np.array(ndimage.measurements.center_of_mass(np.abs(rho)))-np.array(rho.shape)/2.)*dx
+    gridcenter = (np.array(rho.shape)-1.)/2.
+    com = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
+    rhocom = (gridcenter-com)*dx
     rg2 = np.sum(r[support]**2*rho[support])/np.sum(rho[support])
     rg2 = rg2 - np.linalg.norm(rhocom)**2
     rg = np.sign(rg2)*np.abs(rg2)**0.5
@@ -220,10 +281,13 @@ def read_mrc(filename="map.mrc",returnABC=False):
         ny = struct.unpack_from('<i',MRCdata, 4)[0]
         nz = struct.unpack_from('<i',MRCdata, 8)[0]
 
+
+
         #side = struct.unpack_from('<f',MRCdata,40)[0]
         a, b, c = struct.unpack_from('<fff',MRCdata,40)
         side = a
 
+        #header is 1024 bytes long. To read data, skip ahead to that point in the file
         fin.seek(1024, os.SEEK_SET)
         rho = np.fromfile(file=fin, dtype=np.dtype(np.float32)).reshape((nx,ny,nz),order='F')
         fin.close()
@@ -619,6 +683,7 @@ def loadFitFile(filename):
             line = each_line.split()
             hdr_str=hdr_str + "\""+line[1]+"\""+":"+line[3]+","
         hdr_str = hdr_str.rstrip(',')+"}"
+        hdr_str = re.sub(r'\bnan\b', 'NaN', hdr_str)
         try:
             hdict = dict(json.loads(hdr_str))
         except Exception:
@@ -787,6 +852,14 @@ def calc_rg_I0_by_guinier(Iq,nb=None,ne=None):
     I0 = np.exp(b)
     return rg, I0
 
+def calc_rg_by_guinier_first_2_points(q, I, DENSS_GPU=False):
+    """calculate Rg using Guinier law, but only use the 
+    first two data points. This is meant to be used with a 
+    calculated scattering profile, such as Imean from denss()."""
+    m = (mylog(I[1],DENSS_GPU)-mylog(I[0],DENSS_GPU))/(q[1]**2-q[0]**2)
+    rg = (-3*m)**(0.5)
+    return rg
+
 def calc_rg_by_guinier_peak(Iq,exp=1,nb=0,ne=None):
     """roughly estimate Rg using the Guinier peak method.
     Use only desired q range in input arrays.
@@ -849,7 +922,9 @@ def estimate_dmax(Iq,dmax=None,clean_up=True):
     #avoid issues with oscillations in P(r).
     above_idx = np.where((np.abs(Pfilt)>0.1*Pfilt.max())&(r>r[Pargmax]))
     Pargmax = np.max(above_idx)
-    D_idx = np.where((np.abs(Pfilt[Pargmax:])<(0.001*Pfilt.max())))[0][0] + Pargmax
+    near_zero_idx = np.where((np.abs(Pfilt[Pargmax:])<(0.001*Pfilt.max())))[0]
+    near_zero_idx += Pargmax
+    D_idx = near_zero_idx[0]
     D = r[D_idx]
     sasrec.D = D
     sasrec.update()
@@ -883,15 +958,14 @@ def filter_P(r,P,sigr=None,qmax=0.5,cutoff=0.75,qmin=0.0,cutoffmin=1.25):
         else:
             return r, Pfilt
 
-def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False,
-    limit_dmax_steps=[500], recenter=True, recenter_steps=None,
+def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
     recenter_mode="com", positivity=True, extrapolate=True, output="map",
     steps=None, seed=None, flatten_low_density=True, rho_start=None, add_noise=None,
     shrinkwrap=True, shrinkwrap_old_method=False,shrinkwrap_sigma_start=3,
     shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
     shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01,
     write_xplor_format=False, write_freq=100, enforce_connectivity=True,
-    enforce_connectivity_steps=[500], cutout=True, quiet=False, ncs=0,
+    enforce_connectivity_steps=[500], enforce_connectivity_max_features=1, cutout=True, quiet=False, ncs=0,
     ncs_steps=[500],ncs_axis=1, ncs_type="cyclical",abort_event=None, my_logger=logging.getLogger(),
     path='.', gui=False, DENSS_GPU=False):
     """Calculate electron density from scattering data."""
@@ -948,6 +1022,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     #create an array labeling each voxel according to which qbin it belongs
     qbin_labels = np.searchsorted(qbins,qr,"right")
     qbin_labels -= 1
+    qblravel = qbin_labels.ravel()
+    xcount = np.bincount(qblravel)
 
     #allow for any range of q data
     qdata = qbinsc[np.where( (qbinsc>=q.min()) & (qbinsc<=q.max()) )]
@@ -982,7 +1058,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     else:
         steps = np.int(steps)
 
-    Imean = np.zeros((steps+1,len(qbins)))
+    Imean = np.zeros((len(qbins)))
     chi = np.zeros((steps+1))
     rg = np.zeros((steps+1))
     supportV = np.zeros((steps+1))
@@ -998,11 +1074,14 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     prng = np.random.RandomState(seed)
 
     if rho_start is not None:
-        rho = rho_start
+        rho = rho_start*dV
         if add_noise is not None:
-            rho += prng.random_sample(size=x.shape)*add_noise
+            noise_factor = rho.max() * add_noise
+            noise = prng.random_sample(size=x.shape)*noise_factor
+            rho += noise
     else:
         rho = prng.random_sample(size=x.shape) #- 0.5
+    newrho = np.zeros_like(rho)
 
     sigma = shrinkwrap_sigma_start
 
@@ -1033,8 +1112,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     my_logger.info('Sampling ratio: %3.3f', oversampling)
     my_logger.info('Requested real space voxel size: %3.3f', voxel)
     my_logger.info('Number of electrons: %3.3f', ne)
-    my_logger.info('Limit Dmax: %s', limit_dmax)
-    my_logger.info('Limit Dmax Steps: %s', limit_dmax_steps)
     my_logger.info('Recenter: %s', recenter)
     my_logger.info('Recenter Steps: %s', recenter_steps)
     my_logger.info('Recenter Mode: %s', recenter_mode)
@@ -1078,6 +1155,31 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             print("\n Step     Chi2     Rg    Support Volume")
             print(" ----- --------- ------- --------------")
 
+    if PYFFTW:
+        a = np.copy(rho)
+        rho = pyfftw.empty_aligned(a.shape, dtype='complex64')
+        rho[:] = a
+        rhoprime = pyfftw.empty_aligned(a.shape, dtype='complex64')
+        newrho = pyfftw.empty_aligned(a.shape, dtype='complex64')
+        try:
+            # Try to plan our transforms with the wisdom we have already
+            fftw_object = pyfftw.FFTW(rho,
+                                      rhoprime,
+                                      direction="FFTW_FORWARD",
+                                      flags=("FFTW_WISDOM_ONLY",))
+        except RuntimeError as e:
+            # If we don't have enough wisdom, print a warning and proceed.
+            print(e)
+            start = time.perf_counter()
+            fftw_object = pyfftw.FFTW(rho,
+                                      rhoprime,
+                                      direction="FFTW_FORWARD",
+                                      flags=("FFTW_MEASURE",))
+            print("Generating wisdom took {}s".format(time.perf_counter() - start))
+            with open("fft.wisdom", "wb") as the_file:
+                wisdom = pyfftw.export_wisdom()
+                pickle.dump(wisdom, the_file)
+
     if DENSS_GPU:
         rho = cp.array(rho)
         qbin_labels = cp.array(qbin_labels)
@@ -1101,52 +1203,38 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         #sometimes, when using denss.refine.py with non-random starting rho,
         #the resulting Fs result in zeros in some locations and the algorithm to break
         #here just make those values to be 1e-16 to be non-zero
-        F[np.abs(F)==0] = 1e-16
+        # F[np.abs(F)==0] = 1e-16
 
         #APPLY RECIPROCAL SPACE RESTRAINTS
         #calculate spherical average of intensities from 3D Fs
-        I3D = myabs(F, DENSS_GPU=DENSS_GPU)**2
-        Imean = mybinmean(I3D, qbin_labels, DENSS_GPU=DENSS_GPU)
+        # I3D = myabs(F, out=I3D, DENSS_GPU=DENSS_GPU)**2
+        I3D = abs2(F)
+        Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=DENSS_GPU)
 
         #scale Fs to match data
-        #factors = myones((len(qbins)))
         factors = mysqrt(Idata/Imean, DENSS_GPU=DENSS_GPU)
         F *= factors[qbin_labels]
 
         chi[j] = mysum(((Imean[qba]-Idata[qba])/sigqdata[qba])**2, DENSS_GPU=DENSS_GPU)/Idata[qba].size
+
         #APPLY REAL SPACE RESTRAINTS
-        rhoprime = myifftn(F, DENSS_GPU=DENSS_GPU)
-        rhoprime = rhoprime.real
+        rhoprime = myifftn(F, DENSS_GPU=DENSS_GPU).real
 
         if not DENSS_GPU and j%write_freq == 0:
             if write_xplor_format:
                 write_xplor(rhoprime/dV, side, fprefix+"_current.xplor")
             write_mrc(rhoprime/dV, side, fprefix+"_current.mrc")
 
-        if DENSS_GPU:
-            #havent yet updated rho2rg to work with cupy
-            try:
-                rg[j] = rg[j-1]
-                #also, for now, at least we can calculate rg
-                #when running shrinkwrap, since we have
-                #to move to the cpu for numpy anyways there.
-            except:
-                rg[j] = 1.0
-        else:
-            rg[j] = rho2rg(rhoprime,r=r,support=support,dx=dx)
-
-        newrho = myzeros(rho.shape, DENSS_GPU=DENSS_GPU)
+        # use Guinier's law to approximate quickly
+        rg[j] = calc_rg_by_guinier_first_2_points(qbinsc, Imean, DENSS_GPU=DENSS_GPU)
 
         #Error Reduction
+        newrho *= 0
         newrho[support] = rhoprime[support]
-        newrho[~support] = 0.0
 
-        #enforce positivity by making all negative density points zero.
+        # enforce positivity by making all negative density points zero.
         if positivity:
-            netmp = mysum(newrho, DENSS_GPU=DENSS_GPU)
             newrho[newrho<0] = 0.0
-            if mysum(newrho, DENSS_GPU=DENSS_GPU) != 0:
-                newrho *= netmp / mysum(newrho, DENSS_GPU=DENSS_GPU)
 
         #apply non-crystallographic symmetry averaging
         if ncs != 0 and j in ncs_steps:
@@ -1224,7 +1312,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
                 rhocom = np.unravel_index(newrho.argmax(), newrho.shape)
             else:
                 rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(newrho)))
-            gridcenter = np.array(newrho.shape)/2.
+            gridcenter = (np.array(newrho.shape)-1.)/2.
             shift = gridcenter-rhocom
             shift = np.rint(shift).astype(int)
             newrho = np.roll(np.roll(np.roll(newrho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
@@ -1238,9 +1326,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
         if shrinkwrap and j >= shrinkwrap_minstep and j%shrinkwrap_iter==1:
             if DENSS_GPU:
                 newrho = cp.asnumpy(newrho)
-                if j > shrinkwrap_minstep+1:
-                    support = cp.asnumpy(support)
-                    rg[j] = rho2rg(newrho,r=r,support=support,dx=dx)
+                support = cp.asnumpy(support)
 
             if shrinkwrap_old_method:
                 #run the old method
@@ -1312,21 +1398,31 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
             struct = ndimage.generate_binary_structure(3, 3)
             labeled_support, num_features = ndimage.label(support, structure=struct)
             sums = np.zeros((num_features))
+            num_features_to_keep = np.min([num_features,enforce_connectivity_max_features])
             if not quiet:
                 if not gui:
-                    print(num_features)
+                    print("EC: %d -> %d " % (num_features,num_features_to_keep))
 
             #find the feature with the greatest number of electrons
             for feature in range(num_features+1):
                 sums[feature-1] = np.sum(newrho[labeled_support==feature])
             big_feature = np.argmax(sums)+1
+            #order the indices of the features in descending order based on their sum/total density
+            sums_order = np.argsort(sums)[::-1]
+            sums_sorted = sums[sums_order]
+            #now grab the actual feature numbers (rather than the indices)
+            features_sorted = sums_order + 1
 
             #remove features from the support that are not the primary feature
-            support[labeled_support != big_feature] = False
-            newrho[~support] = 0
+            # support[labeled_support != big_feature] = False
+            #reset support to zeros everywhere
+            #then progressively add in regions of support up to num_features_to_keep
+            support *= False
+            for feature in range(num_features_to_keep):
+                support[labeled_support == features_sorted[feature]] = True
 
-            #reset the support to be the entire grid again
-            #support = np.ones(newrho.shape,dtype=bool)
+            #clean up density based on new support
+            newrho[~support] = 0
 
             if DENSS_GPU:
                 newrho = cp.array(newrho)
@@ -1396,7 +1492,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., limit_dmax=False
     if ne is not None:
         rho *= ne / np.sum(rho)
 
-    rg[j+1] = rho2rg(rho=rho,r=r,support=support,dx=dx)
+    # rg[j+1] = rho2rg(rho=rho,r=r,support=support,dx=dx)
+    rg[j+1] = calc_rg_by_guinier_first_2_points(qbinsc, Imean)
     supportV[j+1] = supportV[j]
 
     #change rho to be the electron density in e-/angstroms^3, rather than number of electrons,
@@ -1535,42 +1632,66 @@ def find_nearest_i(array,value):
     """Return the index of the array item nearest to specified value"""
     return (np.abs(array-value)).argmin()
 
-def center_rho(rho, centering="com", return_shift=False):
+def center_rho(rho, centering="com", return_shift=False, maxfirst=True, iterations=1):
     """Move electron density map so its center of mass aligns with the center of the grid
 
     centering - which part of the density to center on. By default, center on the
                 center of mass ("com"). Can also center on maximum density value ("max").
     """
     ne_rho= np.sum((rho))
-    if centering == "max":
-        rhocom = np.unravel_index(rho.argmax(), rho.shape)
-    else:
-        rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
-    gridcenter = np.array(rho.shape)/2.
-    shift = gridcenter-rhocom
-    rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
-    rho = rho*ne_rho/np.sum(rho)
+    gridcenter = (np.array(rho.shape)-1.)/2.
+    total_shift = np.zeros(3)
+    if maxfirst:
+        #sometimes the density crosses the box boundary, meaning
+        #the center of mass calculation becomes an issue
+        #first roughly center using the maximum density value (by
+        #rolling to avoid interpolation artifacts). Then perform
+        #the center of mass translation.
+        rho, shift = center_rho_roll(rho, recenter_mode="max", return_shift=True)
+        total_shift += shift.astype(float)
+    for i in range(iterations):
+        if centering == "max":
+            rhocom = np.unravel_index(rho.argmax(), rho.shape)
+        else:
+            rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
+        shift = gridcenter-rhocom
+        rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
+        rho = rho*ne_rho/np.sum(rho)
+        total_shift += shift
     if return_shift:
-        return rho, shift
+        return rho, total_shift
     else:
         return rho
 
-def center_rho_roll(rho, recenter_mode="com", return_shift=False):
+def center_rho_roll(rho, recenter_mode="com", maxfirst=True, return_shift=False):
     """Move electron density map so its center of mass aligns with the center of the grid
 
     rho - electron density array
     recenter_mode - a string either com (center of mass) or max (maximum density)
     """
+    total_shift = np.zeros(3,dtype=int)
+    gridcenter = (np.array(rho.shape)-1.)/2.
+    if maxfirst:
+        #sometimes the density crosses the box boundary, meaning
+        #the center of mass calculation becomes an issue
+        #first roughly center using the maximum density value (by
+        #rolling to avoid interpolation artifacts). Then perform
+        #the center of mass translation.
+        rhoargmax = np.unravel_index(np.abs(rho).argmax(), rho.shape)
+        shift = gridcenter - rhoargmax
+        shift = np.rint(shift).astype(int)
+        rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
+        total_shift += shift
     if recenter_mode == "max":
         rhocom = np.unravel_index(np.abs(rho).argmax(), rho.shape)
     else:
         rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
-    gridcenter = np.array(rho.shape)/2.
     shift = gridcenter-rhocom
     shift = np.rint(shift).astype(int)
     rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
+    total_shift += shift
     if return_shift:
-        return rho, shift
+        return rho, total_shift
     else:
         return rho
 
@@ -1579,27 +1700,48 @@ def euler_grid_search(refrho, movrho, topn=1, abort_event=None):
         Return the topn candidate maps (default=1, i.e. the best candidate)."""
     #taken from https://stackoverflow.com/a/44164075/2836338
 
-    num_pts = 18 #~20 degrees between points
+    #the euler angles search implicitly assumes the object is located
+    #at the center of the grid, which may not be the case
+    #first translate both refrho and movrho to center of grid, then
+    #calculate optimal coarse rotations, the translate back
+    gridcenter = (np.array(refrho.shape)-1.)/2.
+    refrhocom = np.array(ndimage.measurements.center_of_mass(np.abs(refrho)))
+    movrhocom = np.array(ndimage.measurements.center_of_mass(np.abs(movrho)))
+    refshift = gridcenter-refrhocom
+    movshift = gridcenter-movrhocom
+    refrhocen = ndimage.interpolation.shift(refrho,refshift,order=3,mode='wrap')
+    movrhocen = ndimage.interpolation.shift(movrho,movshift,order=3,mode='wrap')
+
+    num_pts = 100 #~20 degrees between points
     indices = np.arange(0, num_pts, dtype=float) + 0.5
     phi = np.arccos(1 - 2*indices/num_pts)
     theta = np.pi * (1 + 5**0.5) * indices
-    scores = np.zeros((len(phi),len(theta)))
-    for p in range(len(phi)):
-        for t in range(len(theta)):
-            #scores[p,t] = -minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],refrho=np.abs(refrho),movrho=np.abs(movrho))
-            scores[p,t] = -minimize_rho_score(T=[phi[p],theta[t],0,0,0,0],refrho=refrho,movrho=movrho)
+    scores = np.zeros(num_pts)
+    refrho2 = ndimage.gaussian_filter(refrhocen, sigma=1.0, mode='wrap')
+    movrho2 = ndimage.gaussian_filter(movrhocen, sigma=1.0, mode='wrap')
+    n = refrho2.shape[0]
+    b,e = (int(n/4),int(3*n/4))
+    refrho3 = refrho2[b:e,b:e,b:e]
+    movrho3 = movrho2[b:e,b:e,b:e]
 
-            if abort_event is not None:
-                if abort_event.is_set():
-                    return None, None
+    for i in range(num_pts):
+        scores[i] = -minimize_rho_score(T=[phi[i],theta[i],0,0,0,0],
+                                        refrho=refrho3,movrho=movrho3
+                                        )
 
-    #best_pt = np.unravel_index(scores.argmin(), scores.shape)
+        if abort_event is not None:
+            if abort_event.is_set():
+                return None, None
+
     best_pt = largest_indices(scores, topn)
     best_scores = scores[best_pt]
     movrhos = np.zeros((topn,movrho.shape[0],movrho.shape[1],movrho.shape[2]))
 
     for i in range(topn):
-        movrhos[i] = transform_rho(movrho, T=[phi[best_pt[0][i]],theta[best_pt[1][i]],0,0,0,0])
+        movrhos[i] = transform_rho(movrho, T=[phi[best_pt[0][i]],theta[best_pt[0][i]],0,0,0,0])
+        #now that the top five rotations are calculated, move each one back
+        #to the same center of mass as the original refrho, i.e. by -refrhoshift
+        movrhos[i] = ndimage.interpolation.shift(movrhos[i],-refshift,order=3,mode='wrap')
 
         if abort_event is not None:
             if abort_event.is_set():
@@ -1651,13 +1793,33 @@ def minimize_rho(refrho, movrho, T = np.zeros(6)):
     bounds[3:,1] = 5
     save_movrho = np.copy(movrho)
     save_refrho = np.copy(refrho)
+
+    #first translate both to center
+    #then afterwards translate back by -refshift
+    gridcenter = (np.array(refrho.shape)-1.)/2.
+    refrhocom = np.array(ndimage.measurements.center_of_mass(np.abs(refrho)))
+    movrhocom = np.array(ndimage.measurements.center_of_mass(np.abs(movrho)))
+    refshift = gridcenter-refrhocom
+    movshift = gridcenter-movrhocom
+    refrho = ndimage.interpolation.shift(refrho,refshift,order=3,mode='wrap')
+    movrho = ndimage.interpolation.shift(movrho,movshift,order=3,mode='wrap')
+
+    #for alignment only, run a low-pass filter to remove noise
+    refrho2 = ndimage.gaussian_filter(refrho, sigma=1.0, mode='wrap')
+    movrho2 = ndimage.gaussian_filter(movrho, sigma=1.0, mode='wrap')
+    n = refrho2.shape[0]
+    #to speed it up crop out the solvent
+    b,e = (int(n/4),int(3*n/4))
+    refrho3 = refrho2[b:e,b:e,b:e]
+    movrho3 = movrho2[b:e,b:e,b:e]
     result = optimize.fmin_l_bfgs_b(minimize_rho_score, T, factr= 0.1,
         maxiter=100, maxfun=200, epsilon=0.05,
-        #args=(np.abs(refrho),np.abs(movrho)), approx_grad=True)
-        args=(refrho,movrho), approx_grad=True)
+        args=(refrho3,movrho3), approx_grad=True)
     Topt = result[0]
-    newrho = transform_rho(save_movrho, Topt)
-    finalscore = -rho_overlap_score(save_refrho,newrho)
+    newrho = transform_rho(movrho, Topt)
+    #now move newrho back by -refshift
+    newrho = ndimage.interpolation.shift(newrho,-refshift,order=3,mode='wrap')
+    finalscore = -1.*rho_overlap_score(save_refrho,newrho)
     return newrho, finalscore
 
 def minimize_rho_score(T, refrho, movrho):
@@ -1696,7 +1858,7 @@ def transform_rho(rho, T, order=1):
     ne_rho= np.sum((rho))
     R = euler2matrix(T[0],T[1],T[2])
     c_in = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
-    c_out = np.array(rho.shape)/2.
+    c_out = (np.array(rho.shape)-1.)/2.
     offset = c_in-c_out.dot(R)
     offset += T[3:]
     rho = ndimage.interpolation.affine_transform(rho,R.T, order=order,
@@ -1762,7 +1924,7 @@ def principal_axis_alignment(refrho,movrho):
     ne_movrho = np.sum((movrho))
     #first center refrho and movrho, save refrho shift
     rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(refrho)))
-    gridcenter = np.array(refrho.shape)/2.
+    gridcenter = (np.array(refrho.shape)-1.)/2.
     shift = gridcenter-rhocom
     refrho = ndimage.interpolation.shift(refrho,shift,order=3,mode='wrap')
     #calculate, save and perform rotation of refrho to xyz for later
@@ -1781,7 +1943,7 @@ def principal_axis_alignment(refrho,movrho):
     #now rotate movrho by the inverse of the refrho rotation
     R = np.linalg.inv(refR)
     c_in = np.array(ndimage.measurements.center_of_mass(np.abs(movrho)))
-    c_out = np.array(movrho.shape)/2.
+    c_out = (np.array(movrho.shape)-1.)/2.
     offset=c_in-c_out.dot(R)
     movrho = ndimage.interpolation.affine_transform(movrho,R.T,order=3,offset=offset,mode='wrap')
     #now shift it back to where refrho was originally
@@ -1795,7 +1957,7 @@ def align2xyz(rho, return_transform=False):
     ne_rho = np.sum(rho)
     #shift refrho to the center
     rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
-    gridcenter = np.array(rho.shape)/2.
+    gridcenter = (np.array(rho.shape)-1.)/2.
     shift = gridcenter-rhocom
     rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
     #calculate, save and perform rotation of refrho to xyz for later
@@ -1811,10 +1973,15 @@ def align2xyz(rho, return_transform=False):
         w,v = np.linalg.eigh(I) #principal axes
         R = v.T #rotation matrix
         c_in = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
-        c_out = np.array(rho.shape)/2.
+        c_out = (np.array(rho.shape)-1.)/2.
         offset=c_in-c_out.dot(R)
         rho = ndimage.interpolation.affine_transform(rho, R.T, order=3,
             offset=offset, mode='wrap')
+    #also need to run recentering a few times
+    for i in range(3):
+        rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
+        shift = gridcenter-rhocom
+        rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
     rho *= ne_rho/np.sum(rho)
     if return_transform:
         return rho, refR, refshift
@@ -1838,8 +2005,7 @@ def align(refrho, movrho, coarse=True, abort_event=None):
     try:
         sleep(1)
         ne_rho = np.sum((movrho))
-        #movrho, score = minimize_rho(refrho, movrho)
-        movrho, score = coarse_then_fine_alignment(refrho=refrho, movrho=movrho, coarse=coarse, topn=5,
+        movrho, score = coarse_then_fine_alignment(refrho=refrho, movrho=movrho, coarse=coarse, topn=1,
             abort_event=abort_event)
 
         if movrho is not None:
@@ -2070,6 +2236,7 @@ def fsc2res(fsc, cutoff=0.5, return_plot=False):
 
 class Sasrec(object):
     def __init__(self, Iq, D, qc=None, r=None, nr=None, alpha=0.0, ne=2, extrapolate=True):
+        self.Iq = Iq
         self.q = Iq[:,0]
         self.I = Iq[:,1]
         self.Ierr = Iq[:,2]
@@ -2123,7 +2290,6 @@ class Sasrec(object):
         self.S = self.St()
         self.Y = self.Yt()
         self.C = self.Ct2()
-        #print(self.C)
         self.Cinv = np.linalg.inv(self.C)
         self.In = np.linalg.solve(self.C,self.Y)
         with warnings.catch_warnings():
@@ -2180,6 +2346,53 @@ class Sasrec(object):
         self.Ierr = np.hstack((self.Ierr, Ierre))
         self.qc = np.hstack((self.qc, qce))
 
+    def optimize_alpha(self):
+        """Scan alpha values to find optimal alpha"""
+        ideal_chi2 = self.calc_chi2()
+        al = []
+        chi2 = []
+        #here, alphas are actually the exponents, since the range can
+        #vary from 10^-20 upwards of 10^20. This should cover nearly all likely values
+        alphas = np.arange(-20,20.)
+        i = 0
+        nalphas = len(alphas)
+        for alpha in alphas:
+            i += 1
+            sys.stdout.write("\rScanning alphas... {:.0%} complete".format(i*1./nalphas))
+            sys.stdout.flush()
+            try:
+                #sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=10.**alpha, ne=nes, extrapolate=args.extrapolate)
+                self.alpha = 10.**alpha
+                self.update()
+            except:
+                continue
+            chi2value = self.calc_chi2()
+            al.append(alpha)
+            chi2.append(chi2value)
+        al = np.array(al)
+        chi2 = np.array(chi2)
+        print()
+        #find optimal alpha value based on where chi2 begins to rise, to 10% above the ideal chi2
+        #interpolate between tested alphas to find more precise value
+        #x = np.linspace(alphas[0],alphas[-1],1000)
+        x = np.linspace(al[0],al[-1],1000)
+        y = np.interp(x, al, chi2)
+        chif = 1.1
+        #take the maximum alpha value (x) where the chi2 just starts to rise above ideal
+        try:
+            ali = np.argmax(x[y<=chif*ideal_chi2])
+        except:
+            #if it fails, it may mean that the lowest alpha value of 10^-20 is still too large, so just take that.
+            ali = 0
+        #set the optimal alpha to be 10^alpha, since we were actually using exponents
+        #also interpolate between the two neighboring alpha values, to get closer to the chif*ideal_chi2
+        opt_alpha_exponent = np.interp(chif*ideal_chi2,[y[ali],y[ali-1]],[x[ali],x[ali-1]])
+        #print(opt_alpha_exponent)
+        opt_alpha = 10.0**(opt_alpha_exponent)
+        self.alpha = opt_alpha
+        self.update()
+        return self.alpha
+
     def calc_chi2(self):
         Ish = self.In
         Bn = self.B_data
@@ -2187,6 +2400,36 @@ class Sasrec(object):
         Ic_qe = 2*np.einsum('n,nq->q',Ish,Bn)
         chi2 = (1./(self.nq-self.n-1.))*np.sum(1/(self.Ierr_data**2)*(self.I_data-Ic_qe)**2)
         return chi2
+
+    def estimate_Vp_etal(self):
+        """Estimate Porod volume using modified method based on oversmoothing.
+
+        Oversmooth the P(r) curve with a high alpha. This helps to remove shape 
+        scattering that distorts Porod assumptions. """
+        #how much to oversmooth by, i.e. multiply alpha times this factor
+        oversmoothing = 1.0e1
+        #use a different qmax to limit effects of shape scattering.
+        #use 8/Rg as the new qmax, but be sure to keep these effects
+        #separate from the rest of sasrec, as it is only used for estimating
+        #porod volume.
+        qmax = 8./self.rg
+        if np.isnan(qmax):
+            qmax = 8./(self.D/3.5)
+        Iq = np.vstack((self.q,self.I,self.Ierr)).T
+        sasrec4vp = Sasrec(Iq[self.q<qmax], self.D, alpha=self.alpha*oversmoothing, extrapolate=self.extrapolate)
+        self.Q = sasrec4vp.Q
+        self.Qerr = sasrec4vp.Qerr
+        self.Vp = sasrec4vp.Vp
+        self.Vperr = sasrec4vp.Vperr
+        self.mwVp = sasrec4vp.mwVp
+        self.mwVperr = sasrec4vp.mwVperr
+        self.Vc = sasrec4vp.Vc
+        self.Vcerr = sasrec4vp.Vcerr
+        self.Qr = sasrec4vp.Qr
+        self.mwVc = sasrec4vp.mwVc
+        self.mwVcerr = sasrec4vp.mwVcerr
+        self.lc = sasrec4vp.lc
+        self.lcerr = sasrec4vp.lcerr
 
     def shannon_channels(self, D, qmax=0.5, qmin=0.0):
         """Return the number of Shannon channels given a q range and maximum particle dimension"""
@@ -2238,6 +2481,7 @@ class Sasrec(object):
         D = self.D
         gmn = np.zeros((self.n,self.n))
         mm, nn = np.meshgrid(M,N,indexing='ij')
+        #two cases, one where m!=n, one where m==n. Do both separately.
         idx = np.where(mm!=nn)
         gmn[idx] = np.pi**2/(2*D**5) * (mm[idx]*nn[idx])**2 * (mm[idx]**4+nn[idx]**4)/(mm[idx]**2-nn[idx]**2)**2 * (-1)**(mm[idx]+nn[idx])
         idx = np.where(mm==nn)
@@ -2322,7 +2566,8 @@ class Sasrec(object):
         summation = np.sum(Ish*F)
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=RuntimeWarning)
-            rg = np.sqrt(D**2/I0 * summation)
+            rg2 = D**2/I0 * summation
+            rg = np.sqrt(rg2)
         return rg
 
     def rgerrfold(self):
@@ -2891,7 +3136,7 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
             tmpvalues *= electrons[element] / np.sum(tmpvalues)
         else:
             print()
-            print("Atom %d outside boundary of cell ignored."%i)
+            print("Voxel spacing too coarse. No density for atom %d."%i)
 
         values[slc] += tmpvalues.reshape(nx,ny,nz)
         support[slc] = True

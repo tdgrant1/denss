@@ -47,6 +47,8 @@ parser.add_argument("-a", "--alpha", default=None, type=float, help="Set alpha s
 parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use")
 parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use")
 parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional)")
+parser.add_argument("-qmax", "--qmax", default=None, type=float, help="Maximum q value for calculated intensities (optional)")
+parser.add_argument("-nq", "--nq", default=None, type=int, help="Number of data points in calculated intensity profile (optional)")
 parser.add_argument("-r", "--rfile", default=None, type=str, help=argparse.SUPPRESS)
 parser.add_argument("-nr", "--nr", default=None, type=int, help="Number of points in P(r) curve (default = number of points in I(q) profile).")
 parser.add_argument("--nes", default=2, type=int, help=argparse.SUPPRESS)
@@ -56,8 +58,10 @@ parser.add_argument("--max_nes", default=10, type=int, help=argparse.SUPPRESS)
 parser.add_argument("--no_gui", dest="plot", action="store_false", help="Do not run the interactive GUI mode.")
 parser.add_argument("--no_log", dest="log", action="store_false", help="Do not plot on log y axis.")
 parser.add_argument("--no_extrapolation", dest="extrapolate", action="store_false", help="Do not extrapolate high q data.")
+parser.add_argument("--write_shannon", dest="write_shannon", action="store_true", help="Write a file containing only the Shannon intensities.")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
 parser.set_defaults(plot=True)
+parser.set_defaults(write_shannon=False)
 args = parser.parse_args()
 
 if args.plot:
@@ -119,22 +123,41 @@ if __name__ == "__main__":
     if args.max_dmax is None:
         args.max_dmax = 2.*D
 
-    if args.qfile is not None:
-        qc = np.loadtxt(args.qfile,usecols=(0,))
-    else:
-        qc = None
-
     if args.rfile is not None:
         r = np.loadtxt(args.rfile,usecols=(0,))
     else:
         r = None
 
+    if args.qfile is not None:
+        qc = np.loadtxt(args.qfile,usecols=(0,))
+    else:
+        qc = None
+
     print("Dmax = %.2f"%D)
     qmax = Iq[n1:n2,0].max()
-    if qc is None:
+    if (qc is None) and (args.extrapolate):
         qmaxc = qmax*3.0
+    elif (qc is None):
+        qmaxc = qmax
     else:
         qmaxc = qc.max()
+
+    #let a user set a desired set of q values to be calculated
+    #based on a given qmax and nq
+    if (args.qmax is not None) or (args.nq is not None):
+        if args.qmax is not None:
+            qmaxc = args.qmax
+        else:
+            qmaxc = qmaxc
+        if args.nq is not None:
+            nqc = args.nq
+        else:
+            nqc = 501
+        qc = np.linspace(0,qmaxc,nqc)
+        #assume if they are giving args.qmax or args.nq, that they want to
+        #disable extrapolation
+        args.extrapolate = False
+
     nsh = qmax/(np.pi/D)
     nshc = qmaxc/(np.pi/D)
     print("Number of experimental Shannon channels: %d"%(nsh))
@@ -159,54 +182,13 @@ if __name__ == "__main__":
     ideal_chi2 = sasrec.calc_chi2()
 
     if args.alpha is None:
-        al = []
-        chi2 = []
-        #here, alphas are actually the exponents, since the range can
-        #vary from 10^-10 upwards of 10^20. This should cover nearly all likely values
-        alphas = np.arange(-20,20.)
-        i = 0
-        nalphas = len(alphas)
-        for alpha in alphas:
-            i += 1
-            sys.stdout.write("\rScanning alphas... {:.0%} complete".format(i*1./nalphas))
-            sys.stdout.flush()
-            try:
-                sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=10.**alpha, ne=nes, extrapolate=args.extrapolate)
-            except:
-                continue
-            #r = sasrec.r
-            pi = np.pi
-            N = sasrec.N[:,None]
-            In = sasrec.In[:,None]
-            chi2value = sasrec.calc_chi2()
-            al.append(alpha)
-            chi2.append(chi2value)
-            #print("***** ALPHA ****** 10^%d : %.5e "%(alpha, chi2value))
-        al = np.array(al)
-        chi2 = np.array(chi2)
-        print()
-        #find optimal alpha value based on where chi2 begins to rise, to 10% above the ideal chi2
-        #interpolate between tested alphas to find more precise value
-        #x = np.linspace(alphas[0],alphas[-1],1000)
-        x = np.linspace(al[0],al[-1],1000)
-        y = np.interp(x, al, chi2)
-        chif = 2.0
-        #take the maximum alpha value (x) where the chi2 just starts to rise above ideal
-        try:
-            ali = np.argmax(x[y<=chif*ideal_chi2])
-        except:
-            #if it fails, it may mean that the lowest alpha value of 10^-20 is still too large, so just take that.
-            ali = 0
-        #set the optimal alpha to be 10^alpha, since we were actually using exponents
-        #but also subtract 1 from that exponent, just to be safe that we didn't oversmooth
-        #also interpolate between the two neighboring alpha values, to get closer to the chif*ideal_chi2
-        opt_alpha_exponent = np.interp(chif*ideal_chi2,[y[ali],y[ali-1]],[x[ali],x[ali-1]])
-        #print(opt_alpha_exponent)
-        opt_alpha = 10.0**(opt_alpha_exponent-1)
-        alpha = opt_alpha
+        alpha = sasrec.optimize_alpha()
     else:
         alpha = args.alpha
     sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=alpha, ne=nes, extrapolate=args.extrapolate)
+
+    #implement method of estimating Vp, Vc, etc using oversmoothing
+    sasrec.estimate_Vp_etal()
 
     #set a maximum alpha range, so when users click in the slider
     #it at least does something reasonable, rather than either nothing
@@ -258,6 +240,9 @@ if __name__ == "__main__":
         np.savetxt(output+'.fit', np.vstack((sasrec.qc, Iinterp, sasrec.Icerr, sasrec.Ic)).T,delimiter=' ',fmt='%.5e',header=param_str)
         np.savetxt(output+'_pr.dat', np.vstack((sasrec.r, sasrec.P, sasrec.Perr)).T,delimiter=' ',fmt='%.5e')
         print("%s and %s files saved" % (output+".fit",output+"_pr.dat"))
+        if args.write_shannon:
+            np.savetxt(output+'_Shannon.dat', np.vstack((sasrec.qn, sasrec.In, sasrec.Inerr)).T,delimiter=' ',fmt='%.5e',header=param_str)
+
 
     if args.plot:
 
@@ -283,8 +268,8 @@ if __name__ == "__main__":
         #first, just ensure that we're comparing similar q ranges, so
         #interpolate from qc to q_data to enable subtraction, since there's
         #q values in qc that are not in q_data, and possibly vice versa
-        Icinterp = np.interp(sasrec.q_data, sasrec.qc, np.abs(sasrec.Ic))
-        res = sasrec.I_data/sasrec.Ierr_data - Icinterp/sasrec.Ierr_data
+        Icinterp = np.interp(sasrec.q_data, sasrec.qc, sasrec.Ic)
+        res = (sasrec.I_data - Icinterp)/sasrec.Ierr_data
         #in case qc were fewer points than the data, for whatever reason,
         #only grab the points up to qc.max
         ridx = np.where((sasrec.q_data<sasrec.qc.max()))
@@ -346,8 +331,9 @@ if __name__ == "__main__":
         def analyze(dmax,alpha,n1,n2,extrapolate):
             global sasrec
             sasrec = saxs.Sasrec(Iq_orig[n1:n2], dmax, qc=qc, r=r, nr=args.nr, alpha=alpha, ne=nes, extrapolate=extrapolate)
-            Icinterp = np.interp(sasrec.q_data, sasrec.qc, np.abs(sasrec.Ic))
-            res = sasrec.I_data/sasrec.Ierr_data - Icinterp/sasrec.Ierr_data
+            sasrec.estimate_Vp_etal()
+            Icinterp = np.interp(sasrec.q_data, sasrec.qc, sasrec.Ic)
+            res = (sasrec.I_data - Icinterp)/sasrec.Ierr_data
             ridx = np.where((sasrec.q_data<sasrec.qc.max()))
             I_l1.set_data(sasrec.q_data, sasrec.I_data)
             I_l2.set_data(sasrec.qc, sasrec.Ic)

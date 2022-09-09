@@ -36,6 +36,7 @@ parser = argparse.ArgumentParser(description="DENSS: DENsity from Solution Scatt
 args = dopts.parse_arguments(parser)
 
 if __name__ == "__main__":
+    __spec__ = None
     my_logger = logging.getLogger()
     my_logger.setLevel(logging.DEBUG)
 
@@ -67,8 +68,6 @@ if __name__ == "__main__":
         ne=args.ne,
         voxel=args.voxel,
         oversampling=args.oversampling,
-        limit_dmax=args.limit_dmax,
-        limit_dmax_steps=args.limit_dmax_steps,
         recenter=args.recenter,
         recenter_steps=args.recenter_steps,
         recenter_mode=args.recenter_mode,
@@ -94,6 +93,7 @@ if __name__ == "__main__":
         write_freq=args.write_freq,
         enforce_connectivity=args.enforce_connectivity,
         enforce_connectivity_steps=args.enforce_connectivity_steps,
+        enforce_connectivity_max_features=args.enforce_connectivity_max_features,
         cutout=args.cutout,
         quiet=args.quiet,
         DENSS_GPU=args.DENSS_GPU,
