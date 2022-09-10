@@ -1192,6 +1192,39 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         supportV = cp.array(supportV)
         Imean = cp.array(Imean)
 
+
+    #### assume the density of the atomic model is correct and
+    # attempt to model the solvent density, resetting the model
+    # density each step
+    fname_nopath = os.path.basename('6lyz.pdb')
+    basename, ext = os.path.splitext(fname_nopath)
+    pdb = PDB(fname_nopath)
+    pdboutput = basename+"_centered.pdb"
+    pdb.coords -= pdb.coords.mean(axis=0)
+    pdb.write(filename=pdboutput)
+    resolution = 2.0
+    ignore_waters = True
+    pdb_rho, pdb_idx = pdb2map_multigauss(pdb,x=x,y=y,z=z,cutoff=10,resolution=resolution,ignore_waters=ignore_waters)
+    pdb_idx *= False
+    pdb_idx[pdb_rho>1e-3*pdb_rho.max()] = True
+
+    #now, dilate pdb_idx to give us the support, which gives some room for a solvent shell
+    #start with a 5 angstrom shell
+    dilation_width = 25.
+    dilation_width_in_pixels = int(dilation_width/dx)+1
+    dwpix = dilation_width_in_pixels
+    print(dwpix)
+    # support = ndimage.binary_dilation(pdb_idx,np.ones((dwpix,dwpix,dwpix)))
+    #turn shrinkwrap off for now
+    shrinkwrap = False
+    print("shrinkwrap disabled")
+
+    #for our purposes here, rho_solv is the excluded solvent density
+    #so rho = pdb_rho - rho_solv
+    #start with excluded solvent being random
+    rho_solv = np.copy(rho)
+    rho = pdb_rho - rho_solv
+
     for j in range(steps):
         if abort_event is not None:
             if abort_event.is_set():
@@ -1231,6 +1264,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         #Error Reduction
         newrho *= 0
         newrho[support] = rhoprime[support]
+
+        #PDB density
+        rho_solv = newrho - pdb_rho
 
         # enforce positivity by making all negative density points zero.
         if positivity:
@@ -1478,6 +1514,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     F *= factors[qbin_labels]
     rho = np.fft.ifftn(F,rho.shape)
     rho = rho.real
+
+    #PDB stuff again
+    rho -= pdb_rho #let's looks at just the solvent density found
 
     #negative images yield the same scattering, so flip the image
     #to have more positive than negative values if necessary
@@ -2981,7 +3020,7 @@ def pdb2map_gauss(pdb,xyz,sigma,mode="slow",eps=1e-6):
     print()
     return values.reshape(n,n,n)
 
-def pdb2map_fastgauss(pdb,x,y,z,sigma,r=20.0,ignore_waters=True):
+def pdb2map_fastgauss(pdb,x,y,z,cutoff=3.0,resolution=15.0,ignore_waters=True):
     """Simple isotropic gaussian sum at coordinate locations.
 
     This fastgauss function only calculates the values at
@@ -2999,10 +3038,12 @@ def pdb2map_fastgauss(pdb,x,y,z,sigma,r=20.0,ignore_waters=True):
     dV = dx**3
     V = side**3
     x_ = x[:,0,0]
-    sigma /= 4. #to make compatible with e2pdb2mrc/chimera sigma
     shift = np.ones(3)*dx/2.
-    print("\n Calculate density map from PDB... ")
     values = np.zeros(x.shape)
+    support = np.zeros(x.shape,dtype=bool)
+    cutoff = max(cutoff,2*resolution)
+    sigma = resolution/4. #to make compatible with e2pdb2mrc/chimera sigma
+    print("\n Calculate density map from PDB... ")
     for i in range(pdb.coords.shape[0]):
         if ignore_waters and pdb.resname[i]=="HOH":
             continue
@@ -3012,12 +3053,24 @@ def pdb2map_fastgauss(pdb,x,y,z,sigma,r=20.0,ignore_waters=True):
         #first, get the min and max distances for each dimension
         #also, convert those distances to indices by dividing by dx
         xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
-        xmin = int(np.floor((xa-r)/dx)) + n//2
-        xmax = int(np.ceil((xa+r)/dx)) + n//2
-        ymin = int(np.floor((ya-r)/dx)) + n//2
-        ymax = int(np.ceil((ya+r)/dx)) + n//2
-        zmin = int(np.floor((za-r)/dx)) + n//2
-        zmax = int(np.ceil((za+r)/dx)) + n//2
+        #ignore atoms whose coordinates are outside the box limits
+        if (
+            (xa < x.min()) or
+            (xa > x.max()) or
+            (ya < y.min()) or
+            (ya > y.max()) or
+            (za < z.min()) or
+            (za > z.max())
+           ):
+           print()
+           print("Atom %d outside boundary of cell ignored."%i)
+           continue
+        xmin = int(np.floor((xa-cutoff)/dx)) + n//2
+        xmax = int(np.ceil((xa+cutoff)/dx)) + n//2
+        ymin = int(np.floor((ya-cutoff)/dx)) + n//2
+        ymax = int(np.ceil((ya+cutoff)/dx)) + n//2
+        zmin = int(np.floor((za-cutoff)/dx)) + n//2
+        zmax = int(np.ceil((za+cutoff)/dx)) + n//2
         #handle edges
         xmin = max([xmin,0])
         xmax = min([xmax,n])
@@ -3036,8 +3089,9 @@ def pdb2map_fastgauss(pdb,x,y,z,sigma,r=20.0,ignore_waters=True):
         dist *= dist
         tmpvalues = pdb.nelectrons[i]*1./np.sqrt(2*np.pi*sigma**2) * np.exp(-dist[0]/(2*sigma**2))
         values[slc] += tmpvalues.reshape(nx,ny,nz)
+        support[slc] = True
     print()
-    return values
+    return values, support
 
 def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
     """5-term gaussian sum at coordinate locations using Cromer-Mann coefficients.
@@ -3286,8 +3340,10 @@ def sphere(R, q=np.linspace(0,0.5,501), I0=1.,amp=False):
     else:
         return I0 * a**2
 
-def formfactor(element, q=(np.arange(500)+1)/1000.,B=0):
+def formfactor(element, q=(np.arange(500)+1)/1000.,B=None):
     """Calculate atomic form factors"""
+    if B is None:
+        B = 0.0
     q = np.atleast_1d(q)
     ff = np.zeros(q.shape)
     for i in range(4):
@@ -3310,8 +3366,10 @@ def B2u(B):
     else:
         return (B/(8*np.pi**2))**0.5
 
-def realspace_formfactor(element, r=(np.arange(501))/1000., B=0.0):
+def realspace_formfactor(element, r=(np.arange(501))/1000., B=None):
     """Calculate real space atomic form factors"""
+    if B is None:
+        B = 0.0
     r = np.atleast_1d(r)
     ff = np.zeros(r.shape)
     for i in range(4):

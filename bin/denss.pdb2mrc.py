@@ -130,24 +130,80 @@ if __name__ == "__main__":
 
     #copy particle pdb
     import copy
+    import matplotlib.pyplot as plt
     solvpdb = copy.deepcopy(pdb)
     #change all atom types O, should update to water form factor in future
-    solvpdb.atomtype = np.array(['O' for i in solvpdb.atomtype],dtype=np.dtype((np.str,2)))
-    solv, supportsolv = saxs.pdb2map_multigauss(solvpdb,x=x,y=y,z=z,resolution=resolution,ignore_waters=args.ignore_waters)
+    # solvpdb.atomtype = np.array(['O' for i in solvpdb.atomtype],dtype=np.dtype((str,2)))
+    # solv, supportsolv = saxs.pdb2map_multigauss(solvpdb,x=x,y=y,z=z,resolution=resolution,ignore_waters=args.ignore_waters)
     #now we need to fit some parameters
     #maybe a simple scale factor would get us close?
-    from scipy import ndimage
-    saxs.write_mrc((rho)/dV,side,output+"_0.0.mrc")
-    for i in np.linspace(0.1,1.0,10):
-        solv_blur = ndimage.filters.gaussian_filter(solv,sigma=i,mode='wrap')
-        # rho -= solv_blur*0.5
-        # rho /= dV
-        for j in np.linspace(0.1,1.0,10):
-            saxs.write_mrc((rho-solv_blur*j)/dV,side,output+"_%.1f_%.1f.mrc"%(i,j))
-        saxs.write_mrc(solv_blur/dV,side,output+"_solv_%.1f.mrc"%i)
+    # from scipy import ndimage
+    # saxs.write_mrc((rho)/dV,side,output+"_0.0.mrc")
+    # for i in np.linspace(0.1,1.0,10):
+    #     solv_blur = ndimage.filters.gaussian_filter(solv,sigma=i,mode='wrap')
+    #     # rho -= solv_blur*0.5
+    #     # rho /= dV
+    #     for j in np.linspace(0.1,1.0,10):
+    #         saxs.write_mrc((rho-solv_blur*j)/dV,side,output+"_%.1f_%.1f.mrc"%(i,j))
+    #     saxs.write_mrc(solv_blur/dV,side,output+"_solv_%.1f.mrc"%i)
     # c1 = 0.5
     # rho -= solv
     # rho /= dV
+    #really need a B-factor modification to fit probably, which in this case is resolution
+    df = 1/side
+    qx_ = np.fft.fftfreq(x_.size)*n*df*2*np.pi
+    qz_ = np.fft.rfftfreq(x_.size)*n*df*2*np.pi
+    qx, qy, qz = np.meshgrid(qx_,qx_,qx_,indexing='ij')
+    qr = np.sqrt(qx**2+qy**2+qz**2)
+    qmax = np.max(qr)
+    qstep = np.min(qr[qr>0]) - 1e-8
+    nbins = int(qmax/qstep)
+    qbins = np.linspace(0,nbins*qstep,nbins+1)
+    #create modified qbins and put qbins in center of bin rather than at left edge of bin.
+    qbinsc = np.copy(qbins)
+    qbinsc[1:] += qstep/2.
+    #create an array labeling each voxel according to which qbin it belongs
+    qbin_labels = np.searchsorted(qbins,qr,"right")
+    qbin_labels -= 1
+    qblravel = qbin_labels.ravel()
+
+    # foxs = np.loadtxt('6lyz.dat')
+    foxs = np.loadtxt('6lyz.pdb.dat',skiprows=2)
+    plt.plot(foxs[:,0],foxs[:,1],label='foxs')
+
+    crysol = np.loadtxt('6lyz01.abs',skiprows=1)
+    crysol[:,1] *= foxs[0,1] / crysol[0,1]
+    plt.plot(crysol[:,0],crysol[:,1],label='crysol')
+
+    debye = np.loadtxt('6lyz.pdb2sas.dat')
+    debye[:,1] *= foxs[0,1] / debye[0,1]
+    plt.plot(debye[:,0],debye[:,1],label='debye')
+
+    F = np.fft.fftn(rho)
+    I3D = saxs.abs2(F)
+    Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
+    Imean *= foxs[0,1] / Imean[0]
+    plt.plot(qbinsc, Imean, '-',label='pdb')
+
+    # res = 3.0
+    # solv, supportsolv = saxs.pdb2map_fastgauss(solvpdb,x=x,y=y,z=z,resolution=res,ignore_waters=args.ignore_waters)
+    # for i in np.linspace(1,5,5):
+    #     print(1./i)
+    #     # solv, supportsolv = saxs.pdb2map_multigauss(solvpdb,x=x,y=y,z=z,resolution=res,ignore_waters=args.ignore_waters)
+    #     #calculate scattering profile from density
+    #     diff = rho - solv * 1./i
+    #     F = np.fft.fftn(diff)
+    #     F[np.abs(F)==0] = 1e-16
+    #     I3D = saxs.abs2(F)
+    #     Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
+    #     Imean *= foxs[0,1] / Imean[0]
+    #     # plt.plot(qbinsc, Imean, '-',label='res=%.1f'%res)
+    #     plt.plot(qbinsc, Imean, '-',label='fraction=%.1f'%(1./i))
+    plt.semilogy()
+    plt.xlim([-.1,1.0])
+    plt.legend()
+    plt.show()
+
     exit()
 
 
