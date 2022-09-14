@@ -83,7 +83,6 @@ except ImportError:
 #it works, but often results in nans randomly
 PYFFTW = False
 
-
 def myfftn(x, DENSS_GPU=False):
     if DENSS_GPU:
         return cp.fft.fftn(x)
@@ -118,10 +117,16 @@ def myabs(x, out=None,DENSS_GPU=False):
     else:
         return np.abs(x,out=out)
 
-# @numba.vectorize([numba.float64(numba.complex128),numba.float32(numba.complex64)])
-def abs2(x):
+if CUPY_LOADED:
+    gpu_abs2 = cp.ElementwiseKernel(
+             'complex128 z', 'float64 d', 'double re=real(z), im=imag(z); d=re*re+im*im;', "gpu_abs2")
+
+def abs2(x, DENSS_GPU=False):
     #a faster way to calculate abs(x)**2, for calculating intensities
-    return x.real**2 + x.imag**2
+    if DENSS_GPU:
+       return gpu_abs2(x)
+    else:
+        return x.real**2 + x.imag**2
 
 # @numba.jit(nopython=True)
 # def mybincount(x, weights):
@@ -1212,7 +1217,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         #APPLY RECIPROCAL SPACE RESTRAINTS
         #calculate spherical average of intensities from 3D Fs
         # I3D = myabs(F, out=I3D, DENSS_GPU=DENSS_GPU)**2
-        I3D = abs2(F)
+        I3D = abs2(F, DENSS_GPU=DENSS_GPU)
         Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=DENSS_GPU)
 
         #scale Fs to match data
