@@ -1191,6 +1191,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         chi = cp.array(chi)
         supportV = cp.array(supportV)
         Imean = cp.array(Imean)
+        newrho = cp.array(newrho)
+        qblravel = cp.array(qblravel)
+        xcount = cp.array(xcount)
 
     for j in range(steps):
         if abort_event is not None:
@@ -1465,7 +1468,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         support = cp.asnumpy(support)
         supportV = cp.asnumpy(supportV)
         Idata = cp.asnumpy(Idata)
-
+        newrho = cp.asnumpy(newrho)
+        qblravel = cp.asnumpy(qblravel)
+        xcount = cp.asnumpy(xcount)
 
     F = np.fft.fftn(rho)
     #calculate spherical average intensity from 3D Fs
