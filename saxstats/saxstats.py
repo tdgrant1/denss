@@ -3041,8 +3041,13 @@ def pdb2map_fastgauss(pdb,x,y,z,cutoff=3.0,resolution=15.0,ignore_waters=True):
     shift = np.ones(3)*dx/2.
     values = np.zeros(x.shape)
     support = np.zeros(x.shape,dtype=bool)
-    cutoff = max(cutoff,2*resolution)
+    if len(np.atleast_1d(resolution)) == 1:
+        resolution *= np.ones(pdb.natoms)
+    if len(np.atleast_1d(cutoff)) == 1:
+        cutoff *= np.ones(pdb.natoms)
+    cutoff = np.max(np.vstack((cutoff,2*resolution)),axis=0)
     sigma = resolution/4. #to make compatible with e2pdb2mrc/chimera sigma
+
     print("\n Calculate density map from PDB... ")
     for i in range(pdb.coords.shape[0]):
         if ignore_waters and pdb.resname[i]=="HOH":
@@ -3065,12 +3070,13 @@ def pdb2map_fastgauss(pdb,x,y,z,cutoff=3.0,resolution=15.0,ignore_waters=True):
            print()
            print("Atom %d outside boundary of cell ignored."%i)
            continue
-        xmin = int(np.floor((xa-cutoff)/dx)) + n//2
-        xmax = int(np.ceil((xa+cutoff)/dx)) + n//2
-        ymin = int(np.floor((ya-cutoff)/dx)) + n//2
-        ymax = int(np.ceil((ya+cutoff)/dx)) + n//2
-        zmin = int(np.floor((za-cutoff)/dx)) + n//2
-        zmax = int(np.ceil((za+cutoff)/dx)) + n//2
+        ci = cutoff[i]
+        xmin = int(np.floor((xa-ci)/dx)) + n//2
+        xmax = int(np.ceil((xa+ci)/dx)) + n//2
+        ymin = int(np.floor((ya-ci)/dx)) + n//2
+        ymax = int(np.ceil((ya+ci)/dx)) + n//2
+        zmin = int(np.floor((za-ci)/dx)) + n//2
+        zmax = int(np.ceil((za+ci)/dx)) + n//2
         #handle edges
         xmin = max([xmin,0])
         xmax = min([xmax,n])
@@ -3087,7 +3093,7 @@ def pdb2map_fastgauss(pdb,x,y,z,cutoff=3.0,resolution=15.0,ignore_waters=True):
         xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
         dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
         dist *= dist
-        tmpvalues = pdb.nelectrons[i]*1./np.sqrt(2*np.pi*sigma**2) * np.exp(-dist[0]/(2*sigma**2))
+        tmpvalues = pdb.nelectrons[i]*1./np.sqrt(2*np.pi*sigma[i]**2) * np.exp(-dist[0]/(2*sigma[i]**2))
         values[slc] += tmpvalues.reshape(nx,ny,nz)
         support[slc] = True
     print()
@@ -3505,6 +3511,8 @@ def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=T
 
 
 electrons = {'H': 1,'HE': 2,'He': 2,'LI': 3,'Li': 3,'BE': 4,'Be': 4,'B': 5,'C': 6,'N': 7,'O': 8,'F': 9,'NE': 10,'Ne': 10,'NA': 11,'Na': 11,'MG': 12,'Mg': 12,'AL': 13,'Al': 13,'SI': 14,'Si': 14,'P': 15,'S': 16,'CL': 17,'Cl': 17,'AR': 18,'Ar': 18,'K': 19,'CA': 20,'Ca': 20,'SC': 21,'Sc': 21,'TI': 22,'Ti': 22,'V': 23,'CR': 24,'Cr': 24,'MN': 25,'Mn': 25,'FE': 26,'Fe': 26,'CO': 27,'Co': 27,'NI': 28,'Ni': 28,'CU': 29,'Cu': 29,'ZN': 30,'Zn': 30,'GA': 31,'Ga': 31,'GE': 32,'Ge': 32,'AS': 33,'As': 33,'SE': 34,'Se': 34,'Se': 34,'Se': 34,'BR': 35,'Br': 35,'KR': 36,'Kr': 36,'RB': 37,'Rb': 37,'SR': 38,'Sr': 38,'Y': 39,'ZR': 40,'Zr': 40,'NB': 41,'Nb': 41,'MO': 42,'Mo': 42,'TC': 43,'Tc': 43,'RU': 44,'Ru': 44,'RH': 45,'Rh': 45,'PD': 46,'Pd': 46,'AG': 47,'Ag': 47,'CD': 48,'Cd': 48,'IN': 49,'In': 49,'SN': 50,'Sn': 50,'SB': 51,'Sb': 51,'TE': 52,'Te': 52,'I': 53,'XE': 54,'Xe': 54,'CS': 55,'Cs': 55,'BA': 56,'Ba': 56,'LA': 57,'La': 57,'CE': 58,'Ce': 58,'PR': 59,'Pr': 59,'ND': 60,'Nd': 60,'PM': 61,'Pm': 61,'SM': 62,'Sm': 62,'EU': 63,'Eu': 63,'GD': 64,'Gd': 64,'TB': 65,'Tb': 65,'DY': 66,'Dy': 66,'HO': 67,'Ho': 67,'ER': 68,'Er': 68,'TM': 69,'Tm': 69,'YB': 70,'Yb': 70,'LU': 71,'Lu': 71,'HF': 72,'Hf': 72,'TA': 73,'Ta': 73,'W': 74,'RE': 75,'Re': 75,'OS': 76,'Os': 76,'IR': 77,'Ir': 77,'PT': 78,'Pt': 78,'AU': 79,'Au': 79,'HG': 80,'Hg': 80,'TL': 81,'Tl': 81,'PB': 82,'Pb': 82,'BI': 83,'Bi': 83,'PO': 84,'Po': 84,'AT': 85,'At': 85,'RN': 86,'Rn': 86,'FR': 87,'Fr': 87,'RA': 88,'Ra': 88,'AC': 89,'Ac': 89,'TH': 90,'Th': 90,'PA': 91,'Pa': 91,'U': 92,'NP': 93,'Np': 93,'PU': 94,'Pu': 94,'AM': 95,'Am': 95,'CM': 96,'Cm': 96,'BK': 97,'Bk': 97,'CF': 98,'Cf': 98,'ES': 99,'Es': 99,'FM': 100,'Fm': 100,'MD': 101,'Md': 101,'NO': 102,'No': 102,'LR': 103,'Lr': 103,'RF': 104,'Rf': 104,'DB': 105,'Db': 105,'SG': 106,'Sg': 106,'BH': 107,'Bh': 107,'HS': 108,'Hs': 108,'MT': 109,'Mt': 109}
+
+radius = {'H': 1.1,'He': 1.4,'Li': 1.8,'Be': 1.5,'B': 1.9,'C': 1.7,'N': 1.6,'O': 1.5,'F': 1.5,'Ne': 1.5,'Na': 2.3,'Mg': 1.7,'Al': 1.8,'Si': 2.1,'P': 1.8,'S': 1.8,'Cl': 1.8,'Ar': 1.9,'K': 2.8,'Ca': 2.3,'Sc': 2.1,'Ti': 2.1,'V': 2.1,'Cr': 2.1,'Mn': 2.0,'Fe': 2.0,'Co': 2.0,'Ni': 2.0,'Cu': 2.0,'Zn': 2.0,'Ga': 1.9,'Ge': 2.1,'As': 1.9,'Se': 1.9,'Br': 1.9,'Kr': 2.0,'Rb': 3.0,'Sr': 2.5,'Y': 2.3,'Zr': 2.2,'Nb': 2.2,'Mo': 2.2,'Tc': 2.2,'Ru': 2.1,'Rh': 2.1,'Pd': 2.1,'Ag': 2.1,'Cd': 2.2,'In': 1.9,'Sn': 2.2,'Sb': 2.1,'Te': 2.1,'I': 2.0,'Xe': 2.2,'Cs': 3.4,'Ba': 2.7,'La': 2.4,'Ce': 2.4,'Pr': 2.4,'Nd': 2.4,'Pm': 2.4,'Sm': 2.4,'Eu': 2.4,'Gd': 2.3,'Tb': 2.3,'Dy': 2.3,'Ho': 2.3,'Er': 2.3,'Tm': 2.3,'Yb': 2.3,'Lu': 2.2,'Hf': 2.2,'Ta': 2.2,'W': 2.2,'Re': 2.2,'Os': 2.2,'Ir': 2.1,'Pt': 2.1,'Au': 2.1,'Hg': 2.2,'Tl': 2.0,'Pb': 2.0,'Bi': 2.1,'Po': 2.0,'At': 2.0,'Rn': 2.2,'Fr': 3.5,'Ra': 2.8,'Ac': 2.5,'Th': 2.5,'Pa': 2.4,'U': 2.4,'Np': 2.4,'Pu': 2.4,'Am': 2.4,'Cm': 2.5,'Bk': 2.4,'Cf': 2.5,'Es': 2.5,'Fm': 2.5,'Md': 2.5,'No': 2.5,'Lr': 2.5,'Rf': 1.8,'Db': 1.8,'Sg': 1.8,'Bh': 1.8,'Hs': 1.8,'Mt': 1.8,'Ds': 1.8,'Rg': 1.8,'Cn': 1.8,'Nh': 1.8,'Fl': 1.8,'Mc': 1.8,'Lv': 1.8,'Ts': 1.8,'Og': 1.8}
 
 #form factors taken from http://lampx.tugraz.at/~hadley/ss1/crystaldiffraction/atomicformfactors/formfactors.php
 ffcoeff = {
