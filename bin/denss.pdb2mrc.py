@@ -187,9 +187,9 @@ if __name__ == "__main__":
     crysol2[:,1] *= I0 / crysol2[0,1]
     plt.plot(crysol2[:,0],crysol2[:,1],label='crysol (optimized)')
 
-    # debye = np.loadtxt('6lyz.pdb2sas.dat')
-    # debye[:,1] *= I0 / debye[0,1]
-    # plt.plot(debye[:,0],debye[:,1],label='debye (in vacuo)')
+    debye = np.loadtxt('6lyz.pdb2sas.dat')
+    debye[:,1] *= I0 / debye[0,1]
+    plt.plot(debye[:,0],debye[:,1],label='debye (in vacuo)')
 
     # F = np.fft.fftn(rho)
     # I3D = saxs.abs2(F)
@@ -212,95 +212,95 @@ if __name__ == "__main__":
     #     # plt.plot(qbinsc, Imean, '-',label='res=%.1f'%res)
     #     plt.plot(qbinsc, Imean, '-',label='fraction=%.1f'%(1./i))
 
-    from scipy import spatial
-    shift = np.ones(3)*dx/2.
-    particle = np.zeros_like(support)
-    for i in range(pdb.natoms):
-        if len(pdb.atomname[i])==1:
-            atomname = pdb.atomname[i][0].upper()
-        else:
-            atomname = pdb.atomname[i][0].upper() + pdb.atomname[i][1].lower()
-        try:
-            dr = saxs.radius[atomname]
-        except:
-            try:
-                dr = saxs.radius[atomname[0]]
-            except:
-                dr = saxs.radius['C']
-        xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
-        xmin = int(np.floor((xa-dr)/dx)) + n//2
-        xmax = int(np.ceil((xa+dr)/dx)) + n//2
-        ymin = int(np.floor((ya-dr)/dx)) + n//2
-        ymax = int(np.ceil((ya+dr)/dx)) + n//2
-        zmin = int(np.floor((za-dr)/dx)) + n//2
-        zmax = int(np.ceil((za+dr)/dx)) + n//2
-        #handle edges
-        xmin = max([xmin,0])
-        xmax = min([xmax,n])
-        ymin = max([ymin,0])
-        ymax = min([ymax,n])
-        zmin = max([zmin,0])
-        zmax = min([zmax,n])
-        #now lets create a slice object for convenience
-        slc = np.s_[xmin:xmax,ymin:ymax,zmin:zmax]
-        nx = xmax-xmin
-        ny = ymax-ymin
-        nz = zmax-zmin
-        #now lets create a column stack of coordinates for the cropped grid
-        xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
-        #now calculate all distances from the atom to the minigrid points
-        dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
-        #now, add any grid points within dr of atom to the env grid
-        #first, create a dummy array to hold booleans of size dist.size
-        tmpenv = np.zeros(dist.shape,dtype=np.bool_)
-        #now, any elements that have a dist less than dr make true
-        tmpenv[dist<=dr] = True
-        #now reshape for inserting into env
-        tmpenv = tmpenv.reshape(nx,ny,nz)
-        particle[slc] += tmpenv
+    # from scipy import spatial
+    # shift = np.ones(3)*dx/2.
+    # particle = np.zeros_like(support)
+    # for i in range(pdb.natoms):
+    #     if len(pdb.atomname[i])==1:
+    #         atomname = pdb.atomname[i][0].upper()
+    #     else:
+    #         atomname = pdb.atomname[i][0].upper() + pdb.atomname[i][1].lower()
+    #     try:
+    #         dr = saxs.radius[atomname]
+    #     except:
+    #         try:
+    #             dr = saxs.radius[atomname[0]]
+    #         except:
+    #             dr = saxs.radius['C']
+    #     xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
+    #     xmin = int(np.floor((xa-dr)/dx)) + n//2
+    #     xmax = int(np.ceil((xa+dr)/dx)) + n//2
+    #     ymin = int(np.floor((ya-dr)/dx)) + n//2
+    #     ymax = int(np.ceil((ya+dr)/dx)) + n//2
+    #     zmin = int(np.floor((za-dr)/dx)) + n//2
+    #     zmax = int(np.ceil((za+dr)/dx)) + n//2
+    #     #handle edges
+    #     xmin = max([xmin,0])
+    #     xmax = min([xmax,n])
+    #     ymin = max([ymin,0])
+    #     ymax = min([ymax,n])
+    #     zmin = max([zmin,0])
+    #     zmax = min([zmax,n])
+    #     #now lets create a slice object for convenience
+    #     slc = np.s_[xmin:xmax,ymin:ymax,zmin:zmax]
+    #     nx = xmax-xmin
+    #     ny = ymax-ymin
+    #     nz = zmax-zmin
+    #     #now lets create a column stack of coordinates for the cropped grid
+    #     xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
+    #     #now calculate all distances from the atom to the minigrid points
+    #     dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
+    #     #now, add any grid points within dr of atom to the env grid
+    #     #first, create a dummy array to hold booleans of size dist.size
+    #     tmpenv = np.zeros(dist.shape,dtype=np.bool_)
+    #     #now, any elements that have a dist less than dr make true
+    #     tmpenv[dist<=dr] = True
+    #     #now reshape for inserting into env
+    #     tmpenv = tmpenv.reshape(nx,ny,nz)
+    #     particle[slc] += tmpenv
 
-    threshold = 0.0001
+    # threshold = 0.0001
 
-    radii = np.zeros(pdb.natoms)
-    for i in range(pdb.natoms):
-        if len(pdb.atomname[i])==1:
-            atomname = pdb.atomname[i][0].upper()
-        else:
-            atomname = pdb.atomname[i][0].upper() + pdb.atomname[i][1].lower()
-        try:
-            dr = saxs.radius[atomname]
-        except:
-            try:
-                dr = saxs.radius[atomname[0]]
-            except:
-                dr = saxs.radius['C']
-        radii[i] = dr
+    # radii = np.zeros(pdb.natoms)
+    # for i in range(pdb.natoms):
+    #     if len(pdb.atomname[i])==1:
+    #         atomname = pdb.atomname[i][0].upper()
+    #     else:
+    #         atomname = pdb.atomname[i][0].upper() + pdb.atomname[i][1].lower()
+    #     try:
+    #         dr = saxs.radius[atomname]
+    #     except:
+    #         try:
+    #             dr = saxs.radius[atomname[0]]
+    #         except:
+    #             dr = saxs.radius['C']
+    #     radii[i] = dr
 
-    radii += 0.0
-    solv, supportsolv = saxs.pdb2map_fastgauss(solvpdb,x=x,y=y,z=z,resolution=radii,ignore_waters=args.ignore_waters)
-    sigma1 = 0.5
-    solv1 = solv #ndimage.gaussian_filter(solv,sigma=sigma1,mode='wrap')
-    particle = np.zeros_like(support)
-    particle[solv1>threshold*rho.max()] = True
+    # radii += 0.0
+    # solv, supportsolv = saxs.pdb2map_fastgauss(solvpdb,x=x,y=y,z=z,resolution=radii,ignore_waters=args.ignore_waters)
+    # sigma1 = 0.5
+    # solv1 = solv #ndimage.gaussian_filter(solv,sigma=sigma1,mode='wrap')
+    # particle = np.zeros_like(support)
+    # particle[solv1>threshold*rho.max()] = True
 
-    shell_thickness = 4.0
-    # shell_radii = radii * shell_thickness/2.
-    # solv2, supportsolv = saxs.pdb2map_fastgauss(solvpdb,x=x,y=y,z=z,resolution=shell_radii,ignore_waters=args.ignore_waters)
-    sigma2 = 1.0
-    solv2 = ndimage.gaussian_filter(solv,sigma=sigma2,mode='wrap')
-    shell = np.zeros_like(support)
-    shell[solv1>threshold*.0001*rho.max()] = True
-    shell[particle] = False
+    # shell_thickness = 4.0
+    # # shell_radii = radii * shell_thickness/2.
+    # # solv2, supportsolv = saxs.pdb2map_fastgauss(solvpdb,x=x,y=y,z=z,resolution=shell_radii,ignore_waters=args.ignore_waters)
+    # sigma2 = 1.0
+    # solv2 = ndimage.gaussian_filter(solv,sigma=sigma2,mode='wrap')
+    # shell = np.zeros_like(support)
+    # shell[solv1>threshold*.0001*rho.max()] = True
+    # shell[particle] = False
 
-    saxs.write_mrc(particle*1.0,side,'particle.mrc')
-    saxs.write_mrc(shell*1.0,side,'shell.mrc')
+    # saxs.write_mrc(particle*1.0,side,'particle.mrc')
+    # saxs.write_mrc(shell*1.0,side,'shell.mrc')
 
-    # solv = np.zeros_like(rho)
+    solv = np.zeros_like(rho)
     rho_s = 0.334
     # threshold = 1e-6
     # solv[rho>threshold*rho.max()] = rho_s
     # solv[particle] = rho_s
-    solv *= rho_s / np.mean(solv[particle])
+    # solv *= rho_s / np.mean(solv[particle])
     # particle = np.zeros_like(support)
     # particle[solv>1e-8] = True
     # shell_thickness = 3.0
@@ -308,8 +308,8 @@ if __name__ == "__main__":
     # shell = ndimage.binary_dilation(particle,iterations=iterations)
     # shell[particle] = False
     diff = rho - solv
-    drho = 0.10 #contrast of the hydration shell
-    diff[shell] += rho_s * drho
+    # drho = 0.10 #contrast of the hydration shell
+    # diff[shell] += rho_s * drho
     F = np.fft.fftn(diff)
     F[F.real==0] = 1e-16
     I3D = saxs.abs2(F)
@@ -320,55 +320,62 @@ if __name__ == "__main__":
     # plt.plot(qbinsc, Imean, '-',label='denss (shell drho = %.2f)'%drho)
     plt.plot(qbinsc, Imean, '-',label='denss (rho_s = %.3f)'%rho_s)
 
-    # solv = np.zeros_like(rho)
-    rho_s = 0.350
-    # threshold = 1e-6
-    # solv[rho>threshold*rho.max()] = rho_s
-    # solv[particle] = rho_s
-    solv *= rho_s / np.mean(solv[particle])
-    # particle = np.zeros_like(support)
-    # particle[solv>1e-8] = True
-    # shell_thickness = 3.0
-    # iterations = int(shell_thickness/dx)+1
-    # shell = ndimage.binary_dilation(particle,iterations=iterations)
-    # shell[particle] = False
-    diff = rho - solv
-    drho = 0.10 #contrast of the hydration shell
-    diff[shell] += rho_s * drho
-    F = np.fft.fftn(diff)
-    F[F.real==0] = 1e-16
-    I3D = saxs.abs2(F)
-    Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
-    Imean *= I0 / Imean[0]
-    # plt.plot(qbinsc, Imean, '-',label='denss (thresh = %.4e*max)'%threshold)
-    # plt.plot(qbinsc, Imean, '-',label='denss (shell iter = %d)'%iterations)
-    # plt.plot(qbinsc, Imean, '-',label='denss (shell drho = %.2f)'%drho)
-    plt.plot(qbinsc, Imean, '-',label='denss (rho_s = %.3f)'%rho_s)
+    #this multiplies the intensity by the form factor of a cube to correct for the discrete lattice
+    #according to Schmidt-Rohr, J Appl Cryst 2007
+    I3D_mod = I3D * (np.sinc(qx/2/(np.pi)) * np.sinc(qy/2/(np.pi)) * np.sinc(qz/2/(np.pi)))**2
+    Imean_mod = saxs.mybinmean(I3D_mod.ravel(), qblravel, DENSS_GPU=False)
+    Imean_mod *= I0 / Imean_mod[0]
+    plt.plot(qbinsc, Imean_mod, '.-',label='modified by sinc')
 
-    # solv = np.zeros_like(rho)
-    rho_s = 0.380
-    # threshold = 1e-6
-    # solv[rho>threshold*rho.max()] = rho_s
-    # solv[particle] = rho_s
-    solv *= rho_s / np.mean(solv[particle])
-    # particle = np.zeros_like(support)
-    # particle[solv>1e-8] = True
-    # shell_thickness = 3.0
-    # iterations = int(shell_thickness/dx)+1
-    # shell = ndimage.binary_dilation(particle,iterations=iterations)
-    # shell[particle] = False
-    diff = rho - solv
-    drho = 0.10 #contrast of the hydration shell
-    diff[shell] += rho_s * drho
-    F = np.fft.fftn(diff)
-    F[F.real==0] = 1e-16
-    I3D = saxs.abs2(F)
-    Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
-    Imean *= I0 / Imean[0]
-    # plt.plot(qbinsc, Imean, '-',label='denss (thresh = %.4e*max)'%threshold)
-    # plt.plot(qbinsc, Imean, '-',label='denss (shell iter = %d)'%iterations)
-    # plt.plot(qbinsc, Imean, '-',label='denss (shell drho = %.2f)'%drho)
-    plt.plot(qbinsc, Imean, '-',label='denss (rho_s = %.3f)'%rho_s)
+    # # solv = np.zeros_like(rho)
+    # rho_s = 0.350
+    # # threshold = 1e-6
+    # # solv[rho>threshold*rho.max()] = rho_s
+    # # solv[particle] = rho_s
+    # solv *= rho_s / np.mean(solv[particle])
+    # # particle = np.zeros_like(support)
+    # # particle[solv>1e-8] = True
+    # # shell_thickness = 3.0
+    # # iterations = int(shell_thickness/dx)+1
+    # # shell = ndimage.binary_dilation(particle,iterations=iterations)
+    # # shell[particle] = False
+    # diff = rho - solv
+    # drho = 0.10 #contrast of the hydration shell
+    # diff[shell] += rho_s * drho
+    # F = np.fft.fftn(diff)
+    # F[F.real==0] = 1e-16
+    # I3D = saxs.abs2(F)
+    # Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
+    # Imean *= I0 / Imean[0]
+    # # plt.plot(qbinsc, Imean, '-',label='denss (thresh = %.4e*max)'%threshold)
+    # # plt.plot(qbinsc, Imean, '-',label='denss (shell iter = %d)'%iterations)
+    # # plt.plot(qbinsc, Imean, '-',label='denss (shell drho = %.2f)'%drho)
+    # plt.plot(qbinsc, Imean, '-',label='denss (rho_s = %.3f)'%rho_s)
+
+    # # solv = np.zeros_like(rho)
+    # rho_s = 0.380
+    # # threshold = 1e-6
+    # # solv[rho>threshold*rho.max()] = rho_s
+    # # solv[particle] = rho_s
+    # solv *= rho_s / np.mean(solv[particle])
+    # # particle = np.zeros_like(support)
+    # # particle[solv>1e-8] = True
+    # # shell_thickness = 3.0
+    # # iterations = int(shell_thickness/dx)+1
+    # # shell = ndimage.binary_dilation(particle,iterations=iterations)
+    # # shell[particle] = False
+    # diff = rho - solv
+    # drho = 0.10 #contrast of the hydration shell
+    # diff[shell] += rho_s * drho
+    # F = np.fft.fftn(diff)
+    # F[F.real==0] = 1e-16
+    # I3D = saxs.abs2(F)
+    # Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
+    # Imean *= I0 / Imean[0]
+    # # plt.plot(qbinsc, Imean, '-',label='denss (thresh = %.4e*max)'%threshold)
+    # # plt.plot(qbinsc, Imean, '-',label='denss (shell iter = %d)'%iterations)
+    # # plt.plot(qbinsc, Imean, '-',label='denss (shell drho = %.2f)'%drho)
+    # plt.plot(qbinsc, Imean, '-',label='denss (rho_s = %.3f)'%rho_s)
 
     plt.semilogy()
     plt.xlim([-.04,1.8])
