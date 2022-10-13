@@ -259,29 +259,29 @@ if __name__ == "__main__":
     #     tmpenv = tmpenv.reshape(nx,ny,nz)
     #     particle[slc] += tmpenv
 
-    # threshold = 0.0001
+    threshold = 0.0001
 
-    # radii = np.zeros(pdb.natoms)
-    # for i in range(pdb.natoms):
-    #     if len(pdb.atomname[i])==1:
-    #         atomname = pdb.atomname[i][0].upper()
-    #     else:
-    #         atomname = pdb.atomname[i][0].upper() + pdb.atomname[i][1].lower()
-    #     try:
-    #         dr = saxs.radius[atomname]
-    #     except:
-    #         try:
-    #             dr = saxs.radius[atomname[0]]
-    #         except:
-    #             dr = saxs.radius['C']
-    #     radii[i] = dr
+    radii = np.zeros(pdb.natoms)
+    for i in range(pdb.natoms):
+        if len(pdb.atomname[i])==1:
+            atomname = pdb.atomname[i][0].upper()
+        else:
+            atomname = pdb.atomname[i][0].upper() + pdb.atomname[i][1].lower()
+        try:
+            dr = saxs.radius[atomname]
+        except:
+            try:
+                dr = saxs.radius[atomname[0]]
+            except:
+                dr = saxs.radius['C']
+        radii[i] = dr
 
-    # radii += 0.0
-    # solv, supportsolv = saxs.pdb2map_fastgauss(solvpdb,x=x,y=y,z=z,resolution=radii,ignore_waters=args.ignore_waters)
-    # sigma1 = 0.5
-    # solv1 = solv #ndimage.gaussian_filter(solv,sigma=sigma1,mode='wrap')
-    # particle = np.zeros_like(support)
-    # particle[solv1>threshold*rho.max()] = True
+    radii += 0.0
+    solv, supportsolv = saxs.pdb2map_fastgauss(solvpdb,x=x,y=y,z=z,resolution=radii,ignore_waters=args.ignore_waters)
+    sigma1 = 0.5
+    solv1 = solv #ndimage.gaussian_filter(solv,sigma=sigma1,mode='wrap')
+    particle = np.zeros_like(support)
+    particle[solv1>threshold*rho.max()] = True
 
     # shell_thickness = 4.0
     # # shell_radii = radii * shell_thickness/2.
@@ -292,24 +292,21 @@ if __name__ == "__main__":
     # shell[solv1>threshold*.0001*rho.max()] = True
     # shell[particle] = False
 
-    # saxs.write_mrc(particle*1.0,side,'particle.mrc')
-    # saxs.write_mrc(shell*1.0,side,'shell.mrc')
-
-    solv = np.zeros_like(rho)
+    # solv = np.zeros_like(rho)
     rho_s = 0.334
     # threshold = 1e-6
     # solv[rho>threshold*rho.max()] = rho_s
-    # solv[particle] = rho_s
+    solv[particle] = rho_s
     # solv *= rho_s / np.mean(solv[particle])
     # particle = np.zeros_like(support)
     # particle[solv>1e-8] = True
-    # shell_thickness = 3.0
-    # iterations = int(shell_thickness/dx)+1
-    # shell = ndimage.binary_dilation(particle,iterations=iterations)
-    # shell[particle] = False
+    shell_thickness = 3.0
+    iterations = int(shell_thickness/dx)+1
+    shell = ndimage.binary_dilation(particle,iterations=iterations)
+    shell[particle] = False
     diff = rho - solv
-    # drho = 0.10 #contrast of the hydration shell
-    # diff[shell] += rho_s * drho
+    drho = 0.04 #contrast of the hydration shell
+    diff[shell] += rho_s * drho
     F = np.fft.fftn(diff)
     F[F.real==0] = 1e-16
     I3D = saxs.abs2(F)
@@ -319,6 +316,9 @@ if __name__ == "__main__":
     # plt.plot(qbinsc, Imean, '-',label='denss (shell iter = %d)'%iterations)
     # plt.plot(qbinsc, Imean, '-',label='denss (shell drho = %.2f)'%drho)
     plt.plot(qbinsc, Imean, '-',label='denss (rho_s = %.3f)'%rho_s)
+
+    saxs.write_mrc(particle*1.0,side,'particle.mrc')
+    saxs.write_mrc(shell*1.0,side,'shell.mrc')
 
     #this multiplies the intensity by the form factor of a cube to correct for the discrete lattice
     #according to Schmidt-Rohr, J Appl Cryst 2007
