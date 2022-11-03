@@ -101,6 +101,7 @@ if __name__ == "__main__":
     #create an array labeling each voxel according to which qbin it belongs
     qbin_labels = np.searchsorted(qbins,qr,"right")
     qbin_labels -= 1
+    qblravel = qbin_labels.ravel()
 
     #assume rho is given as electron density, not electron count
     #convert from density to electron count for FFT calculation
@@ -111,8 +112,9 @@ if __name__ == "__main__":
     F[np.abs(F)==0] = 1e-16
     # I3D = np.abs(F)**2
     # Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
-    I3D = saxs.myabs(F, DENSS_GPU=False)**2
-    Imean = saxs.mybinmean(I3D, qbin_labels, DENSS_GPU=False)
+    # I3D = saxs.myabs(F, DENSS_GPU=False)**2
+    I3D = saxs.abs2(F)
+    Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
 
     if args.plot: plt.plot(qbinsc, Imean, label='Default dq = %.4f' % (2*np.pi/side))
     print('Default dq = %.4f' % (2*np.pi/side))
