@@ -42,8 +42,9 @@ import saxstats.saxstats as saxs
 parser = argparse.ArgumentParser(description="A tool for fitting solution scattering data with smooth function based on Moore's algorithm for fitting a trigonometric series.", formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
 parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
-parser.add_argument("-d", "--dmax", default=None, type=float, help="Estimated maximum dimension")
+parser.add_argument("-d", "--dmax", default=None, type=float, help="Estimated maximum dimension in angstroms (if q values are in 1/nm, use the -u option to convert).")
 parser.add_argument("-a", "--alpha", default=None, type=float, help="Set alpha smoothing factor")
+parser.add_argument("-u", "--units", default="a", type=str, help="Angular units (\"a\" [1/angstrom] or \"nm\" [1/nanometer]; default=\"a\"). If nm, will convert output to angstroms.")
 parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use")
 parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use")
 parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional)")
@@ -99,6 +100,9 @@ if __name__ == "__main__":
     idx = np.where((Iq[:,1]!=0)&(Iq[:,2]!=0))
     Iq = Iq[idx]
     nes = args.nes
+
+    if args.units == "nm":
+        Iq[:,0] *= 0.1
 
     if args.n1 is None:
         n1 = 0
@@ -245,10 +249,24 @@ if __name__ == "__main__":
 
 
     if args.plot:
+        #first try generating a figure
+        #if that fails, just exit, but still save the results in a file
+        try:
+            fig = plt.figure(0, figsize=(12,6))
+        except Exception as e:
+            print("Matplotlib failed to create figure. GUI mode disabled.")
+            print("Error: %s"%e)
+            args.plot = False
 
-        #fig, (axI, axP) = plt.subplots(1, 2, figsize=(12,6))
-        fig = plt.figure(0, figsize=(12,6))
-        fig.canvas.set_window_title(output)
+    if args.plot:
+        try:
+            #this command changed in matplotlib v3.6
+            fig.canvas.manager.set_window_title(output)
+        except:
+            try:
+                fig.canvas.set_window_title(output)
+            except:
+                pass
         fig.suptitle(output)
         axI = plt.subplot2grid((3,2), (0,0),rowspan=2)
         axR = plt.subplot2grid((3,2), (2,0),sharex=axI)
