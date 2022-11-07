@@ -100,26 +100,27 @@ if __name__ == "__main__":
 
     xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
 
+    if args.resolution is None:
+        #for slow mode, set resolution to be zero as this will then just
+        #be equivalent to no B-factor, using just the atomic form factor
+        resolution = 3*dx
+    else:
+        resolution = args.resolution
+
     if args.mode == "fast":
-        #rho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution,mode="fast",eps=1e-6)
-        if args.resolution is None:
-            #if no resolution is given, set it to be 3x the voxel size
-            resolution = 3*dx
-        else:
-            resolution = args.resolution
         rho = saxs.pdb2map_fastgauss(pdb,x=x,y=y,z=z,
                                     sigma=resolution,
                                     r=resolution*2,
                                     ignore_waters=args.ignore_waters)
     elif args.mode == "slow":
         #this slow mode uses the 5-term Gaussian with Cromer-Mann coefficients
-        if args.resolution is None:
-            #for slow mode, set resolution to be zero as this will then just
-            #be equivalent to no B-factor, using just the atomic form factor
-            resolution = 3*dx
-        else:
-            resolution = args.resolution
         rho, support = saxs.pdb2map_multigauss(pdb,x=x,y=y,z=z,resolution=resolution,ignore_waters=args.ignore_waters)
+        saxs.write_mrc(rho, side, "6lyz_rho_s256n256r1.mrc")
+        saxs.write_mrc(support*1.0, side, "6lyz_rho_s256n256r1_support.mrc")
+    elif args.mode == "read":
+        rho, side = saxs.read_mrc("6lyz_rho_s256n256r1.mrc")
+        support, side = saxs.read_mrc("6lyz_rho_s256n256r1_support.mrc")
+        support = support.astype(bool)
     else:
         print("Note: Using FFT method results in severe truncation ripples in map.")
         print("This will also run a quick refinement of phases to attempt to clean this up.")
@@ -127,10 +128,10 @@ if __name__ == "__main__":
         rho = saxs.denss_3DFs(rho_start=rho,dmax=side,voxel=dx,oversampling=1.,shrinkwrap=False,support=support)
     print()
 
-
     #copy particle pdb
     import copy
     import matplotlib.pyplot as plt
+    from matplotlib import gridspec
     from scipy import ndimage
     solvpdb = copy.deepcopy(pdb)
     #change all atom types O, should update to water form factor in future
@@ -168,8 +169,13 @@ if __name__ == "__main__":
     qbin_labels -= 1
     qblravel = qbin_labels.ravel()
 
+    fig = plt.figure(figsize=(8, 6))
+    gs = gridspec.GridSpec(2, 1, height_ratios=[2, 1])
+    ax0 = plt.subplot(gs[0])
+    ax1 = plt.subplot(gs[1])
+
     data = np.loadtxt('SASDCK8.dat',skiprows=12)
-    plt.plot(data[:,0],data[:,1],'k.',label='data')
+    ax0.plot(data[:,0],data[:,1],'k.',label='data')
     I0 = 6.38033e+02 #data[0,1]
 
     # foxs = np.loadtxt('6lyz.dat')
@@ -185,11 +191,14 @@ if __name__ == "__main__":
     #6lyz11.abs has been fit to the SASDCK8.dat data
     crysol2 = np.loadtxt('6lyz11.abs',skiprows=1)
     crysol2[:,1] *= I0 / crysol2[0,1]
-    plt.plot(crysol2[:,0],crysol2[:,1],label='crysol (optimized)')
+    ax0.plot(crysol2[:,0],crysol2[:,1],'b-',label='crysol (optimized)')
+    ax1.plot(data[:,0], data[:,0]*0, 'k--')
+    resid = (data[:,1] - np.interp(data[:,0],crysol2[:,0],crysol2[:,1]))/data[:,2]
+    ax1.plot(data[:,0], resid, 'b-')
 
     debye = np.loadtxt('6lyz.pdb2sas.dat')
     debye[:,1] *= I0 / debye[0,1]
-    plt.plot(debye[:,0],debye[:,1],label='debye (in vacuo)')
+    # ax0.plot(debye[:,0],debye[:,1],label='debye (in vacuo)')
 
     # F = np.fft.fftn(rho)
     # I3D = saxs.abs2(F)
@@ -259,29 +268,32 @@ if __name__ == "__main__":
     #     tmpenv = tmpenv.reshape(nx,ny,nz)
     #     particle[slc] += tmpenv
 
-    threshold = 0.0001
+    threshold = 1e-4
+    threshold_for_exvol = 1e-5
+    threshold_for_shell = 1e-6
 
-    radii = np.zeros(pdb.natoms)
-    for i in range(pdb.natoms):
-        if len(pdb.atomname[i])==1:
-            atomname = pdb.atomname[i][0].upper()
-        else:
-            atomname = pdb.atomname[i][0].upper() + pdb.atomname[i][1].lower()
-        try:
-            dr = saxs.radius[atomname]
-        except:
-            try:
-                dr = saxs.radius[atomname[0]]
-            except:
-                dr = saxs.radius['C']
-        radii[i] = dr
+    # radii = np.zeros(pdb.natoms)
+    # for i in range(pdb.natoms):
+    #     if len(pdb.atomname[i])==1:
+    #         atomname = pdb.atomname[i][0].upper()
+    #     else:
+    #         atomname = pdb.atomname[i][0].upper() + pdb.atomname[i][1].lower()
+    #     try:
+    #         dr = saxs.radius[atomname]
+    #     except:
+    #         try:
+    #             dr = saxs.radius[atomname[0]]
+    #         except:
+    #             dr = saxs.radius['C']
+    #     radii[i] = dr
 
-    radii += 0.0
-    solv, supportsolv = saxs.pdb2map_fastgauss(solvpdb,x=x,y=y,z=z,resolution=radii,ignore_waters=args.ignore_waters)
-    sigma1 = 0.5
-    solv1 = solv #ndimage.gaussian_filter(solv,sigma=sigma1,mode='wrap')
+    # radii += 0.0
+    # solv, supportsolv = saxs.pdb2map_fastgauss(solvpdb,x=x,y=y,z=z,resolution=radii,ignore_waters=args.ignore_waters)
+    # sigma1 = 0.5
+    # solv1 = solv #ndimage.gaussian_filter(solv,sigma=sigma1,mode='wrap')
     particle = np.zeros_like(support)
-    particle[solv1>threshold*rho.max()] = True
+    # particle[solv1>threshold*rho.max()] = True
+    particle[rho>threshold*rho.max()] = True
 
     # shell_thickness = 4.0
     # # shell_radii = radii * shell_thickness/2.
@@ -292,101 +304,79 @@ if __name__ == "__main__":
     # shell[solv1>threshold*.0001*rho.max()] = True
     # shell[particle] = False
 
-    # solv = np.zeros_like(rho)
-    rho_s = 0.334
-    # threshold = 1e-6
-    # solv[rho>threshold*rho.max()] = rho_s
-    solv[particle] = rho_s
-    # solv *= rho_s / np.mean(solv[particle])
-    # particle = np.zeros_like(support)
-    # particle[solv>1e-8] = True
-    shell_thickness = 3.0
-    iterations = int(shell_thickness/dx)+1
-    shell = ndimage.binary_dilation(particle,iterations=iterations)
-    shell[particle] = False
+    rho_s = 0.334 * dV
+    sigma = 1.0
+    solv = ndimage.gaussian_filter(particle*1.0,sigma=sigma,mode='wrap')
+    solv *= rho_s
     diff = rho - solv
-    drho = 0.04 #contrast of the hydration shell
-    diff[shell] += rho_s * drho
-    F = np.fft.fftn(diff)
+    # drho = 0.04 #contrast of the hydration shell
+    F = saxs.myfftn(diff)
     F[F.real==0] = 1e-16
     I3D = saxs.abs2(F)
     Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
     Imean *= I0 / Imean[0]
-    # plt.plot(qbinsc, Imean, '-',label='denss (thresh = %.4e*max)'%threshold)
-    # plt.plot(qbinsc, Imean, '-',label='denss (shell iter = %d)'%iterations)
-    # plt.plot(qbinsc, Imean, '-',label='denss (shell drho = %.2f)'%drho)
-    plt.plot(qbinsc, Imean, '-',label='denss (rho_s = %.3f)'%rho_s)
-
-    saxs.write_mrc(particle*1.0,side,'particle.mrc')
-    saxs.write_mrc(shell*1.0,side,'shell.mrc')
+    ax0.plot(qbinsc, Imean, 'r-',label='denss (rho_s = %.3f)'%rho_s)
+    resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
+    ax1.plot(data[:,0], resid, 'r-')
 
     #this multiplies the intensity by the form factor of a cube to correct for the discrete lattice
     #according to Schmidt-Rohr, J Appl Cryst 2007
     I3D_mod = I3D * (np.sinc(qx/2/(np.pi)) * np.sinc(qy/2/(np.pi)) * np.sinc(qz/2/(np.pi)))**2
     Imean_mod = saxs.mybinmean(I3D_mod.ravel(), qblravel, DENSS_GPU=False)
     Imean_mod *= I0 / Imean_mod[0]
-    plt.plot(qbinsc, Imean_mod, '.-',label='modified by sinc')
+    # plt.plot(qbinsc, Imean_mod, '.-',label='modified by sinc')
 
-    # # solv = np.zeros_like(rho)
-    # rho_s = 0.350
-    # # threshold = 1e-6
-    # # solv[rho>threshold*rho.max()] = rho_s
-    # # solv[particle] = rho_s
-    # solv *= rho_s / np.mean(solv[particle])
-    # # particle = np.zeros_like(support)
-    # # particle[solv>1e-8] = True
-    # # shell_thickness = 3.0
-    # # iterations = int(shell_thickness/dx)+1
-    # # shell = ndimage.binary_dilation(particle,iterations=iterations)
-    # # shell[particle] = False
-    # diff = rho - solv
-    # drho = 0.10 #contrast of the hydration shell
-    # diff[shell] += rho_s * drho
-    # F = np.fft.fftn(diff)
-    # F[F.real==0] = 1e-16
-    # I3D = saxs.abs2(F)
-    # Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
-    # Imean *= I0 / Imean[0]
-    # # plt.plot(qbinsc, Imean, '-',label='denss (thresh = %.4e*max)'%threshold)
-    # # plt.plot(qbinsc, Imean, '-',label='denss (shell iter = %d)'%iterations)
-    # # plt.plot(qbinsc, Imean, '-',label='denss (shell drho = %.2f)'%drho)
-    # plt.plot(qbinsc, Imean, '-',label='denss (rho_s = %.3f)'%rho_s)
+    greens = plt.get_cmap('Greens')
+    drho = np.linspace(0.055,0.065,3) * dV
+    for i in range(len(drho)):
+        rho_s = 0.334 * dV
+        shell_thickness = 1.0
+        iterations = int(shell_thickness/dx)+1
+        particle_for_shell = np.zeros_like(support)
+        particle_for_shell[rho>threshold_for_shell*rho.max()] = True
+        shell_idx = ndimage.binary_dilation(particle_for_shell,iterations=iterations)
+        shell_idx[particle_for_shell] = False
+        sigma_shell = 1.0
+        shell = ndimage.gaussian_filter(shell_idx*1.0,sigma=sigma_shell,mode='wrap')
 
-    # # solv = np.zeros_like(rho)
-    # rho_s = 0.380
-    # # threshold = 1e-6
-    # # solv[rho>threshold*rho.max()] = rho_s
-    # # solv[particle] = rho_s
-    # solv *= rho_s / np.mean(solv[particle])
-    # # particle = np.zeros_like(support)
-    # # particle[solv>1e-8] = True
-    # # shell_thickness = 3.0
-    # # iterations = int(shell_thickness/dx)+1
-    # # shell = ndimage.binary_dilation(particle,iterations=iterations)
-    # # shell[particle] = False
-    # diff = rho - solv
-    # drho = 0.10 #contrast of the hydration shell
-    # diff[shell] += rho_s * drho
-    # F = np.fft.fftn(diff)
-    # F[F.real==0] = 1e-16
-    # I3D = saxs.abs2(F)
-    # Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
-    # Imean *= I0 / Imean[0]
-    # # plt.plot(qbinsc, Imean, '-',label='denss (thresh = %.4e*max)'%threshold)
-    # # plt.plot(qbinsc, Imean, '-',label='denss (shell iter = %d)'%iterations)
-    # # plt.plot(qbinsc, Imean, '-',label='denss (shell drho = %.2f)'%drho)
-    # plt.plot(qbinsc, Imean, '-',label='denss (rho_s = %.3f)'%rho_s)
+        #higher shell contrast amount seems to improve high q fit, make low q fit worse
+        # drho = 0.05 * dV #contrast of the hydration shell
+        shell *= drho[i]
+        particle_for_exvol = np.zeros_like(support)
+        particle_for_exvol[rho>threshold_for_exvol*rho.max()] = True
+        shell[particle_for_exvol] = 0
+        #larger sigma makes low q worse, high q better
+        sigma_exvol = 1.0
+        exvol = ndimage.gaussian_filter(particle*1.0,sigma=sigma_exvol,mode='wrap')
+        exvol *= rho_s
+        #add hydration shell to protein
+        rho_with_shell = rho + shell
+        #subtract excluded solvent
+        diff = rho_with_shell - exvol
+        F = saxs.myfftn(diff)
+        F[F.real==0] = 1e-16
+        I3D = saxs.abs2(F)
+        Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
+        Imean *= I0 / Imean[0]
+        c = greens(drho[i]/drho.max())
+        ax0.plot(qbinsc, Imean, '-',c=c,label='denss (rho_s=%.3f, drho=%.3f)'%(rho_s,drho[i]))
+        resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
+        ax1.plot(data[:,0], resid, '-', c=c)
 
-    plt.semilogy()
-    plt.xlim([-.04,1.8])
-    plt.ylim([0.3,I0*1.1])
-    plt.xlabel(r"q ($\AA^{-1}$)")
-    plt.ylabel("I(q)")
-    plt.legend()
-    plt.title('%s: side=%.2f, N=%d, dx=%.2f, res=%.1f'%(basename,side,n,dx,resolution))
+    # saxs.write_mrc(particle*1.0,side,'particle.mrc')
+    saxs.write_mrc(shell*1.0,side,'shell.mrc')
+
+    ax0.semilogy()
+    ax0.set_xlim([.03,1.8])
+    ax1.set_xlim([.03,1.8])
+    ax0.set_ylim([0.3,I0*1.1])
+    ax1.set_xlabel(r"q ($\AA^{-1}$)")
+    ax0.set_ylabel("I(q)")
+    ax1.set_ylabel(r"$\Delta I / \sigma$")
+    ax0.legend()
+    # fig.set_title('%s: side=%.2f, N=%d, dx=%.2f, res=%.1f'%(basename,side,n,dx,resolution))
+    plt.savefig('fits.png',dpi=300)
     plt.show()
-
-    exit()
 
 
     # #subtract solvent density value
@@ -427,6 +417,7 @@ if __name__ == "__main__":
 
     #write output
     saxs.write_mrc(rho,side,output+".mrc")
+    saxs.write_mrc(diff,side,output+"_diff.mrc")
     #saxs.write_mrc(support*1.,side,output+"_support.mrc")
 
 

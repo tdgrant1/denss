@@ -1193,37 +1193,51 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         Imean = cp.array(Imean)
 
 
-    #### assume the density of the atomic model is correct and
-    # attempt to model the solvent density, resetting the model
-    # density each step
-    fname_nopath = os.path.basename('6lyz.pdb')
-    basename, ext = os.path.splitext(fname_nopath)
-    pdb = PDB(fname_nopath)
-    pdboutput = basename+"_centered.pdb"
-    pdb.coords -= pdb.coords.mean(axis=0)
-    pdb.write(filename=pdboutput)
-    resolution = 2.0
-    ignore_waters = True
-    pdb_rho, pdb_idx = pdb2map_multigauss(pdb,x=x,y=y,z=z,cutoff=10,resolution=resolution,ignore_waters=ignore_waters)
-    pdb_idx *= False
-    pdb_idx[pdb_rho>1e-3*pdb_rho.max()] = True
+    # #### assume the density of the atomic model is correct and
+    # # attempt to model the solvent density, resetting the model
+    # # density each step
+    # fname_nopath = os.path.basename('6lyz.pdb')
+    # basename, ext = os.path.splitext(fname_nopath)
+    # pdb = PDB(fname_nopath)
+    # pdboutput = basename+"_centered.pdb"
+    # pdb.coords -= pdb.coords.mean(axis=0)
+    # pdb.write(filename=pdboutput)
+    # resolution = 2.0
+    # ignore_waters = True
+    # pdb_rho, pdb_idx = pdb2map_multigauss(pdb,x=x,y=y,z=z,cutoff=10,resolution=resolution,ignore_waters=ignore_waters)
+    # pdb_idx *= False
+    # pdb_idx[pdb_rho>1e-3*pdb_rho.max()] = True
 
-    #now, dilate pdb_idx to give us the support, which gives some room for a solvent shell
-    #start with a 5 angstrom shell
-    dilation_width = 25.
-    dilation_width_in_pixels = int(dilation_width/dx)+1
-    dwpix = dilation_width_in_pixels
-    print(dwpix)
-    # support = ndimage.binary_dilation(pdb_idx,np.ones((dwpix,dwpix,dwpix)))
-    #turn shrinkwrap off for now
+    # #now, dilate pdb_idx to give us the support, which gives some room for a solvent shell
+    # #start with a 5 angstrom shell
+    # dilation_width = 25.
+    # dilation_width_in_pixels = int(dilation_width/dx)+1
+    # dwpix = dilation_width_in_pixels
+    # print(dwpix)
+    # # support = ndimage.binary_dilation(pdb_idx,np.ones((dwpix,dwpix,dwpix)))
+    # #turn shrinkwrap off for now
+    # shrinkwrap = False
+    # print("shrinkwrap disabled")
+
+    # #for our purposes here, rho_solv is the excluded solvent density
+    # #so rho = pdb_rho - rho_solv
+    # #start with excluded solvent being random
+    # rho_solv = np.copy(rho)
+    # rho = pdb_rho - rho_solv
+
+    #attempt to restrain to model solvent
+    #start with estimated protein density after excluded volume subtraction
+    protein, side1 = read_mrc('6lyz_pdb_diff_copy.mrc')
+    protein *= dV
+    rho = np.copy(protein)
+    support = np.zeros(rho.shape, dtype=bool)
+    support[np.abs(rho)>1e-8*rho.max()] = True
     shrinkwrap = False
-    print("shrinkwrap disabled")
+    #make a support just for the protein region to restrain each step
+    protein_idx = np.zeros_like(support)
+    protein_idx[rho>0.001*rho.max()] = True
 
-    #for our purposes here, rho_solv is the excluded solvent density
-    #so rho = pdb_rho - rho_solv
-    #start with excluded solvent being random
-    rho_solv = np.copy(rho)
-    rho = pdb_rho - rho_solv
+
 
     for j in range(steps):
         if abort_event is not None:
@@ -1232,6 +1246,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
                 return []
 
         F = myfftn(rho, DENSS_GPU=DENSS_GPU)
+        # print(rho.sum(), support.sum())
 
         #sometimes, when using denss.refine.py with non-random starting rho,
         #the resulting Fs result in zeros in some locations and the algorithm to break
@@ -1266,7 +1281,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         newrho[support] = rhoprime[support]
 
         #PDB density
-        rho_solv = newrho - pdb_rho
+        # rho_solv = newrho - pdb_rho
+        newrho[protein_idx] = protein[protein_idx]
 
         # enforce positivity by making all negative density points zero.
         if positivity:
@@ -1396,7 +1412,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
                 support = cp.array(support)
 
         #run erode when shrinkwrap is run
-        if erode and j > shrinkwrap_minstep and j%shrinkwrap_iter==1:
+        if erode and shrinkwrap and j > shrinkwrap_minstep and j%shrinkwrap_iter==1:
             if DENSS_GPU:
                 newrho = cp.asnumpy(newrho)
                 support = cp.asnumpy(support)
@@ -1516,7 +1532,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     rho = rho.real
 
     #PDB stuff again
-    rho -= pdb_rho #let's looks at just the solvent density found
+    # rho -= pdb_rho #let's looks at just the solvent density found
 
     #negative images yield the same scattering, so flip the image
     #to have more positive than negative values if necessary
@@ -3388,6 +3404,16 @@ def realspace_formfactor(element, r=(np.arange(501))/1000., B=None):
         ff += 2*(6)**0.5 * np.pi * ai * np.exp(-3*(2*np.pi*r)**2/(3*bi+B)) / (3*bi+B)**0.5
     i = np.where((r==0))
     ff += signal.unit_impulse(r.shape, i) * ffcoeff[element]['c']
+    return ff
+
+def reciprocalspace_formfactor_gaussian(q=(np.arange(501))/1000., V=None):
+    """Calculate real space atomic form factors"""
+    ff = V * np.exp(-q**2*V**(2./3)/(4*np.pi))
+    return ff
+
+def realspace_formfactor_gaussian(r=np.linspace(-3,3,101), V=None):
+    """Calculate real space atomic form factors"""
+    ff = (2*np.pi)**0.5 * V**(2./3) * np.exp(-np.pi*r**2/V**(2./3))
     return ff
 
 def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=True,
