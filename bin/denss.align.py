@@ -52,6 +52,7 @@ parser.set_defaults(ignore_waters = False)
 args = parser.parse_args()
 
 if __name__ == "__main__":
+    __spec__ = None
 
     if args.output is None:
         fname_nopath = os.path.basename(args.files[0])
