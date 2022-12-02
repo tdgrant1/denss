@@ -135,7 +135,7 @@ if __name__ == "__main__":
     from scipy import ndimage
     solvpdb = copy.deepcopy(pdb)
     #change all atom types O, should update to water form factor in future
-    # solvpdb.atomtype = np.array(['O' for i in solvpdb.atomtype],dtype=np.dtype((str,2)))
+    solvpdb.atomtype = np.array(['C' for i in solvpdb.atomtype],dtype=np.dtype((str,2)))
     # solv, supportsolv = saxs.pdb2map_multigauss(solvpdb,x=x,y=y,z=z,resolution=resolution,ignore_waters=args.ignore_waters)
     #now we need to fit some parameters
     #maybe a simple scale factor would get us close?
@@ -172,7 +172,7 @@ if __name__ == "__main__":
     fig = plt.figure(figsize=(8, 6))
     gs = gridspec.GridSpec(2, 1, height_ratios=[2, 1])
     ax0 = plt.subplot(gs[0])
-    ax1 = plt.subplot(gs[1])
+    ax1 = plt.subplot(gs[1], sharex=ax0)
 
     data = np.loadtxt('SASDCK8.dat',skiprows=12)
     ax0.plot(data[:,0],data[:,1],'k.',label='data')
@@ -195,6 +195,22 @@ if __name__ == "__main__":
     ax1.plot(data[:,0], data[:,0]*0, 'k--')
     resid = (data[:,1] - np.interp(data[:,0],crysol2[:,0],crysol2[:,1]))/data[:,2]
     ax1.plot(data[:,0], resid, 'b-')
+
+    #6lyz14.abs has no 0.0 solvent density (so no ex vol) and no shell.
+    crysol3 = np.loadtxt('6lyz14.abs',skiprows=1)
+    crysol3[:,1] *= I0 / crysol3[0,1]
+    ax0.plot(crysol3[:,0],crysol3[:,1],'g-',label='crysol (no exvol or shell)')
+    ax1.plot(data[:,0], data[:,0]*0, 'k--')
+    resid = (data[:,1] - np.interp(data[:,0],crysol3[:,0],crysol3[:,1]))/data[:,2]
+    ax1.plot(data[:,0], resid, 'g-')
+
+    #6lyz15.abs has no 0.334 solvent density and no shell.
+    crysol4 = np.loadtxt('6lyz15.abs',skiprows=1)
+    crysol4[:,1] *= I0 / crysol4[0,1]
+    ax0.plot(crysol4[:,0],crysol4[:,1],'m-',label='crysol (no shell)')
+    ax1.plot(data[:,0], data[:,0]*0, 'k--')
+    resid = (data[:,1] - np.interp(data[:,0],crysol4[:,0],crysol4[:,1]))/data[:,2]
+    ax1.plot(data[:,0], resid, 'm-')
 
     debye = np.loadtxt('6lyz.pdb2sas.dat')
     debye[:,1] *= I0 / debye[0,1]
@@ -272,23 +288,24 @@ if __name__ == "__main__":
     threshold_for_exvol = 1e-5
     threshold_for_shell = 1e-6
 
-    # radii = np.zeros(pdb.natoms)
-    # for i in range(pdb.natoms):
-    #     if len(pdb.atomname[i])==1:
-    #         atomname = pdb.atomname[i][0].upper()
-    #     else:
-    #         atomname = pdb.atomname[i][0].upper() + pdb.atomname[i][1].lower()
-    #     try:
-    #         dr = saxs.radius[atomname]
-    #     except:
-    #         try:
-    #             dr = saxs.radius[atomname[0]]
-    #         except:
-    #             dr = saxs.radius['C']
-    #     radii[i] = dr
+    radii = np.zeros(pdb.natoms)
+    for i in range(pdb.natoms):
+        if len(pdb.atomtype[i])==1:
+            atomtype = pdb.atomtype[i][0].upper()
+        else:
+            atomtype = pdb.atomtype[i][0].upper() + pdb.atomtype[i][1].lower()
+        try:
+            dr = saxs.radius[atomtype]
+        except:
+            try:
+                dr = saxs.radius[atomtype[0]]
+            except:
+                dr = saxs.radius['C']
+        radii[i] = dr
 
     # radii += 0.0
     # solv, supportsolv = saxs.pdb2map_fastgauss(solvpdb,x=x,y=y,z=z,resolution=radii,ignore_waters=args.ignore_waters)
+    solv, supportsolv = saxs.pdb2map_fastgauss(solvpdb,x=x,y=y,z=z,resolution=radii*1,ignore_waters=args.ignore_waters)
     # sigma1 = 0.5
     # solv1 = solv #ndimage.gaussian_filter(solv,sigma=sigma1,mode='wrap')
     particle = np.zeros_like(support)
@@ -306,18 +323,68 @@ if __name__ == "__main__":
 
     rho_s = 0.334 * dV
     sigma = 1.0
-    solv = ndimage.gaussian_filter(particle*1.0,sigma=sigma,mode='wrap')
-    solv *= rho_s
-    diff = rho - solv
-    # drho = 0.04 #contrast of the hydration shell
+    #scale solv term to be number of electrons seen by excluded volume from crysol
+    ne_invacuo_crysol = (0.582674E+08)**0.5 #sqrt of I(0)
+    ne_exvol_crysol = (0.358891E+08)**0.5
+    ratio = ne_invacuo_crysol/ne_exvol_crysol
+    solv *= 1/ratio * rho.sum()/solv.sum()
+
+    sf = 0.0
+    diff = rho - solv*sf
+    print(rho.sum(), solv.sum())
     F = saxs.myfftn(diff)
     F[F.real==0] = 1e-16
     I3D = saxs.abs2(F)
     Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
     Imean *= I0 / Imean[0]
-    ax0.plot(qbinsc, Imean, 'r-',label='denss (rho_s = %.3f)'%rho_s)
+    ax0.plot(qbinsc, Imean, 'r-',label='denss (rho-solv*%s)'%sf)
     resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
     ax1.plot(data[:,0], resid, 'r-')
+
+    sf = 1.1
+    diff = rho - solv*sf
+    F = saxs.myfftn(diff)
+    F[F.real==0] = 1e-16
+    I3D = saxs.abs2(F)
+    Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
+    Imean *= I0 / Imean[0]
+    ax0.plot(qbinsc, Imean, 'y-',label='denss (rho-solv*%s)'%sf)
+    resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
+    ax1.plot(data[:,0], resid, 'y-')
+
+    sf = 1.12
+    diff = rho - solv*sf
+    F = saxs.myfftn(diff)
+    F[F.real==0] = 1e-16
+    I3D = saxs.abs2(F)
+    Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
+    Imean *= I0 / Imean[0]
+    ax0.plot(qbinsc, Imean, 'g-',label='denss (rho-solv*%s)'%sf)
+    resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
+    ax1.plot(data[:,0], resid, 'g-')
+
+    # sf = 1.15
+    # diff = rho - solv*sf
+    # F = saxs.myfftn(diff)
+    # F[F.real==0] = 1e-16
+    # I3D = saxs.abs2(F)
+    # Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
+    # Imean *= I0 / Imean[0]
+    # ax0.plot(qbinsc, Imean, 'm-',label='denss (rho-solv*%s)'%sf)
+    # resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
+    # ax1.plot(data[:,0], resid, 'm-')
+
+    sf = 1.18
+    diff = rho - solv*sf
+    F = saxs.myfftn(diff)
+    F[F.real==0] = 1e-16
+    I3D = saxs.abs2(F)
+    Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
+    Imean *= I0 / Imean[0]
+    ax0.plot(qbinsc, Imean, 'c-',label='denss (rho-solv*%s)'%sf)
+    resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
+    ax1.plot(data[:,0], resid, 'c-')
+
 
     #this multiplies the intensity by the form factor of a cube to correct for the discrete lattice
     #according to Schmidt-Rohr, J Appl Cryst 2007
@@ -326,45 +393,45 @@ if __name__ == "__main__":
     Imean_mod *= I0 / Imean_mod[0]
     # plt.plot(qbinsc, Imean_mod, '.-',label='modified by sinc')
 
-    greens = plt.get_cmap('Greens')
-    drho = np.linspace(0.055,0.065,3) * dV
-    for i in range(len(drho)):
-        rho_s = 0.334 * dV
-        shell_thickness = 1.0
-        iterations = int(shell_thickness/dx)+1
-        particle_for_shell = np.zeros_like(support)
-        particle_for_shell[rho>threshold_for_shell*rho.max()] = True
-        shell_idx = ndimage.binary_dilation(particle_for_shell,iterations=iterations)
-        shell_idx[particle_for_shell] = False
-        sigma_shell = 1.0
-        shell = ndimage.gaussian_filter(shell_idx*1.0,sigma=sigma_shell,mode='wrap')
+    # greens = plt.get_cmap('Greens')
+    # drho = np.linspace(0.055,0.065,3) * dV
+    # for i in range(len(drho)):
+    #     rho_s = 0.334 * dV
+    #     shell_thickness = 1.0
+    #     iterations = int(shell_thickness/dx)+1
+    #     particle_for_shell = np.zeros_like(support)
+    #     particle_for_shell[rho>threshold_for_shell*rho.max()] = True
+    #     shell_idx = ndimage.binary_dilation(particle_for_shell,iterations=iterations)
+    #     shell_idx[particle_for_shell] = False
+    #     sigma_shell = 1.0
+    #     shell = ndimage.gaussian_filter(shell_idx*1.0,sigma=sigma_shell,mode='wrap')
 
-        #higher shell contrast amount seems to improve high q fit, make low q fit worse
-        # drho = 0.05 * dV #contrast of the hydration shell
-        shell *= drho[i]
-        particle_for_exvol = np.zeros_like(support)
-        particle_for_exvol[rho>threshold_for_exvol*rho.max()] = True
-        shell[particle_for_exvol] = 0
-        #larger sigma makes low q worse, high q better
-        sigma_exvol = 1.0
-        exvol = ndimage.gaussian_filter(particle*1.0,sigma=sigma_exvol,mode='wrap')
-        exvol *= rho_s
-        #add hydration shell to protein
-        rho_with_shell = rho + shell
-        #subtract excluded solvent
-        diff = rho_with_shell - exvol
-        F = saxs.myfftn(diff)
-        F[F.real==0] = 1e-16
-        I3D = saxs.abs2(F)
-        Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
-        Imean *= I0 / Imean[0]
-        c = greens(drho[i]/drho.max())
-        ax0.plot(qbinsc, Imean, '-',c=c,label='denss (rho_s=%.3f, drho=%.3f)'%(rho_s,drho[i]))
-        resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
-        ax1.plot(data[:,0], resid, '-', c=c)
+    #     #higher shell contrast amount seems to improve high q fit, make low q fit worse
+    #     # drho = 0.05 * dV #contrast of the hydration shell
+    #     shell *= drho[i]
+    #     particle_for_exvol = np.zeros_like(support)
+    #     particle_for_exvol[rho>threshold_for_exvol*rho.max()] = True
+    #     shell[particle_for_exvol] = 0
+    #     #larger sigma makes low q worse, high q better
+    #     sigma_exvol = 1.0
+    #     exvol = ndimage.gaussian_filter(particle*1.0,sigma=sigma_exvol,mode='wrap')
+    #     exvol *= rho_s
+    #     #add hydration shell to protein
+    #     rho_with_shell = rho + shell
+    #     #subtract excluded solvent
+    #     diff = rho_with_shell - exvol
+    #     F = saxs.myfftn(diff)
+    #     F[F.real==0] = 1e-16
+    #     I3D = saxs.abs2(F)
+    #     Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
+    #     Imean *= I0 / Imean[0]
+    #     c = greens(drho[i]/drho.max())
+    #     ax0.plot(qbinsc, Imean, '-',c=c,label='denss (rho_s=%.3f, drho=%.3f)'%(rho_s,drho[i]))
+    #     resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
+    #     ax1.plot(data[:,0], resid, '-', c=c)
 
     # saxs.write_mrc(particle*1.0,side,'particle.mrc')
-    saxs.write_mrc(shell*1.0,side,'shell.mrc')
+    # saxs.write_mrc(shell*1.0,side,'shell.mrc')
 
     ax0.semilogy()
     ax0.set_xlim([.03,1.8])

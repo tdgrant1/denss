@@ -3376,17 +3376,19 @@ def formfactor(element, q=(np.arange(500)+1)/1000.,B=None):
 
 def u2B(u):
     """Calculate B-factor from atomic displacement, u"""
-    if u<0:
-        return -8 * np.pi**2 * np.abs(u)**2
-    else:
-        return 8 * np.pi**2 * u**2
+    # if u<0:
+    #     return -8 * np.pi**2 * np.abs(u)**2
+    # else:
+    #     return 8 * np.pi**2 * u**2
+    return 8 * np.pi**2 * u**2
 
 def B2u(B):
     """Calculate atomic displacement, u, from B-factor"""
-    if B<0:
-        return -(np.abs(B)/(8*np.pi**2))**0.5
-    else:
-        return (B/(8*np.pi**2))**0.5
+    # if B<0:
+    #     return -(np.abs(B)/(8*np.pi**2))**0.5
+    # else:
+    #     return (B/(8*np.pi**2))**0.5
+    return (B/(8*np.pi**2))**0.5
 
 def realspace_formfactor(element, r=(np.arange(501))/1000., B=None):
     """Calculate real space atomic form factors"""
@@ -3413,6 +3415,16 @@ def reciprocalspace_formfactor_gaussian(q=(np.arange(501))/1000., V=None):
 
 def realspace_formfactor_gaussian(r=np.linspace(-3,3,101), V=None):
     """Calculate real space atomic form factors"""
+    ff = (2*np.pi)**0.5 * V**(2./3) * np.exp(-np.pi*r**2/V**(2./3))
+    return ff
+
+def realspace_exvol_gaussian(r=np.linspace(-3,3,101), ri=1.7, r0=1.62, rm=1.62):
+    """Calculate real space atomic form factors.
+    r - distance from center of atom
+    ri - radius of gaussian atom(s), from which volume is calculated as Vi=4*pi/3*ri**3
+    r0 - effective average atomic radius (a la crysol), a scalar
+    rm - actual average atomic radius (a la crysol), a scalar
+    """
     ff = (2*np.pi)**0.5 * V**(2./3) * np.exp(-np.pi*r**2/V**(2./3))
     return ff
 
@@ -3538,7 +3550,114 @@ def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=T
 
 electrons = {'H': 1,'HE': 2,'He': 2,'LI': 3,'Li': 3,'BE': 4,'Be': 4,'B': 5,'C': 6,'N': 7,'O': 8,'F': 9,'NE': 10,'Ne': 10,'NA': 11,'Na': 11,'MG': 12,'Mg': 12,'AL': 13,'Al': 13,'SI': 14,'Si': 14,'P': 15,'S': 16,'CL': 17,'Cl': 17,'AR': 18,'Ar': 18,'K': 19,'CA': 20,'Ca': 20,'SC': 21,'Sc': 21,'TI': 22,'Ti': 22,'V': 23,'CR': 24,'Cr': 24,'MN': 25,'Mn': 25,'FE': 26,'Fe': 26,'CO': 27,'Co': 27,'NI': 28,'Ni': 28,'CU': 29,'Cu': 29,'ZN': 30,'Zn': 30,'GA': 31,'Ga': 31,'GE': 32,'Ge': 32,'AS': 33,'As': 33,'SE': 34,'Se': 34,'Se': 34,'Se': 34,'BR': 35,'Br': 35,'KR': 36,'Kr': 36,'RB': 37,'Rb': 37,'SR': 38,'Sr': 38,'Y': 39,'ZR': 40,'Zr': 40,'NB': 41,'Nb': 41,'MO': 42,'Mo': 42,'TC': 43,'Tc': 43,'RU': 44,'Ru': 44,'RH': 45,'Rh': 45,'PD': 46,'Pd': 46,'AG': 47,'Ag': 47,'CD': 48,'Cd': 48,'IN': 49,'In': 49,'SN': 50,'Sn': 50,'SB': 51,'Sb': 51,'TE': 52,'Te': 52,'I': 53,'XE': 54,'Xe': 54,'CS': 55,'Cs': 55,'BA': 56,'Ba': 56,'LA': 57,'La': 57,'CE': 58,'Ce': 58,'PR': 59,'Pr': 59,'ND': 60,'Nd': 60,'PM': 61,'Pm': 61,'SM': 62,'Sm': 62,'EU': 63,'Eu': 63,'GD': 64,'Gd': 64,'TB': 65,'Tb': 65,'DY': 66,'Dy': 66,'HO': 67,'Ho': 67,'ER': 68,'Er': 68,'TM': 69,'Tm': 69,'YB': 70,'Yb': 70,'LU': 71,'Lu': 71,'HF': 72,'Hf': 72,'TA': 73,'Ta': 73,'W': 74,'RE': 75,'Re': 75,'OS': 76,'Os': 76,'IR': 77,'Ir': 77,'PT': 78,'Pt': 78,'AU': 79,'Au': 79,'HG': 80,'Hg': 80,'TL': 81,'Tl': 81,'PB': 82,'Pb': 82,'BI': 83,'Bi': 83,'PO': 84,'Po': 84,'AT': 85,'At': 85,'RN': 86,'Rn': 86,'FR': 87,'Fr': 87,'RA': 88,'Ra': 88,'AC': 89,'Ac': 89,'TH': 90,'Th': 90,'PA': 91,'Pa': 91,'U': 92,'NP': 93,'Np': 93,'PU': 94,'Pu': 94,'AM': 95,'Am': 95,'CM': 96,'Cm': 96,'BK': 97,'Bk': 97,'CF': 98,'Cf': 98,'ES': 99,'Es': 99,'FM': 100,'Fm': 100,'MD': 101,'Md': 101,'NO': 102,'No': 102,'LR': 103,'Lr': 103,'RF': 104,'Rf': 104,'DB': 105,'Db': 105,'SG': 106,'Sg': 106,'BH': 107,'Bh': 107,'HS': 108,'Hs': 108,'MT': 109,'Mt': 109}
 
-radius = {'H': 1.1,'He': 1.4,'Li': 1.8,'Be': 1.5,'B': 1.9,'C': 1.7,'N': 1.6,'O': 1.5,'F': 1.5,'Ne': 1.5,'Na': 2.3,'Mg': 1.7,'Al': 1.8,'Si': 2.1,'P': 1.8,'S': 1.8,'Cl': 1.8,'Ar': 1.9,'K': 2.8,'Ca': 2.3,'Sc': 2.1,'Ti': 2.1,'V': 2.1,'Cr': 2.1,'Mn': 2.0,'Fe': 2.0,'Co': 2.0,'Ni': 2.0,'Cu': 2.0,'Zn': 2.0,'Ga': 1.9,'Ge': 2.1,'As': 1.9,'Se': 1.9,'Br': 1.9,'Kr': 2.0,'Rb': 3.0,'Sr': 2.5,'Y': 2.3,'Zr': 2.2,'Nb': 2.2,'Mo': 2.2,'Tc': 2.2,'Ru': 2.1,'Rh': 2.1,'Pd': 2.1,'Ag': 2.1,'Cd': 2.2,'In': 1.9,'Sn': 2.2,'Sb': 2.1,'Te': 2.1,'I': 2.0,'Xe': 2.2,'Cs': 3.4,'Ba': 2.7,'La': 2.4,'Ce': 2.4,'Pr': 2.4,'Nd': 2.4,'Pm': 2.4,'Sm': 2.4,'Eu': 2.4,'Gd': 2.3,'Tb': 2.3,'Dy': 2.3,'Ho': 2.3,'Er': 2.3,'Tm': 2.3,'Yb': 2.3,'Lu': 2.2,'Hf': 2.2,'Ta': 2.2,'W': 2.2,'Re': 2.2,'Os': 2.2,'Ir': 2.1,'Pt': 2.1,'Au': 2.1,'Hg': 2.2,'Tl': 2.0,'Pb': 2.0,'Bi': 2.1,'Po': 2.0,'At': 2.0,'Rn': 2.2,'Fr': 3.5,'Ra': 2.8,'Ac': 2.5,'Th': 2.5,'Pa': 2.4,'U': 2.4,'Np': 2.4,'Pu': 2.4,'Am': 2.4,'Cm': 2.5,'Bk': 2.4,'Cf': 2.5,'Es': 2.5,'Fm': 2.5,'Md': 2.5,'No': 2.5,'Lr': 2.5,'Rf': 1.8,'Db': 1.8,'Sg': 1.8,'Bh': 1.8,'Hs': 1.8,'Mt': 1.8,'Ds': 1.8,'Rg': 1.8,'Cn': 1.8,'Nh': 1.8,'Fl': 1.8,'Mc': 1.8,'Lv': 1.8,'Ts': 1.8,'Og': 1.8}
+radius = {'H': 1.10,'He': 1.4,'Li': 1.8,'Be': 1.5,'B': 1.9,'C': 1.7,'N': 1.6,'O': 1.5,'F': 1.5,'Ne': 1.5,'Na': 2.3,'Mg': 1.7,'Al': 1.8,'Si': 2.1,'P': 1.8,'S': 1.8,'Cl': 1.8,'Ar': 1.9,'K': 2.8,'Ca': 2.3,'Sc': 2.1,'Ti': 2.1,'V': 2.1,'Cr': 2.1,'Mn': 2.0,'Fe': 2.0,'Co': 2.0,'Ni': 2.0,'Cu': 2.0,'Zn': 2.0,'Ga': 1.9,'Ge': 2.1,'As': 1.9,'Se': 1.9,'Br': 1.9,'Kr': 2.0,'Rb': 3.0,'Sr': 2.5,'Y': 2.3,'Zr': 2.2,'Nb': 2.2,'Mo': 2.2,'Tc': 2.2,'Ru': 2.1,'Rh': 2.1,'Pd': 2.1,'Ag': 2.1,'Cd': 2.2,'In': 1.9,'Sn': 2.2,'Sb': 2.1,'Te': 2.1,'I': 2.0,'Xe': 2.2,'Cs': 3.4,'Ba': 2.7,'La': 2.4,'Ce': 2.4,'Pr': 2.4,'Nd': 2.4,'Pm': 2.4,'Sm': 2.4,'Eu': 2.4,'Gd': 2.3,'Tb': 2.3,'Dy': 2.3,'Ho': 2.3,'Er': 2.3,'Tm': 2.3,'Yb': 2.3,'Lu': 2.2,'Hf': 2.2,'Ta': 2.2,'W': 2.2,'Re': 2.2,'Os': 2.2,'Ir': 2.1,'Pt': 2.1,'Au': 2.1,'Hg': 2.2,'Tl': 2.0,'Pb': 2.0,'Bi': 2.1,'Po': 2.0,'At': 2.0,'Rn': 2.2,'Fr': 3.5,'Ra': 2.8,'Ac': 2.5,'Th': 2.5,'Pa': 2.4,'U': 2.4,'Np': 2.4,'Pu': 2.4,'Am': 2.4,'Cm': 2.5,'Bk': 2.4,'Cf': 2.5,'Es': 2.5,'Fm': 2.5,'Md': 2.5,'No': 2.5,'Lr': 2.5,'Rf': 1.8,'Db': 1.8,'Sg': 1.8,'Bh': 1.8,'Hs': 1.8,'Mt': 1.8,'Ds': 1.8,'Rg': 1.8,'Cn': 1.8,'Nh': 1.8,'Fl': 1.8,'Mc': 1.8,'Lv': 1.8,'Ts': 1.8,'Og': 1.8}
+
+radius = {
+     "H":  1.20 , #wiki 1.2
+     "D":  1.20 ,
+     "He": 1.40 ,
+     "Li": 1.82 ,
+     "Be": 0.63 ,
+     "B":  1.75 ,
+     "C":  1.775, #wiki 1.7  #was 1.775 # CNS 2.3
+     "N":  1.50 , #wiki 1.55 #was 1.5 # CNS 1.6
+     "O":  1.45 , #wiki 1.52 #was 1.45 # CNS 1.6
+     "F":  1.47 ,
+     "Ne": 1.54 ,
+     "Na": 2.27 ,
+     "Mg": 1.73 ,
+     "Al": 1.50 ,
+     "Si": 2.10 ,
+     "P":  1.90 ,
+     "S":  1.80 , #wiki 1.8 # CNS 1.9
+     "Cl": 1.75 ,
+     "Ar": 1.88 ,
+     "K":  2.75 ,
+     "Ca": 1.95 ,
+     "Sc": 1.32 ,
+     "Ti": 1.95 ,
+     "V":  1.06 ,
+     "Cr": 1.13 ,
+     "Mn": 1.19 ,
+     "Fe": 1.26 ,
+     "Co": 1.13 ,
+     "Ni": 1.63 ,
+     "Cu": 1.40 ,
+     "Zn": 1.39 ,
+     "Ga": 1.87 ,
+     "Ge": 1.48 ,
+     "As": 0.83 ,
+     "Se": 1.90 ,
+     "Br": 1.85 ,
+     "Kr": 2.02 ,
+     "Rb": 2.65 ,
+     "Sr": 2.02 ,
+     "Y":  1.61 ,
+     "Zr": 1.42 ,
+     "Nb": 1.33 ,
+     "Mo": 1.75 ,
+     "Tc": 2.00 ,
+     "Ru": 1.20 ,
+     "Rh": 1.22 ,
+     "Pd": 1.63 ,
+     "Ag": 1.72 ,
+     "Cd": 1.58 ,
+     "In": 1.93 ,
+     "Sn": 2.17 ,
+     "Sb": 1.12 ,
+     "Te": 1.26 ,
+     "I":  1.98 ,
+     "Xe": 2.16 ,
+     "Cs": 3.01 ,
+     "Ba": 2.41 ,
+     "La": 1.83 ,
+     "Ce": 1.86 ,
+     "Pr": 1.62 ,
+     "Nd": 1.79 ,
+     "Pm": 1.76 ,
+     "Sm": 1.74 ,
+     "Eu": 1.96 ,
+     "Gd": 1.69 ,
+     "Tb": 1.66 ,
+     "Dy": 1.63 ,
+     "Ho": 1.61 ,
+     "Er": 1.59 ,
+     "Tm": 1.57 ,
+     "Yb": 1.54 ,
+     "Lu": 1.53 ,
+     "Hf": 1.40 ,
+     "Ta": 1.22 ,
+     "W":  1.26 ,
+     "Re": 1.30 ,
+     "Os": 1.58 ,
+     "Ir": 1.22 ,
+     "Pt": 1.72 ,
+     "Au": 1.66 ,
+     "Hg": 1.55 ,
+     "Tl": 1.96 ,
+     "Pb": 2.02 ,
+     "Bi": 1.73 ,
+     "Po": 1.21 ,
+     "At": 1.12 ,
+     "Rn": 2.30 ,
+     "Fr": 3.24 ,
+     "Ra": 2.57 ,
+     "Ac": 2.12 ,
+     "Th": 1.84 ,
+     "Pa": 1.60 ,
+     "U":  1.75 ,
+     "Np": 1.71 ,
+     "Pu": 1.67 ,
+     "Am": 1.66 ,
+     "Cm": 1.65 ,
+     "Bk": 1.64 ,
+     "Cf": 1.63 ,
+     "Es": 1.62 ,
+     "Fm": 1.61 ,
+     "Md": 1.60 ,
+     "No": 1.59 ,
+     "Lr": 1.58 ,
+      }
 
 #form factors taken from http://lampx.tugraz.at/~hadley/ss1/crystaldiffraction/atomicformfactors/formfactors.php
 ffcoeff = {
