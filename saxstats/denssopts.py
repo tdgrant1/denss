@@ -214,6 +214,10 @@ def parse_arguments(parser):
         #if "1" or "long" or "LONG" or "L" or similar is given
         #assume the long axis, i.e. axis = 1
         args.ncs_axis = 1
+    elif args.ncs_axis[0].upper() == "M" or args.ncs_axis[0] == "2":
+        #if "2" or "middle" or "MIDDLE" or "M" or similar is given
+        #assume the middle axis, i.e. axis = 2
+        args.ncs_axis = 2
     elif args.ncs_axis[0].upper() == "S" or args.ncs_axis[0] == "3":
         #if "3" or "short" or "SHORT" or "S" or similar is given
         #assume the short axis, i.e. axis = 3
