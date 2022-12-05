@@ -1191,6 +1191,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         chi = cp.array(chi)
         supportV = cp.array(supportV)
         Imean = cp.array(Imean)
+        newrho = cp.array(newrho)
+        qblravel = cp.array(qblravel)
+        xcount = cp.array(xcount)
 
 
     # #### assume the density of the atomic model is correct and
@@ -1517,7 +1520,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         support = cp.asnumpy(support)
         supportV = cp.asnumpy(supportV)
         Idata = cp.asnumpy(Idata)
-
+        newrho = cp.asnumpy(newrho)
+        qblravel = cp.asnumpy(qblravel)
+        xcount = cp.asnumpy(xcount)
 
     F = np.fft.fftn(rho)
     #calculate spherical average intensity from 3D Fs
