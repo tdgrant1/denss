@@ -115,8 +115,8 @@ if __name__ == "__main__":
     elif args.mode == "slow":
         #this slow mode uses the 5-term Gaussian with Cromer-Mann coefficients
         rho, support = saxs.pdb2map_multigauss(pdb,x=x,y=y,z=z,resolution=resolution,ignore_waters=args.ignore_waters)
-        saxs.write_mrc(rho, side, "6lyz_rho_s256n256r1.mrc")
-        saxs.write_mrc(support*1.0, side, "6lyz_rho_s256n256r1_support.mrc")
+        # saxs.write_mrc(rho, side, "6lyz_rho_s256n256r1.mrc")
+        # saxs.write_mrc(support*1.0, side, "6lyz_rho_s256n256r1_support.mrc")
     elif args.mode == "read":
         rho, side = saxs.read_mrc("6lyz_rho_s256n256r1.mrc")
         support, side = saxs.read_mrc("6lyz_rho_s256n256r1_support.mrc")
@@ -196,15 +196,15 @@ if __name__ == "__main__":
     resid = (data[:,1] - np.interp(data[:,0],crysol2[:,0],crysol2[:,1]))/data[:,2]
     ax1.plot(data[:,0], resid, 'b-')
 
-    #6lyz14.abs has no 0.0 solvent density (so no ex vol) and no shell.
-    crysol3 = np.loadtxt('6lyz14.abs',skiprows=1)
-    crysol3[:,1] *= I0 / crysol3[0,1]
-    ax0.plot(crysol3[:,0],crysol3[:,1],'g-',label='crysol (no exvol or shell)')
-    ax1.plot(data[:,0], data[:,0]*0, 'k--')
-    resid = (data[:,1] - np.interp(data[:,0],crysol3[:,0],crysol3[:,1]))/data[:,2]
-    ax1.plot(data[:,0], resid, 'g-')
+    #6lyz14.abs has 0.0 solvent density (so no ex vol) and no shell.
+    # crysol3 = np.loadtxt('6lyz14.abs',skiprows=1)
+    # crysol3[:,1] *= I0 / crysol3[0,1]
+    # ax0.plot(crysol3[:,0],crysol3[:,1],'g-',label='crysol (no exvol or shell)')
+    # ax1.plot(data[:,0], data[:,0]*0, 'k--')
+    # resid = (data[:,1] - np.interp(data[:,0],crysol3[:,0],crysol3[:,1]))/data[:,2]
+    # ax1.plot(data[:,0], resid, 'g-')
 
-    #6lyz15.abs has no 0.334 solvent density and no shell.
+    #6lyz15.abs has 0.334 solvent density and no shell.
     crysol4 = np.loadtxt('6lyz15.abs',skiprows=1)
     crysol4[:,1] *= I0 / crysol4[0,1]
     ax0.plot(crysol4[:,0],crysol4[:,1],'m-',label='crysol (no shell)')
@@ -237,58 +237,8 @@ if __name__ == "__main__":
     #     # plt.plot(qbinsc, Imean, '-',label='res=%.1f'%res)
     #     plt.plot(qbinsc, Imean, '-',label='fraction=%.1f'%(1./i))
 
-    # from scipy import spatial
-    # shift = np.ones(3)*dx/2.
-    # particle = np.zeros_like(support)
-    # for i in range(pdb.natoms):
-    #     if len(pdb.atomname[i])==1:
-    #         atomname = pdb.atomname[i][0].upper()
-    #     else:
-    #         atomname = pdb.atomname[i][0].upper() + pdb.atomname[i][1].lower()
-    #     try:
-    #         dr = saxs.radius[atomname]
-    #     except:
-    #         try:
-    #             dr = saxs.radius[atomname[0]]
-    #         except:
-    #             dr = saxs.radius['C']
-    #     xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
-    #     xmin = int(np.floor((xa-dr)/dx)) + n//2
-    #     xmax = int(np.ceil((xa+dr)/dx)) + n//2
-    #     ymin = int(np.floor((ya-dr)/dx)) + n//2
-    #     ymax = int(np.ceil((ya+dr)/dx)) + n//2
-    #     zmin = int(np.floor((za-dr)/dx)) + n//2
-    #     zmax = int(np.ceil((za+dr)/dx)) + n//2
-    #     #handle edges
-    #     xmin = max([xmin,0])
-    #     xmax = min([xmax,n])
-    #     ymin = max([ymin,0])
-    #     ymax = min([ymax,n])
-    #     zmin = max([zmin,0])
-    #     zmax = min([zmax,n])
-    #     #now lets create a slice object for convenience
-    #     slc = np.s_[xmin:xmax,ymin:ymax,zmin:zmax]
-    #     nx = xmax-xmin
-    #     ny = ymax-ymin
-    #     nz = zmax-zmin
-    #     #now lets create a column stack of coordinates for the cropped grid
-    #     xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
-    #     #now calculate all distances from the atom to the minigrid points
-    #     dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
-    #     #now, add any grid points within dr of atom to the env grid
-    #     #first, create a dummy array to hold booleans of size dist.size
-    #     tmpenv = np.zeros(dist.shape,dtype=np.bool_)
-    #     #now, any elements that have a dist less than dr make true
-    #     tmpenv[dist<=dr] = True
-    #     #now reshape for inserting into env
-    #     tmpenv = tmpenv.reshape(nx,ny,nz)
-    #     particle[slc] += tmpenv
-
-    threshold = 1e-4
-    threshold_for_exvol = 1e-5
-    threshold_for_shell = 1e-6
-
-    radii = np.zeros(pdb.natoms)
+    #some stuff for calculating excluded volume form factor term
+    pdb.radius = np.zeros(pdb.natoms)
     for i in range(pdb.natoms):
         if len(pdb.atomtype[i])==1:
             atomtype = pdb.atomtype[i][0].upper()
@@ -301,16 +251,71 @@ if __name__ == "__main__":
                 dr = saxs.radius[atomtype[0]]
             except:
                 dr = saxs.radius['C']
-        radii[i] = dr
+        pdb.radius[i] = dr
+
+    from scipy import spatial
+    shift = np.ones(3)*dx/2.
+    particle = np.zeros_like(support)
+    for i in range(pdb.natoms):
+        xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
+        xmin = int(np.floor((xa-dr)/dx)) + n//2
+        xmax = int(np.ceil((xa+dr)/dx)) + n//2
+        ymin = int(np.floor((ya-dr)/dx)) + n//2
+        ymax = int(np.ceil((ya+dr)/dx)) + n//2
+        zmin = int(np.floor((za-dr)/dx)) + n//2
+        zmax = int(np.ceil((za+dr)/dx)) + n//2
+        #handle edges
+        xmin = max([xmin,0])
+        xmax = min([xmax,n])
+        ymin = max([ymin,0])
+        ymax = min([ymax,n])
+        zmin = max([zmin,0])
+        zmax = min([zmax,n])
+        #now lets create a slice object for convenience
+        slc = np.s_[xmin:xmax,ymin:ymax,zmin:zmax]
+        nx = xmax-xmin
+        ny = ymax-ymin
+        nz = zmax-zmin
+        #now lets create a column stack of coordinates for the cropped grid
+        xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
+        #now calculate all distances from the atom to the minigrid points
+        dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
+        #now, add any grid points within dr of atom to the env grid
+        #first, create a dummy array to hold booleans of size dist.size
+        tmpenv = np.zeros(dist.shape,dtype=np.bool_)
+        #now, any elements that have a dist less than the atomic radius make true
+        tmpenv[dist<=pdb.radius[i]] = True
+        #now reshape for inserting into env
+        tmpenv = tmpenv.reshape(nx,ny,nz)
+        particle[slc] += tmpenv
+
+    threshold = 1e-4
+    threshold_for_exvol = 1e-5
+    threshold_for_shell = 1e-6
+
+    # radii = np.zeros(pdb.natoms)
+    # for i in range(pdb.natoms):
+    #     if len(pdb.atomtype[i])==1:
+    #         atomtype = pdb.atomtype[i][0].upper()
+    #     else:
+    #         atomtype = pdb.atomtype[i][0].upper() + pdb.atomtype[i][1].lower()
+    #     try:
+    #         dr = saxs.radius[atomtype]
+    #     except:
+    #         try:
+    #             dr = saxs.radius[atomtype[0]]
+    #         except:
+    #             dr = saxs.radius['C']
+    #     radii[i] = dr
 
     # radii += 0.0
     # solv, supportsolv = saxs.pdb2map_fastgauss(solvpdb,x=x,y=y,z=z,resolution=radii,ignore_waters=args.ignore_waters)
-    solv, supportsolv = saxs.pdb2map_fastgauss(solvpdb,x=x,y=y,z=z,resolution=radii*1,ignore_waters=args.ignore_waters)
+    # solv, supportsolv = saxs.pdb2map_fastgauss(solvpdb,x=x,y=y,z=z,resolution=radii*1,ignore_waters=args.ignore_waters)
     # sigma1 = 0.5
     # solv1 = solv #ndimage.gaussian_filter(solv,sigma=sigma1,mode='wrap')
-    particle = np.zeros_like(support)
+    # particle = np.zeros_like(support)
     # particle[solv1>threshold*rho.max()] = True
-    particle[rho>threshold*rho.max()] = True
+    # particle[rho>threshold*rho.max()] = True
 
     # shell_thickness = 4.0
     # # shell_radii = radii * shell_thickness/2.
@@ -322,12 +327,15 @@ if __name__ == "__main__":
     # shell[particle] = False
 
     rho_s = 0.334 * dV
-    sigma = 1.0
-    #scale solv term to be number of electrons seen by excluded volume from crysol
-    ne_invacuo_crysol = (0.582674E+08)**0.5 #sqrt of I(0)
-    ne_exvol_crysol = (0.358891E+08)**0.5
-    ratio = ne_invacuo_crysol/ne_exvol_crysol
-    solv *= 1/ratio * rho.sum()/solv.sum()
+    # sigma = 1.0
+    # #scale solv term to be number of electrons seen by excluded volume from crysol
+    # ne_invacuo_crysol = (0.582674E+08)**0.5 #sqrt of I(0)
+    # ne_exvol_crysol = (0.358891E+08)**0.5
+    # ratio = ne_invacuo_crysol/ne_exvol_crysol
+    # solv *= 1/ratio * rho.sum()/solv.sum()
+
+    solv = np.zeros_like(rho)
+    solv[particle] = rho_s
 
     sf = 0.0
     diff = rho - solv*sf
@@ -341,7 +349,7 @@ if __name__ == "__main__":
     resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
     ax1.plot(data[:,0], resid, 'r-')
 
-    sf = 1.1
+    sf = 1.0
     diff = rho - solv*sf
     F = saxs.myfftn(diff)
     F[F.real==0] = 1e-16
@@ -352,7 +360,7 @@ if __name__ == "__main__":
     resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
     ax1.plot(data[:,0], resid, 'y-')
 
-    sf = 1.12
+    sf = 2.0
     diff = rho - solv*sf
     F = saxs.myfftn(diff)
     F[F.real==0] = 1e-16
@@ -374,16 +382,16 @@ if __name__ == "__main__":
     # resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
     # ax1.plot(data[:,0], resid, 'm-')
 
-    sf = 1.18
-    diff = rho - solv*sf
-    F = saxs.myfftn(diff)
-    F[F.real==0] = 1e-16
-    I3D = saxs.abs2(F)
-    Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
-    Imean *= I0 / Imean[0]
-    ax0.plot(qbinsc, Imean, 'c-',label='denss (rho-solv*%s)'%sf)
-    resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
-    ax1.plot(data[:,0], resid, 'c-')
+    # sf = 1.18
+    # diff = rho - solv*sf
+    # F = saxs.myfftn(diff)
+    # F[F.real==0] = 1e-16
+    # I3D = saxs.abs2(F)
+    # Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
+    # Imean *= I0 / Imean[0]
+    # ax0.plot(qbinsc, Imean, 'c-',label='denss (rho-solv*%s)'%sf)
+    # resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
+    # ax1.plot(data[:,0], resid, 'c-')
 
 
     #this multiplies the intensity by the form factor of a cube to correct for the discrete lattice
