@@ -31,11 +31,12 @@ from __future__ import print_function
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 import numpy as np
+from scipy import interpolate
 import sys, argparse, os
 
 parser = argparse.ArgumentParser(description="A tool for calculating simple electron density maps from pdb files.", formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
-parser.add_argument("-f", "--file", type=str, help="PDB filename")
+parser.add_argument("-f", "--file", type=str, help="Atomic model as a .pdb file for input.")
 parser.add_argument("-s", "--side", default=None, type=float, help="Desired side length of real space box (default=None).")
 parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired voxel size (default=None)")
 parser.add_argument("-n", "--nsamples", default=64, type=int, help="Desired number of samples per axis (default=64)")
@@ -43,8 +44,11 @@ parser.add_argument("-m", "--mode", default="slow", type=str, help="Mode. Either
 parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (B-factor-like atomic displacement (slow mode) Gaussian sphere width sigma (fast mode) (default=3*voxel)")
 parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB (default).")
 parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB.")
-parser.add_argument("--solv", default=0.000, type=float, help="Desired Solvent Density (experimental, default=0.000 e-/A^3)")
+# parser.add_argument("--solv", default=0.000, type=float, help="Desired Solvent Density (experimental, default=0.000 e-/A^3)")
 parser.add_argument("--ignore_waters", dest="ignore_waters", action="store_true", help="Ignore waters.")
+parser.add_argument("-rho0", "--rho0", default=0.334, type=float, help="Density of bulk solvent in e-/A^3 (default=0.334)")
+parser.add_argument("-d", "--data", type=str, help="Experimental SAXS data file for input (3-column ASCII text file (q, I, err), optional).")
+parser.add_argument("-u", "--units", default="a", type=str, help="Angular units of experimental data (\"a\" [1/angstrom] or \"nm\" [1/nanometer]; default=\"a\"). If nm, will convert output to angstroms.")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix (default=basename_pdb)")
 parser.set_defaults(ignore_waters = False)
 parser.set_defaults(center = True)
@@ -133,25 +137,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from matplotlib import gridspec
     from scipy import ndimage
-    solvpdb = copy.deepcopy(pdb)
-    #change all atom types O, should update to water form factor in future
-    solvpdb.atomtype = np.array(['C' for i in solvpdb.atomtype],dtype=np.dtype((str,2)))
-    # solv, supportsolv = saxs.pdb2map_multigauss(solvpdb,x=x,y=y,z=z,resolution=resolution,ignore_waters=args.ignore_waters)
-    #now we need to fit some parameters
-    #maybe a simple scale factor would get us close?
-    # from scipy import ndimage
-    # saxs.write_mrc((rho)/dV,side,output+"_0.0.mrc")
-    # for i in np.linspace(0.1,1.0,10):
-    #     solv_blur = ndimage.filters.gaussian_filter(solv,sigma=i,mode='wrap')
-    #     # rho -= solv_blur*0.5
-    #     # rho /= dV
-    #     for j in np.linspace(0.1,1.0,10):
-    #         saxs.write_mrc((rho-solv_blur*j)/dV,side,output+"_%.1f_%.1f.mrc"%(i,j))
-    #     saxs.write_mrc(solv_blur/dV,side,output+"_solv_%.1f.mrc"%i)
-    # c1 = 0.5
-    # rho -= solv
-    # rho /= dV
-    #really need a B-factor modification to fit probably, which in this case is resolution
+
     df = 1/side
     qx_ = np.fft.fftfreq(x_.size)*n*df*2*np.pi
     qz_ = np.fft.rfftfreq(x_.size)*n*df*2*np.pi
@@ -174,9 +160,9 @@ if __name__ == "__main__":
     ax0 = plt.subplot(gs[0])
     ax1 = plt.subplot(gs[1], sharex=ax0)
 
-    data = np.loadtxt('SASDCK8.dat',skiprows=12)
-    ax0.plot(data[:,0],data[:,1],'k.',label='data')
-    I0 = 6.38033e+02 #data[0,1]
+    # data = np.loadtxt('SASDCK8.dat',skiprows=12)
+    # ax0.plot(data[:,0],data[:,1],'.',c='gray',label='data')
+    # I0 = 6.38033e+02 #data[0,1]
 
     # foxs = np.loadtxt('6lyz.dat')
     # foxs = np.loadtxt('6lyz.pdb.dat',skiprows=2)
@@ -189,12 +175,12 @@ if __name__ == "__main__":
     # plt.plot(crysol[:,0],crysol[:,1],label='crysol (no shell)')
 
     #6lyz11.abs has been fit to the SASDCK8.dat data
-    crysol2 = np.loadtxt('6lyz11.abs',skiprows=1)
-    crysol2[:,1] *= I0 / crysol2[0,1]
-    ax0.plot(crysol2[:,0],crysol2[:,1],'b-',label='crysol (optimized)')
-    ax1.plot(data[:,0], data[:,0]*0, 'k--')
-    resid = (data[:,1] - np.interp(data[:,0],crysol2[:,0],crysol2[:,1]))/data[:,2]
-    ax1.plot(data[:,0], resid, 'b-')
+    # crysol2 = np.loadtxt('6lyz11.abs',skiprows=1)
+    # crysol2[:,1] *= I0 / crysol2[0,1]
+    # ax0.plot(crysol2[:,0],crysol2[:,1],'b-',label='crysol (optimized)')
+    # ax1.plot(data[:,0], data[:,0]*0, 'k--')
+    # resid = (data[:,1] - np.interp(data[:,0],crysol2[:,0],crysol2[:,1]))/data[:,2]
+    # ax1.plot(data[:,0], resid, 'b-')
 
     #6lyz14.abs has 0.0 solvent density (so no ex vol) and no shell.
     # crysol3 = np.loadtxt('6lyz14.abs',skiprows=1)
@@ -205,171 +191,108 @@ if __name__ == "__main__":
     # ax1.plot(data[:,0], resid, 'g-')
 
     #6lyz15.abs has 0.334 solvent density and no shell.
-    crysol4 = np.loadtxt('6lyz15.abs',skiprows=1)
-    crysol4[:,1] *= I0 / crysol4[0,1]
-    ax0.plot(crysol4[:,0],crysol4[:,1],'m-',label='crysol (no shell)')
-    ax1.plot(data[:,0], data[:,0]*0, 'k--')
-    resid = (data[:,1] - np.interp(data[:,0],crysol4[:,0],crysol4[:,1]))/data[:,2]
-    ax1.plot(data[:,0], resid, 'm-')
+    # crysol4 = np.loadtxt('6lyz15.abs',skiprows=1)
+    # crysol4[:,1] *= I0 / crysol4[0,1]
+    # ax0.plot(crysol4[:,0],crysol4[:,1],'m-',label='crysol (no shell)')
+    # ax1.plot(data[:,0], data[:,0]*0, 'k--')
+    # resid = (data[:,1] - np.interp(data[:,0],crysol4[:,0],crysol4[:,1]))/data[:,2]
+    # ax1.plot(data[:,0], resid, 'm-')
 
-    debye = np.loadtxt('6lyz.pdb2sas.dat')
-    debye[:,1] *= I0 / debye[0,1]
+    # debye = np.loadtxt('6lyz_withH_noexvol.pdb2sas.dat')
+    # debye[:,1] *= I0 / debye[0,1]
     # ax0.plot(debye[:,0],debye[:,1],label='debye (in vacuo)')
 
-    # F = np.fft.fftn(rho)
-    # I3D = saxs.abs2(F)
+    if args.data is not None:
+        Iq_exp = np.genfromtxt(args.data, invalid_raise = False, usecols=(0,1,2))
+        if len(Iq_exp.shape) < 2:
+            print("Invalid data format. Data file must have 3 columns: q, I, errors.")
+            exit()
+        if Iq_exp.shape[1] < 3:
+            print("Not enough columns (data must have 3 columns: q, I, errors).")
+            exit()
+        Iq_exp = Iq_exp[~np.isnan(Iq_exp).any(axis = 1)]
+        #get rid of any data points equal to zero in the intensities or errors columns
+        idx = np.where((Iq_exp[:,1]!=0)&(Iq_exp[:,2]!=0))
+        Iq_exp = Iq_exp[idx]
+        if args.units == "nm":
+            Iq_exp[:,0] *= 0.1
+        q_exp = Iq_exp[:,0]
+        I_exp = Iq_exp[:,1]
+        sigq_exp = Iq_exp[:,2]
+
+    # rho_s = 0.334 * dV
+    rho_s = args.rho0 * dV
+
+    if args.mode == 'read':
+        solv, _ = saxs.read_mrc('6lyz_withH_pdb_solv.mrc')
+        rho, _ = saxs.read_mrc('6lyz_withH_pdb_rho.mrc')
+    else:
+        solv, supportsolv = saxs.pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=args.rho0,ignore_waters=True)
+        # saxs.write_mrc(solv, side, '6lyz_withH_pdb_solv.mrc')
+        # saxs.write_mrc(rho, side, '6lyz_withH_pdb_rho.mrc')
+
+    #this multiplies the intensity by the form factor of a cube to correct for the discrete lattice
+    #according to Schmidt-Rohr, J Appl Cryst 2007
+    latt_correction = (np.sinc(qx/2/(np.pi)) * np.sinc(qy/2/(np.pi)) * np.sinc(qz/2/(np.pi)))**2
+
+    diff = rho - solv
+    F = saxs.myfftn(diff)
+    F[F.real==0] = 1e-16
+    I3D = saxs.myabs(F)**2
+    I3D *= latt_correction
+    I_calc = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
+    I_calc_interpolator = interpolate.interp1d(qbinsc,I_calc,kind='cubic')
+    I_calc_interp = I_calc_interpolator(q_exp)
+    exp_scale_factor = saxs._fit_by_least_squares(I_exp,I_calc_interp)
+
+    I_exp /= exp_scale_factor
+    sigq_exp /= exp_scale_factor
+
+    ax0.plot(q_exp,I_exp,'.',c='gray',label='data')
+    ax0.plot(qbinsc, I_calc, '.-',c='red',label='denss')
+    resid = (I_exp - I_calc_interp)/sigq_exp
+    ax1.plot(q_exp, resid, '.-',c='red')
+
+    # diff = solv
+    # print(rho.sum(), solv.sum())
+    # F = saxs.myfftn(diff)
+    # F[F.real==0] = 1e-16
+    # # I3D = saxs.abs2(F)
+    # I3D = saxs.myabs(F)**2
     # Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
-    # Imean *= foxs[0,1] / Imean[0]
-    # plt.plot(qbinsc, Imean, '-',label='denss (in vacuo)')
+    # # Imean *= I0 / Imean[0]
+    # ax0.plot(qbinsc, Imean, 'r-',label='denss (solv)')
+    # resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
+    # ax1.plot(data[:,0], resid, 'r-')
+    # np.savetxt('6lyz_exvol.pdb2mrc2dat.dat',np.vstack((qbinsc,Imean,Imean*.01)).T)
 
-    # res = 3.0
-    # solv, supportsolv = saxs.pdb2map_fastgauss(solvpdb,x=x,y=y,z=z,resolution=res,ignore_waters=args.ignore_waters)
-    # for i in np.linspace(1,5,5):
-    #     print(1./i)
-    #     # solv, supportsolv = saxs.pdb2map_multigauss(solvpdb,x=x,y=y,z=z,resolution=res,ignore_waters=args.ignore_waters)
-    #     #calculate scattering profile from density
-    #     diff = rho - solv * 1./i
-    #     F = np.fft.fftn(diff)
-    #     F[np.abs(F)==0] = 1e-16
-    #     I3D = saxs.abs2(F)
-    #     Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
-    #     Imean *= foxs[0,1] / Imean[0]
-    #     # plt.plot(qbinsc, Imean, '-',label='res=%.1f'%res)
-    #     plt.plot(qbinsc, Imean, '-',label='fraction=%.1f'%(1./i))
+    # sf = 1.0
+    # diff = rho - solv*sf
+    # F = saxs.myfftn(diff)
+    # F[F.real==0] = 1e-16
+    # # I3D = saxs.abs2(F)
+    # I3D = saxs.myabs(F)**2
+    # #this multiplies the intensity by the form factor of a cube to correct for the discrete lattice
+    # #according to Schmidt-Rohr, J Appl Cryst 2007
+    # I3D *= (np.sinc(qx/2/(np.pi)) * np.sinc(qy/2/(np.pi)) * np.sinc(qz/2/(np.pi)))**2
+    # Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
+    # Imean *= I0 / Imean[0]
 
-    #some stuff for calculating excluded volume form factor term
-    pdb.radius = np.zeros(pdb.natoms)
-    for i in range(pdb.natoms):
-        if len(pdb.atomtype[i])==1:
-            atomtype = pdb.atomtype[i][0].upper()
-        else:
-            atomtype = pdb.atomtype[i][0].upper() + pdb.atomtype[i][1].lower()
-        try:
-            dr = saxs.radius[atomtype]
-        except:
-            try:
-                dr = saxs.radius[atomtype[0]]
-            except:
-                dr = saxs.radius['C']
-        pdb.radius[i] = dr
+    # ax0.plot(qbinsc, Imean, 'y-',label='denss (rho-solv*%s)'%sf)
+    # resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
+    # ax1.plot(data[:,0], resid, 'y-')
 
-    from scipy import spatial
-    shift = np.ones(3)*dx/2.
-    particle = np.zeros_like(support)
-    for i in range(pdb.natoms):
-        xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
-        xmin = int(np.floor((xa-dr)/dx)) + n//2
-        xmax = int(np.ceil((xa+dr)/dx)) + n//2
-        ymin = int(np.floor((ya-dr)/dx)) + n//2
-        ymax = int(np.ceil((ya+dr)/dx)) + n//2
-        zmin = int(np.floor((za-dr)/dx)) + n//2
-        zmax = int(np.ceil((za+dr)/dx)) + n//2
-        #handle edges
-        xmin = max([xmin,0])
-        xmax = min([xmax,n])
-        ymin = max([ymin,0])
-        ymax = min([ymax,n])
-        zmin = max([zmin,0])
-        zmax = min([zmax,n])
-        #now lets create a slice object for convenience
-        slc = np.s_[xmin:xmax,ymin:ymax,zmin:zmax]
-        nx = xmax-xmin
-        ny = ymax-ymin
-        nz = zmax-zmin
-        #now lets create a column stack of coordinates for the cropped grid
-        xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
-        #now calculate all distances from the atom to the minigrid points
-        dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
-        #now, add any grid points within dr of atom to the env grid
-        #first, create a dummy array to hold booleans of size dist.size
-        tmpenv = np.zeros(dist.shape,dtype=np.bool_)
-        #now, any elements that have a dist less than the atomic radius make true
-        tmpenv[dist<=pdb.radius[i]] = True
-        #now reshape for inserting into env
-        tmpenv = tmpenv.reshape(nx,ny,nz)
-        particle[slc] += tmpenv
-
-    threshold = 1e-4
-    threshold_for_exvol = 1e-5
-    threshold_for_shell = 1e-6
-
-    # radii = np.zeros(pdb.natoms)
-    # for i in range(pdb.natoms):
-    #     if len(pdb.atomtype[i])==1:
-    #         atomtype = pdb.atomtype[i][0].upper()
-    #     else:
-    #         atomtype = pdb.atomtype[i][0].upper() + pdb.atomtype[i][1].lower()
-    #     try:
-    #         dr = saxs.radius[atomtype]
-    #     except:
-    #         try:
-    #             dr = saxs.radius[atomtype[0]]
-    #         except:
-    #             dr = saxs.radius['C']
-    #     radii[i] = dr
-
-    # radii += 0.0
-    # solv, supportsolv = saxs.pdb2map_fastgauss(solvpdb,x=x,y=y,z=z,resolution=radii,ignore_waters=args.ignore_waters)
-    # solv, supportsolv = saxs.pdb2map_fastgauss(solvpdb,x=x,y=y,z=z,resolution=radii*1,ignore_waters=args.ignore_waters)
-    # sigma1 = 0.5
-    # solv1 = solv #ndimage.gaussian_filter(solv,sigma=sigma1,mode='wrap')
-    # particle = np.zeros_like(support)
-    # particle[solv1>threshold*rho.max()] = True
-    # particle[rho>threshold*rho.max()] = True
-
-    # shell_thickness = 4.0
-    # # shell_radii = radii * shell_thickness/2.
-    # # solv2, supportsolv = saxs.pdb2map_fastgauss(solvpdb,x=x,y=y,z=z,resolution=shell_radii,ignore_waters=args.ignore_waters)
-    # sigma2 = 1.0
-    # solv2 = ndimage.gaussian_filter(solv,sigma=sigma2,mode='wrap')
-    # shell = np.zeros_like(support)
-    # shell[solv1>threshold*.0001*rho.max()] = True
-    # shell[particle] = False
-
-    rho_s = 0.334 * dV
-    # sigma = 1.0
-    # #scale solv term to be number of electrons seen by excluded volume from crysol
-    # ne_invacuo_crysol = (0.582674E+08)**0.5 #sqrt of I(0)
-    # ne_exvol_crysol = (0.358891E+08)**0.5
-    # ratio = ne_invacuo_crysol/ne_exvol_crysol
-    # solv *= 1/ratio * rho.sum()/solv.sum()
-
-    solv = np.zeros_like(rho)
-    solv[particle] = rho_s
-
-    sf = 0.0
-    diff = rho - solv*sf
-    print(rho.sum(), solv.sum())
-    F = saxs.myfftn(diff)
-    F[F.real==0] = 1e-16
-    I3D = saxs.abs2(F)
-    Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
-    Imean *= I0 / Imean[0]
-    ax0.plot(qbinsc, Imean, 'r-',label='denss (rho-solv*%s)'%sf)
-    resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
-    ax1.plot(data[:,0], resid, 'r-')
-
-    sf = 1.0
-    diff = rho - solv*sf
-    F = saxs.myfftn(diff)
-    F[F.real==0] = 1e-16
-    I3D = saxs.abs2(F)
-    Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
-    Imean *= I0 / Imean[0]
-    ax0.plot(qbinsc, Imean, 'y-',label='denss (rho-solv*%s)'%sf)
-    resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
-    ax1.plot(data[:,0], resid, 'y-')
-
-    sf = 2.0
-    diff = rho - solv*sf
-    F = saxs.myfftn(diff)
-    F[F.real==0] = 1e-16
-    I3D = saxs.abs2(F)
-    Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
-    Imean *= I0 / Imean[0]
-    ax0.plot(qbinsc, Imean, 'g-',label='denss (rho-solv*%s)'%sf)
-    resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
-    ax1.plot(data[:,0], resid, 'g-')
+    # sf = 1.02
+    # diff = rho - solv*sf
+    # F = saxs.myfftn(diff)
+    # F[F.real==0] = 1e-16
+    # # I3D = saxs.abs2(F)
+    # I3D = saxs.myabs(F)**2
+    # Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
+    # Imean *= I0 / Imean[0]
+    # ax0.plot(qbinsc, Imean, 'g-',label='denss (rho-solv*%s)'%sf)
+    # resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
+    # ax1.plot(data[:,0], resid, 'g-')
 
     # sf = 1.15
     # diff = rho - solv*sf
@@ -392,14 +315,6 @@ if __name__ == "__main__":
     # ax0.plot(qbinsc, Imean, 'c-',label='denss (rho-solv*%s)'%sf)
     # resid = (data[:,1] - np.interp(data[:,0],qbinsc,Imean))/data[:,2]
     # ax1.plot(data[:,0], resid, 'c-')
-
-
-    #this multiplies the intensity by the form factor of a cube to correct for the discrete lattice
-    #according to Schmidt-Rohr, J Appl Cryst 2007
-    I3D_mod = I3D * (np.sinc(qx/2/(np.pi)) * np.sinc(qy/2/(np.pi)) * np.sinc(qz/2/(np.pi)))**2
-    Imean_mod = saxs.mybinmean(I3D_mod.ravel(), qblravel, DENSS_GPU=False)
-    Imean_mod *= I0 / Imean_mod[0]
-    # plt.plot(qbinsc, Imean_mod, '.-',label='modified by sinc')
 
     # greens = plt.get_cmap('Greens')
     # drho = np.linspace(0.055,0.065,3) * dV
@@ -442,9 +357,9 @@ if __name__ == "__main__":
     # saxs.write_mrc(shell*1.0,side,'shell.mrc')
 
     ax0.semilogy()
-    ax0.set_xlim([.03,1.8])
-    ax1.set_xlim([.03,1.8])
-    ax0.set_ylim([0.3,I0*1.1])
+    # ax0.set_xlim([.03,1.8])
+    # ax1.set_xlim([.03,1.8])
+    # ax0.set_ylim([0.3,I0*1.1])
     ax1.set_xlabel(r"q ($\AA^{-1}$)")
     ax0.set_ylabel("I(q)")
     ax1.set_ylabel(r"$\Delta I / \sigma$")

@@ -121,7 +121,16 @@ def myabs(x, out=None,DENSS_GPU=False):
 # @numba.vectorize([numba.float64(numba.complex128),numba.float32(numba.complex64)])
 def abs2(x):
     #a faster way to calculate abs(x)**2, for calculating intensities
-    return x.real**2 + x.imag**2
+    # print(x.real.min(),x.real.max())
+    # print(x.imag.min(),x.imag.max())
+    re2 = (x.real)**2 
+    im2 = (x.imag)**2
+    # print("got here")
+    # exit()
+    # print(re2.max())
+    # print(im2.max())
+    _abs2 = re2 + im2
+    return _abs2
 
 # @numba.jit(nopython=True)
 # def mybincount(x, weights):
@@ -377,6 +386,22 @@ def zoom_rho(rho,vx,dx):
     newrho = ndimage.zoom(rho,(zx, zy, zz),order=1,mode="wrap")
 
     return newrho
+
+def _fit_by_least_squares(radial, vectors, nmin=None,nmax=None):
+    # This function fits a set of linearly combined vectors to a radial profile,
+    # using a least-squares-based approach. The fit only takes into account the
+    # range of radial bins defined by the xmin and xmax arguments.
+    if nmin is None:
+        nmin = 0
+    if nmax is None:
+        nmax = len(radial)
+    a = np.nan_to_num(np.atleast_2d(vectors).T)
+    b = np.nan_to_num(radial)
+    a = a[nmin:nmax]
+    b = b[nmin:nmax]
+    coefficients, _, _, _ = np.linalg.lstsq(a, b, rcond=None)
+    # coefficients, _ = optimize.nnls(a, b)
+    return coefficients
 
 def loadOutFile(filename):
     """Loads a GNOM .out file and returns q, Ireg, sqrt(Ireg), and a
@@ -1195,52 +1220,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         qblravel = cp.array(qblravel)
         xcount = cp.array(xcount)
 
-
-    # #### assume the density of the atomic model is correct and
-    # # attempt to model the solvent density, resetting the model
-    # # density each step
-    # fname_nopath = os.path.basename('6lyz.pdb')
-    # basename, ext = os.path.splitext(fname_nopath)
-    # pdb = PDB(fname_nopath)
-    # pdboutput = basename+"_centered.pdb"
-    # pdb.coords -= pdb.coords.mean(axis=0)
-    # pdb.write(filename=pdboutput)
-    # resolution = 2.0
-    # ignore_waters = True
-    # pdb_rho, pdb_idx = pdb2map_multigauss(pdb,x=x,y=y,z=z,cutoff=10,resolution=resolution,ignore_waters=ignore_waters)
-    # pdb_idx *= False
-    # pdb_idx[pdb_rho>1e-3*pdb_rho.max()] = True
-
-    # #now, dilate pdb_idx to give us the support, which gives some room for a solvent shell
-    # #start with a 5 angstrom shell
-    # dilation_width = 25.
-    # dilation_width_in_pixels = int(dilation_width/dx)+1
-    # dwpix = dilation_width_in_pixels
-    # print(dwpix)
-    # # support = ndimage.binary_dilation(pdb_idx,np.ones((dwpix,dwpix,dwpix)))
-    # #turn shrinkwrap off for now
-    # shrinkwrap = False
-    # print("shrinkwrap disabled")
-
-    # #for our purposes here, rho_solv is the excluded solvent density
-    # #so rho = pdb_rho - rho_solv
-    # #start with excluded solvent being random
-    # rho_solv = np.copy(rho)
-    # rho = pdb_rho - rho_solv
-
-    #attempt to restrain to model solvent
-    #start with estimated protein density after excluded volume subtraction
-    protein, side1 = read_mrc('6lyz_pdb_diff_copy.mrc')
-    protein *= dV
-    rho = np.copy(protein)
-    support = np.zeros(rho.shape, dtype=bool)
-    support[np.abs(rho)>1e-8*rho.max()] = True
-    shrinkwrap = False
-    #make a support just for the protein region to restrain each step
-    protein_idx = np.zeros_like(support)
-    protein_idx[rho>0.001*rho.max()] = True
-
-
+    #discrete lattice correction factor
+    latt_correction = (np.sinc(qx/2/(np.pi)) * np.sinc(qy/2/(np.pi)) * np.sinc(qz/2/(np.pi)))**2
 
     for j in range(steps):
         if abort_event is not None:
@@ -1249,17 +1230,21 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
                 return []
 
         F = myfftn(rho, DENSS_GPU=DENSS_GPU)
-        # print(rho.sum(), support.sum())
 
         #sometimes, when using denss.refine.py with non-random starting rho,
         #the resulting Fs result in zeros in some locations and the algorithm to break
         #here just make those values to be 1e-16 to be non-zero
-        # F[np.abs(F)==0] = 1e-16
+        F[np.abs(F)==0] = 1e-16
 
         #APPLY RECIPROCAL SPACE RESTRAINTS
         #calculate spherical average of intensities from 3D Fs
-        # I3D = myabs(F, out=I3D, DENSS_GPU=DENSS_GPU)**2
-        I3D = abs2(F)
+        #for some reason, sometimes this fails
+        try:
+            I3D = abs2(F)
+        except:
+            I3D = myabs(F,DENSS_GPU=DENSS_GPU)**2
+        #discrete lattice correction
+        I3D *= latt_correction
         Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=DENSS_GPU)
 
         #scale Fs to match data
@@ -1282,10 +1267,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         #Error Reduction
         newrho *= 0
         newrho[support] = rhoprime[support]
-
-        #PDB density
-        # rho_solv = newrho - pdb_rho
-        newrho[protein_idx] = protein[protein_idx]
 
         # enforce positivity by making all negative density points zero.
         if positivity:
@@ -1526,7 +1507,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
 
     F = np.fft.fftn(rho)
     #calculate spherical average intensity from 3D Fs
-    Imean = ndimage.mean(np.abs(F)**2, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
+    I3D = np.abs(F)**2
+    I3D *= latt_correction
+    Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
     #chi[j+1] = np.sum(((Imean[j+1,qbin_args]-Idata)/sigqdata)**2)/qbin_args.size
 
     #scale Fs to match data
@@ -1535,9 +1518,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     F *= factors[qbin_labels]
     rho = np.fft.ifftn(F,rho.shape)
     rho = rho.real
-
-    #PDB stuff again
-    # rho -= pdb_rho #let's looks at just the solvent density found
 
     #negative images yield the same scattering, so flip the image
     #to have more positive than negative values if necessary
@@ -2851,6 +2831,7 @@ class PDB(object):
         self.atomtype = np.zeros((self.natoms),dtype=np.dtype((np.str,2)))
         self.charge = np.zeros((self.natoms),dtype=np.dtype((np.str,2)))
         self.nelectrons = np.zeros((self.natoms),dtype=int)
+        self.radius = np.zeros(self.natoms)
         with open(filename) as f:
             atom = 0
             for line in f:
@@ -2891,6 +2872,19 @@ class PDB(object):
                 self.atomtype[atom] = atomtype
                 self.charge[atom] = line[78:80].strip('\n')
                 self.nelectrons[atom] = electrons.get(self.atomtype[atom].upper(),6)
+                if len(self.atomtype[atom])==1:
+                    atomtype = self.atomtype[atom][0].upper()
+                else:
+                    atomtype = self.atomtype[atom][0].upper() + self.atomtype[atom][1].lower()
+                try:
+                    dr = radius[atomtype]
+                except:
+                    try:
+                        dr = radius[atomtype[0]]
+                    except:
+                        #default to carbon
+                        dr = radius['C']
+                self.radius[atom] = dr
                 atom += 1
 
     def generate_pdb_from_defaults(self, natoms):
@@ -3120,6 +3114,94 @@ def pdb2map_fastgauss(pdb,x,y,z,cutoff=3.0,resolution=15.0,ignore_waters=True):
     print()
     return values, support
 
+def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters=True):
+    """Simple isotropic single gaussian sum at coordinate locations.
+
+    This function only calculates the values at
+    grid points near the atom for speed.
+
+    pdb - instance of PDB class (required, must have pdb.radius attribute)
+    x,y,z - meshgrids for x, y, and z (required)
+    cutoff - maximum distance from atom to calculate density
+    rho0 - average bulk solvent density used for excluded volume estimation (0.334 for water)
+    """
+    side = x[-1,0,0] - x[0,0,0]
+    halfside = side/2
+    n = x.shape[0]
+    dx = side/n
+    dV = dx**3
+    V = side**3
+    x_ = x[:,0,0]
+    shift = np.ones(3)*dx/2.
+    print("\n Calculate density map from PDB... ")
+    values = np.zeros(x.shape)
+    support = np.zeros(x.shape,dtype=bool)
+    # cutoff = max(cutoff,2*resolution)
+    #convert resolution to B-factor for form factor calculation
+    #set resolution equal to atomic displacement
+    # B = u2B(resolution)
+    for i in range(pdb.coords.shape[0]):
+        if ignore_waters and pdb.resname[i]=="HOH":
+            continue
+        sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
+        sys.stdout.flush()
+        #this will cut out the grid points that are near the atom
+        #first, get the min and max distances for each dimension
+        #also, convert those distances to indices by dividing by dx
+        xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
+        #ignore atoms whose coordinates are outside the box limits
+        if (
+            (xa < x.min()) or
+            (xa > x.max()) or
+            (ya < y.min()) or
+            (ya > y.max()) or
+            (za < z.min()) or
+            (za > z.max())
+           ):
+           print()
+           print("Atom %d outside boundary of cell ignored."%i)
+           continue
+        xmin = int(np.floor((xa-cutoff)/dx)) + n//2
+        xmax = int(np.ceil((xa+cutoff)/dx)) + n//2
+        ymin = int(np.floor((ya-cutoff)/dx)) + n//2
+        ymax = int(np.ceil((ya+cutoff)/dx)) + n//2
+        zmin = int(np.floor((za-cutoff)/dx)) + n//2
+        zmax = int(np.ceil((za+cutoff)/dx)) + n//2
+        #handle edges
+        xmin = max([xmin,0])
+        xmax = min([xmax,n])
+        ymin = max([ymin,0])
+        ymax = min([ymax,n])
+        zmin = max([zmin,0])
+        zmax = min([zmax,n])
+        #now lets create a slice object for convenience
+        slc = np.s_[xmin:xmax,ymin:ymax,zmin:zmax]
+        nx = xmax-xmin
+        ny = ymax-ymin
+        nz = zmax-zmin
+        #now lets create a column stack of coordinates for the cropped grid
+        xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
+        dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
+
+        V = (4*np.pi/3)*pdb.radius[i]**3
+        tmpvalues = realspace_gaussian_formfactor(r=dist, rho0=rho0, V=V, radius=None)
+
+        #rescale total number of electrons by expected number of electrons
+        if np.sum(tmpvalues)>1e-8:
+            tmpvalues *= rho0 * V / np.sum(tmpvalues)
+            # tmpvalues *= 1
+        else:
+            print()
+            print("Voxel spacing too coarse. No density for atom %d."%i)
+
+        # print("    {:2s} {:6.2f} {:6.2f} {:6.2f} {:7.2f} {:6.3f}".format(element, pdb.radius[i], V, rho0*V, tmpvalues.sum(), rho0*V/tmpvalues.sum()))
+        # tmpvalues *= rho0 * V / tmpvalues.sum()
+
+        values[slc] += tmpvalues.reshape(nx,ny,nz)
+        support[slc] = True
+    print()
+    return values, support
+
 def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
     """5-term gaussian sum at coordinate locations using Cromer-Mann coefficients.
 
@@ -3190,7 +3272,6 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
         #now lets create a column stack of coordinates for the cropped grid
         xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
         dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
-        dist *= dist
         try:
             element = pdb.atomtype[i]
             ffcoeff[element]
@@ -3356,6 +3437,22 @@ def pdb2support_fast(pdb,x,y,z,dr=2.0):
     #print()
     return support
 
+def u2B(u):
+    """Calculate B-factor from atomic displacement, u"""
+    # if u<0:
+    #     return -8 * np.pi**2 * np.abs(u)**2
+    # else:
+    #     return 8 * np.pi**2 * u**2
+    return 8 * np.pi**2 * u**2
+
+def B2u(B):
+    """Calculate atomic displacement, u, from B-factor"""
+    # if B<0:
+    #     return -(np.abs(B)/(8*np.pi**2))**0.5
+    # else:
+    #     return (B/(8*np.pi**2))**0.5
+    return (B/(8*np.pi**2))**0.5
+
 def sphere(R, q=np.linspace(0,0.5,501), I0=1.,amp=False):
     """Calculate the scattering of a uniform sphere."""
     q = np.atleast_1d(q)
@@ -3376,24 +3473,26 @@ def formfactor(element, q=(np.arange(500)+1)/1000.,B=None):
     for i in range(4):
         ff += ffcoeff[element]['a'][i] * np.exp(-ffcoeff[element]['b'][i]*(q/(4*np.pi))**2)
     ff += ffcoeff[element]['c']
-    ff *= np.exp(-B*q**2)
+    ff *= np.exp(-B* (q / (4*np.pi))**2)
     return ff
 
-def u2B(u):
-    """Calculate B-factor from atomic displacement, u"""
-    # if u<0:
-    #     return -8 * np.pi**2 * np.abs(u)**2
-    # else:
-    #     return 8 * np.pi**2 * u**2
-    return 8 * np.pi**2 * u**2
-
-def B2u(B):
-    """Calculate atomic displacement, u, from B-factor"""
-    # if B<0:
-    #     return -(np.abs(B)/(8*np.pi**2))**0.5
-    # else:
-    #     return (B/(8*np.pi**2))**0.5
-    return (B/(8*np.pi**2))**0.5
+# def realspace_formfactor(element, r=(np.arange(501))/1000., B=None):
+#     """Calculate real space atomic form factors"""
+#     if B is None:
+#         B = 0.0
+#     r = np.atleast_1d(r)
+#     ff = np.zeros(r.shape)
+#     for i in range(4):
+#         ai = ffcoeff[element]['a'][i]
+#         bi = ffcoeff[element]['b'][i]
+#         #the form factor in the next line is based on an analytical Fourier
+#         #tranform of the form factor in reciprocal space
+#         #ff += 2*(2/bi)**0.5*np.pi * ai * np.exp(-(2*np.pi*r)**2/bi)
+#         #the form factor in the next line additionally accounts for a B-factor
+#         ff += 2*(6)**0.5 * np.pi * ai * np.exp(-3*(2*np.pi*r)**2/(3*bi+B)) / (3*bi+B)**0.5
+#     i = np.where((r==0))
+#     ff += signal.unit_impulse(r.shape, i) * ffcoeff[element]['c']
+#     return ff
 
 def realspace_formfactor(element, r=(np.arange(501))/1000., B=None):
     """Calculate real space atomic form factors"""
@@ -3404,34 +3503,43 @@ def realspace_formfactor(element, r=(np.arange(501))/1000., B=None):
     for i in range(4):
         ai = ffcoeff[element]['a'][i]
         bi = ffcoeff[element]['b'][i]
-        #the form factor in the next line is based on an analytical Fourier
-        #tranform of the form factor in reciprocal space
-        #ff += 2*(2/bi)**0.5*np.pi * ai * np.exp(-(2*np.pi*r)**2/bi)
         #the form factor in the next line additionally accounts for a B-factor
-        ff += 2*(6)**0.5 * np.pi * ai * np.exp(-3*(2*np.pi*r)**2/(3*bi+B)) / (3*bi+B)**0.5
+        ff += 8 * np.pi**2 * ai * np.exp(-r**2 * (4*np.pi)**4 / (B+16*np.pi**2*bi)) / (B/2+8*np.pi**2*bi)**0.5
     i = np.where((r==0))
     ff += signal.unit_impulse(r.shape, i) * ffcoeff[element]['c']
     return ff
 
-def reciprocalspace_formfactor_gaussian(q=(np.arange(501))/1000., V=None):
-    """Calculate real space atomic form factors"""
-    ff = V * np.exp(-q**2*V**(2./3)/(4*np.pi))
+def reciprocalspace_gaussian_formfactor(q=np.linspace(0,0.5,501), rho0=0.334, V=None, radius=None):
+    """Calculate reciprocal space atomic form factors assuming an isotropic gaussian sphere (for excluded volume)."""
+    if (V is None) and (radius is None):
+        print("Error: either radius or volume of atom must be given.")
+        exit()
+    elif V is None:
+        #calculate volume from radius assuming sphere
+        V = (4*np.pi/3)*radius**3
+    ff = rho0 * V * np.exp(-q**2*V**(2./3)/(4*np.pi))
     return ff
 
-def realspace_formfactor_gaussian(r=np.linspace(-3,3,101), V=None):
-    """Calculate real space atomic form factors"""
-    ff = (2*np.pi)**0.5 * V**(2./3) * np.exp(-np.pi*r**2/V**(2./3))
+def realspace_gaussian_formfactor(r=np.linspace(-3,3,101), rho0=0.334, V=None, radius=None):
+    """Calculate real space atomic form factors assuming an isotropic gaussian sphere (for excluded volume)."""
+    if (V is None) and (radius is None):
+        print("Error: either radius or volume of atom must be given.")
+        exit()
+    elif V is None:
+        #calculate volume from radius assuming sphere
+        V = (4*np.pi/3)*radius**3
+    ff = rho0 *(2*np.pi)**0.5 * V**(2./3) * np.exp(-np.pi*r**2/V**(2./3))
     return ff
 
-def realspace_exvol_gaussian(r=np.linspace(-3,3,101), ri=1.7, r0=1.62, rm=1.62):
-    """Calculate real space atomic form factors.
-    r - distance from center of atom
-    ri - radius of gaussian atom(s), from which volume is calculated as Vi=4*pi/3*ri**3
-    r0 - effective average atomic radius (a la crysol), a scalar
-    rm - actual average atomic radius (a la crysol), a scalar
-    """
-    ff = (2*np.pi)**0.5 * V**(2./3) * np.exp(-np.pi*r**2/V**(2./3))
-    return ff
+# def realspace_exvol_gaussian(r=np.linspace(-3,3,101), ri=1.7, r0=1.62, rm=1.62):
+#     """Calculate real space atomic form factors.
+#     r - distance from center of atom
+#     ri - radius of gaussian atom(s), from which volume is calculated as Vi=4*pi/3*ri**3
+#     r0 - effective average atomic radius (a la crysol), a scalar
+#     rm - actual average atomic radius (a la crysol), a scalar
+#     """
+#     ff = (2*np.pi)**0.5 * V**(2./3) * np.exp(-np.pi*r**2/V**(2./3))
+#     return ff
 
 def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=True,
         output="map", steps=2001, seed=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
@@ -3559,22 +3667,22 @@ radius = {'H': 1.10,'He': 1.4,'Li': 1.8,'Be': 1.5,'B': 1.9,'C': 1.7,'N': 1.6,'O'
 
 radius = {
      # "H":  1.20 , #wiki 1.2
-     # "H":  1.07 , #crysol
-     "H":  0.885, #denss fit
+     "H":  1.07 , #crysol
+     # "H":  0.885, #denss fit
      "D":  1.20 ,
      "He": 1.40 ,
      "Li": 1.82 ,
      "Be": 0.63 ,
      "B":  1.75 ,
      # "C":  1.775, #wiki 1.7  #was 1.775 # CNS 2.3
-     # "C":  1.58, #crysol
-     "C":  1.704, #denss fit
+     "C":  1.58, #crysol
+     # "C":  1.704, #denss fit
      # "N":  1.50 , #wiki 1.55 #was 1.5 # CNS 1.6
-     # "N":  0.84, #crysol
-     "N":  0.937, #denss fit
+     "N":  0.84, #crysol
+     # "N":  0.937, #denss fit
      # "O":  1.45 , #wiki 1.52 #was 1.45 # CNS 1.6
-     # "O":  1.30, #crysol
-     "O":  1.357, #denss fit
+     "O":  1.30, #crysol
+     # "O":  1.357, #denss fit
      "F":  1.47 ,
      "Ne": 1.54 ,
      "Na": 2.27 ,

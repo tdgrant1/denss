@@ -11,7 +11,7 @@
 #    Tested using Anaconda / Python 2.7
 #
 #    Author: Thomas D. Grant
-#    Email:  <tgrant@hwi.buffalo.edu>
+#    Email:  <tdgrant@buffalo.edu>
 #    Copyright 2018 The Research Foundation for SUNY
 #
 #    Additional authors:
@@ -64,18 +64,6 @@ parser.add_argument("-o", "--output", default=None, help="Output filename prefix
 parser.set_defaults(plot=True)
 parser.set_defaults(write_shannon=False)
 args = parser.parse_args()
-
-if args.plot:
-    #if plotting is enabled, try to import matplotlib
-    #if import fails, set plotting to false
-    try:
-        import matplotlib
-        #matplotlib.use('TkAgg')
-        matplotlib.use('Qt5Agg')
-        import matplotlib.pyplot as plt
-        from matplotlib.widgets import Slider, Button, RadioButtons, TextBox, CheckButtons #, RangeSlider
-    except ImportError:
-        args.plot = False
 
 if __name__ == "__main__":
 
@@ -247,16 +235,34 @@ if __name__ == "__main__":
         if args.write_shannon:
             np.savetxt(output+'_Shannon.dat', np.vstack((sasrec.qn, sasrec.In, sasrec.Inerr)).T,delimiter=' ',fmt='%.5e',header=param_str)
 
-
     if args.plot:
-        #first try generating a figure
-        #if that fails, just exit, but still save the results in a file
+        #if plotting is enabled, try to import matplotlib
+        #if import fails, set plotting to false
+        #first try using Qt5Agg backend, then TkAgg
         try:
+            import matplotlib
+            matplotlib.use('Qt5Agg')
+            import matplotlib.pyplot as plt
+            from matplotlib.widgets import Slider, Button, RadioButtons, TextBox, CheckButtons #, RangeSlider
             fig = plt.figure(0, figsize=(12,6))
-        except Exception as e:
-            print("Matplotlib failed to create figure. GUI mode disabled.")
-            print("Error: %s"%e)
-            args.plot = False
+            qtsuccess = True
+        except ImportError:
+            qtsuccess = False
+        print(qtsuccess)
+        if not qtsuccess:
+            print("Using TkAgg")
+            try:
+                import matplotlib
+                matplotlib.use('TkAgg')
+                import matplotlib.pyplot as plt
+                from matplotlib.widgets import Slider, Button, RadioButtons, TextBox, CheckButtons #, RangeSlider
+                fig = plt.figure(0, figsize=(12,6))
+            except Exception as e:
+                print("Matplotlib failed to create figure. GUI mode disabled.")
+                print("Error: %s"%e)
+                args.plot = False
+        else:
+            print("Using QtAgg")
 
     if args.plot:
         try:
