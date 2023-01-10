@@ -72,6 +72,7 @@ if __name__ == "__main__":
         recenter_steps=args.recenter_steps,
         recenter_mode=args.recenter_mode,
         positivity=args.positivity,
+        positivity_steps=args.positivity_steps,
         extrapolate=args.extrapolate,
         output=args.output,
         steps=args.steps,

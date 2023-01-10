@@ -45,6 +45,7 @@ def parse_arguments(parser):
     parser.add_argument("-rc_mode", "--recenter_mode", default="com", type=str, help="Recenter based on either center of mass (com, default) or maximum density value (max)")
     parser.add_argument("-p","-p_on","--positivity_on", dest="positivity", action="store_true", help="Enforce positivity restraint inside support. (default)")
     parser.add_argument("-p_off","--positivity_off", dest="positivity", action="store_false", help="Do not enforce positivity restraint inside support.")
+    parser.add_argument("-p_steps", "--positivity_steps", default=[1000], type=int, nargs='+', help="List of steps to enforce positivity.")
     parser.add_argument("-rho", "--rho_start", default=None, type=str, help="Starting electron density map filename (for use in denss.refine.py only)")
     parser.add_argument("--add_noise", default=None, type=float, help="Add noise to starting density map. Uniformly distributed random density is added to each voxel, by default from 0 to 1. The argument is a scale factor to multiply this by.")
     parser.add_argument("-e","-e_on","--extrapolate_on", dest="extrapolate", action="store_true", help=argparse.SUPPRESS) # help="Extrapolate data by Porod law to high resolution limit of voxels. (default)")
@@ -351,6 +352,11 @@ def parse_arguments(parser):
     if not isinstance(recenter_steps, list):
         recenter_steps = [ recenter_steps ]
 
+    if args.positivity_steps is not None:
+        positivity_steps = args.positivity_steps
+    if not isinstance(positivity_steps, list):
+        positivity_steps = [ positivity_steps ]
+
     if args.steps is not None:
         steps = args.steps
 
@@ -369,6 +375,7 @@ def parse_arguments(parser):
     args.shrinkwrap_sigma_end = shrinkwrap_sigma_end_in_vox
     args.enforce_connectivity_steps = enforce_connectivity_steps
     args.recenter_steps = recenter_steps
+    args.positivity_steps = positivity_steps
     args.dmax = dmax
     args.voxel = voxel
     args.q = q

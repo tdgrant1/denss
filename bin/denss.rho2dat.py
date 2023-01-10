@@ -39,6 +39,7 @@ import saxstats.saxstats as saxs
 parser = argparse.ArgumentParser(description="A tool for calculating simple scattering profiles from MRC formatted electron density maps", formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
 parser.add_argument("-f", "--file", type=str, help="Electron density filename (.mrc)")
+parser.add_argument("-exvol", "--exvol", default=None, type=str, help="Electron density filename (.mrc) of excluded volume (optional).")
 parser.add_argument("-dq", "--dq", default=None, type=float, help="Desired q spacing (pads map with zeros)")
 parser.add_argument("-n", "--n", default=None, type=int, help="Desired number of samples (overrides --dq option)")
 parser.add_argument("--ns", default=1, type=int, help="Sampling fraction (i.e. every ns'th element, must be integer, allows for reduced sampling for speed up at cost of resolution (i.e. qmax will be smaller))")
@@ -68,10 +69,24 @@ if __name__ == "__main__":
         output = args.output
 
     rho, side = saxs.read_mrc(args.file)
+    if args.exvol is not None:
+        exvol, exvol_side = saxs.read_mrc(args.exvol)
+        if rho.shape[0] != exvol.shape[0]:
+            print("rho and exvol shape mismatch")
+            print("rho.shape: ", rho.shape )
+            print("exvol.shape: ", exvol.shape )
+        if side != exvol_side:
+            print("rho and exvol side mismatch")
+            print("rho side: ", side )
+            print("exvol side: ", exvol_side )
     if rho.shape[0]%2==1:
         rho = rho[:-1,:-1,:-1]
+        if args.exvol:
+            exvol = exvol[:-1,:-1,:-1]
     #if nstmp%2==1: args.ns+=1
     rho = np.copy(rho[::args.ns, ::args.ns, ::args.ns])
+    if args.exvol:
+        exvol = np.copy(exvol[::args.ns, ::args.ns, ::args.ns])
     if args.threshold is not None:
         rho[np.abs(rho)<=args.threshold] = 0
     halfside = side/2
@@ -179,7 +194,7 @@ if __name__ == "__main__":
     # qbinsc = np.copy(qbinsc_to_use)
     # Imean = np.copy(Imean_to_use)
 
-    Iq = np.vstack((qbinsc, Imean, Imean*.03)).T
+    Iq = np.vstack((qbinsc, Imean, Imean*.03*Imean[0]*.001)).T
 
     np.savetxt(output+'.dat', Iq, delimiter=' ', fmt='% .16e')
 

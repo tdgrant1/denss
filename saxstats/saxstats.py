@@ -984,7 +984,7 @@ def filter_P(r,P,sigr=None,qmax=0.5,cutoff=0.75,qmin=0.0,cutoffmin=1.25):
             return r, Pfilt
 
 def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
-    recenter_mode="com", positivity=True, extrapolate=True, output="map",
+    recenter_mode="com", positivity=True, positivity_steps=None, extrapolate=True, output="map",
     steps=None, seed=None, flatten_low_density=True, rho_start=None, add_noise=None,
     shrinkwrap=True, shrinkwrap_old_method=False,shrinkwrap_sigma_start=3,
     shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
@@ -1269,7 +1269,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         newrho[support] = rhoprime[support]
 
         # enforce positivity by making all negative density points zero.
-        if positivity:
+        if positivity and j in positivity_steps:
             newrho[newrho<0] = 0.0
 
         #apply non-crystallographic symmetry averaging
@@ -3143,6 +3143,8 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
     for i in range(pdb.coords.shape[0]):
         if ignore_waters and pdb.resname[i]=="HOH":
             continue
+        if rho0 == 0:
+            continue
         sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
         sys.stdout.flush()
         #this will cut out the grid points that are near the atom
@@ -3504,7 +3506,10 @@ def realspace_formfactor(element, r=(np.arange(501))/1000., B=None):
         ai = ffcoeff[element]['a'][i]
         bi = ffcoeff[element]['b'][i]
         #the form factor in the next line additionally accounts for a B-factor
-        ff += 8 * np.pi**2 * ai * np.exp(-r**2 * (4*np.pi)**4 / (B+16*np.pi**2*bi)) / (B/2+8*np.pi**2*bi)**0.5
+        if B==0:
+            ff += 2*2**0.5*ai/bi**0.5 * np.exp(-4*np.pi**2/bi * r**2)
+        else:
+            ff += 8 * np.pi**2 * ai / (B/2+8*np.pi**2*bi)**0.5 * np.exp(-r**2 * 64*np.pi**4 / (B+16*np.pi**2*bi))
     i = np.where((r==0))
     ff += signal.unit_impulse(r.shape, i) * ffcoeff[element]['c']
     return ff
