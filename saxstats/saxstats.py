@@ -3062,7 +3062,12 @@ def pdb2map_fastgauss(pdb,x,y,z,cutoff=3.0,resolution=15.0,ignore_waters=True):
         cutoff *= np.ones(pdb.natoms)
     cutoff = np.max(np.vstack((cutoff,2*resolution)),axis=0)
     sigma = resolution/4. #to make compatible with e2pdb2mrc/chimera sigma
-
+    gxmin = x.min()
+    gxmax = x.max()
+    gymin = y.min()
+    gymax = y.max()
+    gzmin = z.min()
+    gzmax = z.max()
     print("\n Calculate density map from PDB... ")
     for i in range(pdb.coords.shape[0]):
         if ignore_waters and pdb.resname[i]=="HOH":
@@ -3075,12 +3080,12 @@ def pdb2map_fastgauss(pdb,x,y,z,cutoff=3.0,resolution=15.0,ignore_waters=True):
         xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
         #ignore atoms whose coordinates are outside the box limits
         if (
-            (xa < x.min()) or
-            (xa > x.max()) or
-            (ya < y.min()) or
-            (ya > y.max()) or
-            (za < z.min()) or
-            (za > z.max())
+            (xa < gxmin) or
+            (xa > gxmax) or
+            (ya < gymin) or
+            (ya > gymax) or
+            (za < gzmin) or
+            (za > gzmax)
            ):
            print()
            print("Atom %d outside boundary of cell ignored."%i)
@@ -3140,6 +3145,12 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
     #convert resolution to B-factor for form factor calculation
     #set resolution equal to atomic displacement
     # B = u2B(resolution)
+    gxmin = x.min()
+    gxmax = x.max()
+    gymin = y.min()
+    gymax = y.max()
+    gzmin = z.min()
+    gzmax = z.max()
     for i in range(pdb.coords.shape[0]):
         if ignore_waters and pdb.resname[i]=="HOH":
             continue
@@ -3153,12 +3164,12 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
         xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
         #ignore atoms whose coordinates are outside the box limits
         if (
-            (xa < x.min()) or
-            (xa > x.max()) or
-            (ya < y.min()) or
-            (ya > y.max()) or
-            (za < z.min()) or
-            (za > z.max())
+            (xa < gxmin) or
+            (xa > gxmax) or
+            (ya < gymin) or
+            (ya > gymax) or
+            (za < gzmin) or
+            (za > gzmax)
            ):
            print()
            print("Atom %d outside boundary of cell ignored."%i)
@@ -3232,6 +3243,12 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
     #convert resolution to B-factor for form factor calculation
     #set resolution equal to atomic displacement
     B = u2B(resolution)
+    gxmin = x.min()
+    gxmax = x.max()
+    gymin = y.min()
+    gymax = y.max()
+    gzmin = z.min()
+    gzmax = z.max()
     for i in range(pdb.coords.shape[0]):
         if ignore_waters and pdb.resname[i]=="HOH":
             continue
@@ -3243,12 +3260,12 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
         xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
         #ignore atoms whose coordinates are outside the box limits
         if (
-            (xa < x.min()) or
-            (xa > x.max()) or
-            (ya < y.min()) or
-            (ya > y.max()) or
-            (za < z.min()) or
-            (za > z.max())
+            (xa < gxmin) or
+            (xa > gxmax) or
+            (ya < gymin) or
+            (ya > gymax) or
+            (za < gzmin) or
+            (za > gzmax)
            ):
            print()
            print("Atom %d outside boundary of cell ignored."%i)
