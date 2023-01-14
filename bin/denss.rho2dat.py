@@ -96,12 +96,14 @@ if __name__ == "__main__":
     nbins = int(qmax/qstep)
     qbins = np.linspace(0,nbins*qstep,nbins+1)
     #create modified qbins and put qbins in center of bin rather than at left edge of bin.
-    qbinsc = np.copy(qbins)
-    qbinsc[1:] += qstep/2.
+    # qbinsc = np.copy(qbins)
+    # qbinsc[1:] += qstep/2.
     #create an array labeling each voxel according to which qbin it belongs
     qbin_labels = np.searchsorted(qbins,qr,"right")
     qbin_labels -= 1
     qblravel = qbin_labels.ravel()
+    xcount = np.bincount(qblravel)
+    qbinsc = saxs.mybinmean(qr.ravel(), qblravel, xcount)
 
     #assume rho is given as electron density, not electron count
     #convert from density to electron count for FFT calculation
@@ -114,7 +116,7 @@ if __name__ == "__main__":
     # Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
     # I3D = saxs.myabs(F, DENSS_GPU=False)**2
     I3D = saxs.abs2(F)
-    Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
+    Imean = saxs.mybinmean(I3D.ravel(), qblravel, xcount=xcount)
 
     if args.plot: plt.plot(qbinsc, Imean, label='Default dq = %.4f' % (2*np.pi/side))
     print('Default dq = %.4f' % (2*np.pi/side))
@@ -154,11 +156,15 @@ if __name__ == "__main__":
         nbins = int(qmax/qstep)
         qbins = np.linspace(0,nbins*qstep,nbins+1)
         #create modified qbins and put qbins in center of bin rather than at left edge of bin.
-        qbinsc = np.copy(qbins)
-        qbinsc[1:] += qstep/2.
+        # qbinsc = np.copy(qbins)
+        # qbinsc[1:] += qstep/2.
+
         #create an array labeling each voxel according to which qbin it belongs
         qbin_labels = np.searchsorted(qbins,qr,"right")
         qbin_labels -= 1
+        qblravel = qbin_labels.ravel()
+        xcount = np.bincount(qblravel)
+        qbinsc = saxs.mybinmean(qr.ravel(), qblravel, xcount)
         rho_pad = np.zeros((n,n,n),dtype=np.float32)
         a = n//2-n_orig//2
         b = n//2+n_orig//2
