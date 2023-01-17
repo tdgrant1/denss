@@ -98,6 +98,20 @@ def myfftn(x, DENSS_GPU=False):
                 #fall back to numpy
                 return np.fft.fftn(x)
 
+def myrfftn(x, DENSS_GPU=False):
+    if DENSS_GPU:
+        return cp.fft.rfftn(x)
+    else:
+        if PYFFTW:
+            return pyfftw.interfaces.numpy_fft.rfftn(x)
+        else:
+            try:
+                #try running the parallelized version of scipy fft
+                return fft.rfftn(x,workers=-1)
+            except:
+                #fall back to numpy
+                return np.fft.rfftn(x)
+
 def myifftn(x, DENSS_GPU=False):
     if DENSS_GPU:
         return cp.fft.ifftn(x)
@@ -111,6 +125,20 @@ def myifftn(x, DENSS_GPU=False):
             except:
                 #fall back to numpy
                 return np.fft.ifftn(x)
+
+def myirfftn(x, DENSS_GPU=False):
+    if DENSS_GPU:
+        return cp.fft.irfftn(x)
+    else:
+        if PYFFTW:
+            return pyfftw.interfaces.numpy_fft.irfftn(x)
+        else:
+            try:
+                #try running the parallelized version of scipy fft
+                return fft.irfftn(x,workers=-1)
+            except:
+                #fall back to numpy
+                return np.fft.irfftn(x)
 
 def myabs(x, out=None,DENSS_GPU=False):
     if DENSS_GPU:
@@ -271,7 +299,7 @@ def write_mrc(rho,side,filename="map.mrc"):
         s = struct.pack('=%sf' % rho.size, *rho.flatten('F'))
         fout.write(s)
 
-def read_mrc(filename="map.mrc",returnABC=False):
+def read_mrc(filename="map.mrc",returnABC=False,float64=True):
     """
         See MRC format at http://bio3d.colorado.edu/imod/doc/mrc_format.txt for offsets
     """
@@ -291,6 +319,8 @@ def read_mrc(filename="map.mrc",returnABC=False):
         fin.seek(1024, os.SEEK_SET)
         rho = np.fromfile(file=fin, dtype=np.dtype(np.float32)).reshape((nx,ny,nz),order='F')
         fin.close()
+    if float64:
+        rho = rho.astype(np.float64)
     if returnABC:
         return rho, (a,b,c)
     else:
@@ -1008,7 +1038,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
 
     df = 1/side
     qx_ = np.fft.fftfreq(x_.size)*n*df*2*np.pi
-    qx, qy, qz = np.meshgrid(qx_,qx_,qx_,indexing='ij')
+    qz_ = np.fft.rfftfreq(x_.size)*n*df*2*np.pi
+    # qx, qy, qz = np.meshgrid(qx_,qx_,qx_,indexing='ij')
+    qx, qy, qz = np.meshgrid(qx_,qx_,qz_,indexing='ij')
     qr = np.sqrt(qx**2+qy**2+qz**2)
     qmax = np.max(qr)
     qstep = np.min(qr[qr>0]) - 1e-8 #subtract a tiny bit to deal with floating point error
@@ -1016,14 +1048,17 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     qbins = np.linspace(0,nbins*qstep,nbins+1)
 
     #create modified qbins and put qbins in center of bin rather than at left edge of bin.
-    qbinsc = np.copy(qbins)
-    qbinsc[1:] += qstep/2.
+    # qbinsc = np.copy(qbins)
+    # qbinsc[1:] += qstep/2.
 
     #create an array labeling each voxel according to which qbin it belongs
     qbin_labels = np.searchsorted(qbins,qr,"right")
     qbin_labels -= 1
     qblravel = qbin_labels.ravel()
     xcount = np.bincount(qblravel)
+
+    #calculate qbinsc as average of q values in shell
+    qbinsc = mybinmean(qr.ravel(), qblravel, xcount, DENSS_GPU)
 
     #allow for any range of q data
     qdata = qbinsc[np.where( (qbinsc>=q.min()) & (qbinsc<=q.max()) )]
@@ -1074,7 +1109,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     prng = np.random.RandomState(seed)
 
     if rho_start is not None:
-        rho = rho_start*dV
+        rho = rho_start #*dV
         if add_noise is not None:
             noise_factor = rho.max() * add_noise
             noise = prng.random_sample(size=x.shape)*noise_factor
@@ -1201,7 +1236,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
                 my_logger.info('Aborted!')
                 return []
 
-        F = myfftn(rho, DENSS_GPU=DENSS_GPU)
+        # F = myfftn(rho, DENSS_GPU=DENSS_GPU)
+        F = myrfftn(rho, DENSS_GPU=DENSS_GPU)
 
         #sometimes, when using denss.refine.py with non-random starting rho,
         #the resulting Fs result in zeros in some locations and the algorithm to break
@@ -1210,7 +1246,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
 
         #APPLY RECIPROCAL SPACE RESTRAINTS
         #calculate spherical average of intensities from 3D Fs
-        # I3D = myabs(F, out=I3D, DENSS_GPU=DENSS_GPU)**2
+        # I3D = myabs(F, DENSS_GPU=DENSS_GPU)**2
         I3D = abs2(F)
         Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=DENSS_GPU)
 
@@ -1221,7 +1257,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         chi[j] = mysum(((Imean[qba]-Idata[qba])/sigqdata[qba])**2, DENSS_GPU=DENSS_GPU)/Idata[qba].size
 
         #APPLY REAL SPACE RESTRAINTS
-        rhoprime = myifftn(F, DENSS_GPU=DENSS_GPU).real
+        # rhoprime = myifftn(F, DENSS_GPU=DENSS_GPU).real
+        rhoprime = myirfftn(F, DENSS_GPU=DENSS_GPU).real
 
         if not DENSS_GPU and j%write_freq == 0:
             if write_xplor_format:
@@ -1472,16 +1509,18 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         qblravel = cp.asnumpy(qblravel)
         xcount = cp.asnumpy(xcount)
 
-    F = np.fft.fftn(rho)
+    # F = myfftn(rho)
+    F = myrfftn(rho)
     #calculate spherical average intensity from 3D Fs
-    Imean = ndimage.mean(np.abs(F)**2, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
-    #chi[j+1] = np.sum(((Imean[j+1,qbin_args]-Idata)/sigqdata)**2)/qbin_args.size
+    I3D = abs2(F)
+    # I3D = myabs(F)**2
+    Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount)
 
     #scale Fs to match data
-    #factors = np.ones((len(qbins)))
     factors = np.sqrt(Idata/Imean)
     F *= factors[qbin_labels]
-    rho = np.fft.ifftn(F,rho.shape)
+    # rho = myifftn(F)
+    rho = myirfftn(F)
     rho = rho.real
 
     #negative images yield the same scattering, so flip the image
@@ -1497,7 +1536,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     if ne is not None:
         rho *= ne / np.sum(rho)
 
-    # rg[j+1] = rho2rg(rho=rho,r=r,support=support,dx=dx)
     rg[j+1] = calc_rg_by_guinier_first_2_points(qbinsc, Imean)
     supportV[j+1] = supportV[j]
 

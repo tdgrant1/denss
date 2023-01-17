@@ -95,42 +95,41 @@ if __name__ == "__main__":
     qstep = np.min(qr[qr>0]) - 1e-8
     nbins = int(qmax/qstep)
     qbins = np.linspace(0,nbins*qstep,nbins+1)
-    #create modified qbins and put qbins in center of bin rather than at left edge of bin.
-    # qbinsc = np.copy(qbins)
-    # qbinsc[1:] += qstep/2.
     #create an array labeling each voxel according to which qbin it belongs
     qbin_labels = np.searchsorted(qbins,qr,"right")
     qbin_labels -= 1
     qblravel = qbin_labels.ravel()
     xcount = np.bincount(qblravel)
+    #create modified qbins and put qbins in center of bin rather than at left edge of bin.
     qbinsc = saxs.mybinmean(qr.ravel(), qblravel, xcount)
 
-    #assume rho is given as electron density, not electron count
-    #convert from density to electron count for FFT calculation
-    rho *= dV
-
     #calculate scattering profile from density
-    F = np.fft.fftn(rho)
-    F[np.abs(F)==0] = 1e-16
-    # I3D = np.abs(F)**2
-    # Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
-    # I3D = saxs.myabs(F, DENSS_GPU=False)**2
+    F = saxs.myfftn(rho)
+    F[F.real==0] = 1e-16
     I3D = saxs.abs2(F)
     Imean = saxs.mybinmean(I3D.ravel(), qblravel, xcount=xcount)
 
-    if args.plot: plt.plot(qbinsc, Imean, label='Default dq = %.4f' % (2*np.pi/side))
+    if args.plot: 
+        qmax_to_use = np.max(qx_)
+        qbinsc_to_use_pre = qbinsc[qbinsc<qmax_to_use]
+        Imean_to_use_pre = Imean[qbinsc<qmax_to_use]
+        plt.plot(qbinsc_to_use_pre, Imean_to_use_pre, '.-', label='Default dq = %.4f' % (2*np.pi/side))
     print('Default dq = %.4f' % (2*np.pi/side))
 
     if args.dq is not None or args.n is not None:
 
         #padded to get desired dq value (or near it)
         if args.n is not None:
-            n = args.n
+            if args.n < n:
+                print("Requested number of samples must be greater than or equal to the original map (which is %d)" % n)
+                print("Resetting desired N to current N...")
+            else:
+                n = args.n
         else:
             current_dq = 2*np.pi/side
             desired_dq = args.dq
             if desired_dq > current_dq:
-                print("desired dq must be smaller than dq calculated from map (which is %f)" % current_dq)
+                print("Requested dq must be smaller than dq calculated from map (which is %f)" % current_dq)
                 print("Resetting desired dq to current dq...")
                 desired_dq = current_dq
             #what side would give us desired dq?
@@ -165,25 +164,25 @@ if __name__ == "__main__":
         qblravel = qbin_labels.ravel()
         xcount = np.bincount(qblravel)
         qbinsc = saxs.mybinmean(qr.ravel(), qblravel, xcount)
-        rho_pad = np.zeros((n,n,n),dtype=np.float32)
+        rho_pad = np.zeros((n,n,n))
         a = n//2-n_orig//2
         b = n//2+n_orig//2
         rho_pad[a:b,a:b,a:b] = rho
         rho = np.copy(rho_pad)
 
-    F = np.fft.fftn(rho)
-    I3D = np.abs(F)**2
-    Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
+    F = saxs.myfftn(rho)
+    I3D = saxs.abs2(F)
+    Imean = saxs.mybinmean(I3D.ravel(), qblravel, xcount=xcount)
 
     qmax_to_use = np.max(qx_)
     print("qmax to use: %f" % qmax_to_use)
     qbinsc_to_use = qbinsc[qbinsc<qmax_to_use]
     Imean_to_use = Imean[qbinsc<qmax_to_use]
 
-    # qbinsc = np.copy(qbinsc_to_use)
-    # Imean = np.copy(Imean_to_use)
+    qbinsc = np.copy(qbinsc_to_use)
+    Imean = np.copy(Imean_to_use)
 
-    Iq = np.vstack((qbinsc, Imean, Imean*.03)).T
+    Iq = np.vstack((qbinsc, Imean, Imean*0+Imean[0]*.03)).T
 
     np.savetxt(output+'.dat', Iq, delimiter=' ', fmt='% .16e')
 
@@ -192,7 +191,7 @@ if __name__ == "__main__":
 
     if args.plot:
         print('Actual dq = %.4f' % (2*np.pi/side))
-        plt.plot(qbinsc_to_use, Imean_to_use,label='Actual dq = %.4f' % (2*np.pi/side))
+        plt.plot(qbinsc_to_use, Imean_to_use,'-',label='Actual dq = %.4f' % (2*np.pi/side))
         plt.semilogy()
         plt.legend()
         plt.show()
