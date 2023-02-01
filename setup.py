@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from distutils.core import setup
+from setuptools import setup
 
 exec(compile(open('saxstats/_version.py').read(), 'saxstats/_version.py', 'exec'))
 
