@@ -137,15 +137,17 @@ if __name__ == "__main__":
     qstep = np.min(qr[qr>0]) - 1e-8
     nbins = int(qmax/qstep)
     qbins = np.linspace(0,nbins*qstep,nbins+1)
-    #create modified qbins and put qbins in center of bin rather than at left edge of bin.
-    qbinsc = np.copy(qbins)
-    qbinsc[1:] += qstep/2.
-    q_calc = np.copy(qbinsc)
     #create an array labeling each voxel according to which qbin it belongs
     qbin_labels = np.searchsorted(qbins,qr,"right")
     qbin_labels -= 1
     qblravel = qbin_labels.ravel()
     xcount = np.bincount(qblravel)
+
+    #create modified qbins and put qbins in center of bin rather than at left edge of bin.
+    # qbinsc = np.copy(qbins)
+    # qbinsc[1:] += qstep/2.
+    qbinsc = saxs.mybinmean(qr.ravel(), qblravel, xcount=xcount, DENSS_GPU=False)
+    q_calc = np.copy(qbinsc)
 
     #this multiplies the intensity by the form factor of a cube to correct for the discrete lattice
     #according to Schmidt-Rohr, J Appl Cryst 2007
@@ -156,6 +158,8 @@ if __name__ == "__main__":
     rho *= dV
     if args.exvol is not None:
         exvol *= dV
+    else:
+        exvol = rho*0
 
     rho0 = args.rho0 * dV
     invacuo = np.copy(rho)
@@ -167,7 +171,7 @@ if __name__ == "__main__":
     # I3D = saxs.abs2(F)
     I3D = np.abs(F)**2
     I3D *= latt_correction
-    Imean = saxs.mybinmean(I3D.ravel(), qblravel, DENSS_GPU=False)
+    Imean = saxs.mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=False)
 
     # if args.plot: 
     #     plt.plot(qbinsc, Imean, '.-', label='Default dq = %.4f' % (2*np.pi/side))
@@ -207,14 +211,17 @@ if __name__ == "__main__":
         qstep = np.min(qr[qr>0]) - 1e-8
         nbins = int(qmax/qstep)
         qbins = np.linspace(0,nbins*qstep,nbins+1)
-        #create modified qbins and put qbins in center of bin rather than at left edge of bin.
-        qbinsc = np.copy(qbins)
-        qbinsc[1:] += qstep/2.
-        q_calc = np.copy(qbinsc)
         #create an array labeling each voxel according to which qbin it belongs
         qbin_labels = np.searchsorted(qbins,qr,"right")
         qbin_labels -= 1
         qblravel = qbin_labels.ravel()
+        xcount = np.bincount(qblravel)
+        #create modified qbins and put qbins in center of bin rather than at left edge of bin.
+        # qbinsc = np.copy(qbins)
+        # qbinsc[1:] += qstep/2.
+        qbinsc = saxs.mybinmean(qr.ravel(), qblravel, xcount=xcount, DENSS_GPU=False)
+        q_calc = np.copy(qbinsc)
+
         rho_pad = np.zeros((n,n,n),dtype=np.float32)
         a = n//2-n_orig//2
         b = n//2+n_orig//2
@@ -229,6 +236,8 @@ if __name__ == "__main__":
         invacuo *= dV
         if args.exvol is not None:
             exvol *= dV
+        else:
+            exvol = rho*0
         rho0 = args.rho0 * dV
 
     print(invacuo.sum(), exvol.sum())
@@ -293,7 +302,7 @@ if __name__ == "__main__":
             rho0 = results.x[0]
 
     #combine invacuo, exvol, and shell
-    rho = invacuo - rho0 * exvol  #+ drho_shell * shell
+    # rho = invacuo - rho0 * exvol  #+ drho_shell * shell
 
     F = saxs.myfftn(rho)
     # I3D = saxs.abs2(F)**2
@@ -326,7 +335,8 @@ if __name__ == "__main__":
 
     if args.plot:
         print('Actual dq = %.4f' % (2*np.pi/side))
-        plt.plot(q_exp_to_q0, I_exp_to_q0, 'k.', label=args.data)
+        if args.data:
+            plt.plot(q_exp_to_q0, I_exp_to_q0, 'k.', label=args.data)
         plt.plot(qbinsc_to_use, Imean_to_use,'.-', label='Actual dq = %.4f' % (2*np.pi/side))
         plt.xlabel('q (1/A)')
         plt.ylabel('I(q)')

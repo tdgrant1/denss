@@ -280,7 +280,7 @@ def write_mrc(rho,side,filename="map.mrc"):
         s = struct.pack('=%sf' % rho.size, *rho.flatten('F'))
         fout.write(s)
 
-def read_mrc(filename="map.mrc",returnABC=False):
+def read_mrc(filename="map.mrc",returnABC=False,float64=True):
     """
         See MRC format at http://bio3d.colorado.edu/imod/doc/mrc_format.txt for offsets
     """
@@ -290,8 +290,6 @@ def read_mrc(filename="map.mrc",returnABC=False):
         ny = struct.unpack_from('<i',MRCdata, 4)[0]
         nz = struct.unpack_from('<i',MRCdata, 8)[0]
 
-
-
         #side = struct.unpack_from('<f',MRCdata,40)[0]
         a, b, c = struct.unpack_from('<fff',MRCdata,40)
         side = a
@@ -300,6 +298,8 @@ def read_mrc(filename="map.mrc",returnABC=False):
         fin.seek(1024, os.SEEK_SET)
         rho = np.fromfile(file=fin, dtype=np.dtype(np.float32)).reshape((nx,ny,nz),order='F')
         fin.close()
+    if float64:
+        rho = rho.astype(np.float64)
     if returnABC:
         return rho, (a,b,c)
     else:
@@ -1040,15 +1040,16 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     nbins = int(qmax/qstep)
     qbins = np.linspace(0,nbins*qstep,nbins+1)
 
-    #create modified qbins and put qbins in center of bin rather than at left edge of bin.
-    qbinsc = np.copy(qbins)
-    qbinsc[1:] += qstep/2.
-
     #create an array labeling each voxel according to which qbin it belongs
     qbin_labels = np.searchsorted(qbins,qr,"right")
     qbin_labels -= 1
     qblravel = qbin_labels.ravel()
     xcount = np.bincount(qblravel)
+
+    #create modified qbins and put qbins in center of bin rather than at left edge of bin.
+    # qbinsc = np.copy(qbins)
+    # qbinsc[1:] += qstep/2.
+    qbinsc = mybinmean(qr.ravel(), qblravel, xcount=xcount, DENSS_GPU=False)
 
     #allow for any range of q data
     qdata = qbinsc[np.where( (qbinsc>=q.min()) & (qbinsc<=q.max()) )]
@@ -1063,7 +1064,11 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
 
     #create list of qbin indices just in region of data for later F scaling
     qbin_args = np.in1d(qbinsc,qdata,assume_unique=True)
-    qba = np.copy(qbin_args) #just for brevity when using it later
+    qba = qbin_args #just for brevity when using it later
+    #set qba bins outside of scaling region to false.
+    #start with bins in corners
+    qba[qbinsc>qx_.max()] = False
+
     sigqdata = np.interp(qdata,q,sigq)
 
     scale_factor = ne**2 / Idata[0]
@@ -1144,6 +1149,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     my_logger.info('NCS Steps: %s', ncs_steps)
     my_logger.info('NCS Axis: %s', ncs_axis)
     my_logger.info('Positivity: %s', positivity)
+    my_logger.info('Positivity Steps: %s', positivity_steps)
     my_logger.info('Extrapolate high q: %s', extrapolate)
     my_logger.info('Shrinkwrap: %s', shrinkwrap)
     my_logger.info('Shrinkwrap Old Method: %s', shrinkwrap_old_method)
@@ -1249,6 +1255,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
 
         #scale Fs to match data
         factors = mysqrt(Idata/Imean, DENSS_GPU=DENSS_GPU)
+        #do not scale bins outside of desired range
+        #so set those factors to 1.0
+        factors[~qba] = 1.0
         F *= factors[qbin_labels]
 
         chi[j] = mysum(((Imean[qba]-Idata[qba])/sigqdata[qba])**2, DENSS_GPU=DENSS_GPU)/Idata[qba].size
@@ -1266,11 +1275,13 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
 
         #Error Reduction
         newrho *= 0
+        # newrho *= 1e-8
         newrho[support] = rhoprime[support]
 
         # enforce positivity by making all negative density points zero.
         if positivity and j in positivity_steps:
             newrho[newrho<0] = 0.0
+            # newrho[newrho<-1e-8] *= 1e-8
 
         #apply non-crystallographic symmetry averaging
         if ncs != 0 and j in ncs_steps:
@@ -2869,6 +2880,10 @@ class PDB(object):
                     atomtype0 = atomtype[0].upper()
                     atomtype1 = atomtype[1].lower()
                     atomtype = atomtype0 + atomtype1
+                if len(atomtype) == 0:
+                    #if atomtype column is not in pdb file, set to first
+                    #character of atomname
+                    atomtype = self.atomname[atom][0]
                 self.atomtype[atom] = atomtype
                 self.charge[atom] = line[78:80].strip('\n')
                 self.nelectrons[atom] = electrons.get(self.atomtype[atom].upper(),6)
@@ -2965,6 +2980,7 @@ class PDB(object):
         self.charge = self.charge[mask]
         self.nelectrons = self.nelectrons[mask]
         self.natoms = len(self.atomnum)
+        self.radius = self.radius[mask]
 
     def write(self, filename):
         """Write PDB file format using pdb object as input."""
@@ -3138,7 +3154,7 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
     V = side**3
     x_ = x[:,0,0]
     shift = np.ones(3)*dx/2.
-    print("\n Calculate density map from PDB... ")
+    # print("\n Calculate density map from PDB... ")
     values = np.zeros(x.shape)
     support = np.zeros(x.shape,dtype=bool)
     # cutoff = max(cutoff,2*resolution)
@@ -3156,8 +3172,8 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
             continue
         if rho0 == 0:
             continue
-        sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
-        sys.stdout.flush()
+        # sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
+        # sys.stdout.flush()
         #this will cut out the grid points that are near the atom
         #first, get the min and max distances for each dimension
         #also, convert those distances to indices by dividing by dx
@@ -3171,7 +3187,7 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
             (za < gzmin) or
             (za > gzmax)
            ):
-           print()
+           # print()
            print("Atom %d outside boundary of cell ignored."%i)
            continue
         xmin = int(np.floor((xa-cutoff)/dx)) + n//2
@@ -3203,19 +3219,19 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
         if np.sum(tmpvalues)>1e-8:
             tmpvalues *= rho0 * V / np.sum(tmpvalues)
             # tmpvalues *= 1
-        else:
-            print()
-            print("Voxel spacing too coarse. No density for atom %d."%i)
+        # else:
+            # print()
+            # print("Voxel spacing too coarse. No density for atom %d."%i)
 
         # print("    {:2s} {:6.2f} {:6.2f} {:6.2f} {:7.2f} {:6.3f}".format(element, pdb.radius[i], V, rho0*V, tmpvalues.sum(), rho0*V/tmpvalues.sum()))
         # tmpvalues *= rho0 * V / tmpvalues.sum()
 
         values[slc] += tmpvalues.reshape(nx,ny,nz)
         support[slc] = True
-    print()
+    # print()
     return values, support
 
-def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
+def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,use_b=False,ignore_waters=True):
     """5-term gaussian sum at coordinate locations using Cromer-Mann coefficients.
 
     This fastgauss function only calculates the values at
@@ -3236,13 +3252,18 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
     V = side**3
     x_ = x[:,0,0]
     shift = np.ones(3)*dx/2.
-    print("\n Calculate density map from PDB... ")
+    # print("\n Calculate density map from PDB... ")
     values = np.zeros(x.shape)
     support = np.zeros(x.shape,dtype=bool)
     cutoff = max(cutoff,2*resolution)
     #convert resolution to B-factor for form factor calculation
     #set resolution equal to atomic displacement
-    B = u2B(resolution)
+    if use_b:
+        u = B2u(pdb.b)
+    else:
+        u = np.zeros(pdb.natoms)
+    u += resolution
+    B = u2B(u)
     gxmin = x.min()
     gxmax = x.max()
     gymin = y.min()
@@ -3252,8 +3273,8 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
     for i in range(pdb.coords.shape[0]):
         if ignore_waters and pdb.resname[i]=="HOH":
             continue
-        sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
-        sys.stdout.flush()
+        # sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
+        # sys.stdout.flush()
         #this will cut out the grid points that are near the atom
         #first, get the min and max distances for each dimension
         #also, convert those distances to indices by dividing by dx
@@ -3267,7 +3288,7 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
             (za < gzmin) or
             (za > gzmax)
            ):
-           print()
+           # print()
            print("Atom %d outside boundary of cell ignored."%i)
            continue
         xmin = int(np.floor((xa-cutoff)/dx)) + n//2
@@ -3311,17 +3332,17 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,ignore_waters=True):
                     element = 'C'
                     ffcoeff[element]
 
-        tmpvalues = realspace_formfactor(element=element,r=dist,B=B)
+        tmpvalues = realspace_formfactor(element=element,r=dist,B=B[i])
         #rescale total number of electrons by expected number of electrons
         if np.sum(tmpvalues)>1e-8:
             tmpvalues *= electrons[element] / np.sum(tmpvalues)
-        else:
-            print()
-            print("Voxel spacing too coarse. No density for atom %d."%i)
+        # else:
+            # print()
+            # print("Voxel spacing too coarse. No density for atom %d."%i)
 
         values[slc] += tmpvalues.reshape(nx,ny,nz)
         support[slc] = True
-    print()
+    # print()
     return values, support
 
 def pdb2map_FFT(pdb,x,y,z,radii=None,restrict=True):
@@ -3369,8 +3390,8 @@ def pdb2map_FFT(pdb,x,y,z,radii=None,restrict=True):
             F += sphere(q=qr, R=radii[i], I0=pdb.nelectrons[i],amp=True) * np.exp(-1j * (qx*pdb.coords[i,0] + qy*pdb.coords[i,1] + qz*pdb.coords[i,2]))
         else:
             F += formfactor(element=pdb.atomtype[i],q=qr) * np.exp(-1j * (qx*pdb.coords[i,0] + qy*pdb.coords[i,1] + qz*pdb.coords[i,2]))
-    print()
-    print("Total number of electrons = %f " % np.abs(F[0,0,0]))
+    # print()
+    # print("Total number of electrons = %f " % np.abs(F[0,0,0]))
     qbin_labels = np.zeros(F.shape, dtype=int)
     qbin_labels = np.digitize(qr, qbins)
     qbin_labels -= 1
@@ -3472,6 +3493,12 @@ def B2u(B):
     #     return (B/(8*np.pi**2))**0.5
     return (B/(8*np.pi**2))**0.5
 
+def res2B(res, element='C'):
+    """Calculate B-factor from resolution estimate.
+    Taken from https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-018-2083-8"""
+
+    return 8 * np.pi**2 * u**2
+
 def sphere(R, q=np.linspace(0,0.5,501), I0=1.,amp=False):
     """Calculate the scattering of a uniform sphere."""
     q = np.atleast_1d(q)
@@ -3524,11 +3551,13 @@ def realspace_formfactor(element, r=(np.arange(501))/1000., B=None):
         bi = ffcoeff[element]['b'][i]
         #the form factor in the next line additionally accounts for a B-factor
         if B==0:
-            ff += 2*2**0.5*ai/bi**0.5 * np.exp(-4*np.pi**2/bi * r**2)
+            ff += 2*2**0.5*np.pi*ai/bi**0.5 * np.exp(-4 * np.pi**2 * r**2 /bi)
         else:
             ff += 8 * np.pi**2 * ai / (B/2+8*np.pi**2*bi)**0.5 * np.exp(-r**2 * 64*np.pi**4 / (B+16*np.pi**2*bi))
+        # ff += 2*2**0.5*np.pi*ai/(bi+B)**0.5 * np.exp(-4 * np.pi**2 * r**2 /(bi+B))
     i = np.where((r==0))
-    ff += signal.unit_impulse(r.shape, i) * ffcoeff[element]['c']
+    # ff += signal.unit_impulse(r.shape, i) * ffcoeff[element]['c']
+    ff[i] += ffcoeff[element]['c'] * (2*np.pi)**0.5
     return ff
 
 def reciprocalspace_gaussian_formfactor(q=np.linspace(0,0.5,501), rho0=0.334, V=None, radius=None):
@@ -3685,26 +3714,51 @@ def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=T
 
 electrons = {'H': 1,'HE': 2,'He': 2,'LI': 3,'Li': 3,'BE': 4,'Be': 4,'B': 5,'C': 6,'N': 7,'O': 8,'F': 9,'NE': 10,'Ne': 10,'NA': 11,'Na': 11,'MG': 12,'Mg': 12,'AL': 13,'Al': 13,'SI': 14,'Si': 14,'P': 15,'S': 16,'CL': 17,'Cl': 17,'AR': 18,'Ar': 18,'K': 19,'CA': 20,'Ca': 20,'SC': 21,'Sc': 21,'TI': 22,'Ti': 22,'V': 23,'CR': 24,'Cr': 24,'MN': 25,'Mn': 25,'FE': 26,'Fe': 26,'CO': 27,'Co': 27,'NI': 28,'Ni': 28,'CU': 29,'Cu': 29,'ZN': 30,'Zn': 30,'GA': 31,'Ga': 31,'GE': 32,'Ge': 32,'AS': 33,'As': 33,'SE': 34,'Se': 34,'Se': 34,'Se': 34,'BR': 35,'Br': 35,'KR': 36,'Kr': 36,'RB': 37,'Rb': 37,'SR': 38,'Sr': 38,'Y': 39,'ZR': 40,'Zr': 40,'NB': 41,'Nb': 41,'MO': 42,'Mo': 42,'TC': 43,'Tc': 43,'RU': 44,'Ru': 44,'RH': 45,'Rh': 45,'PD': 46,'Pd': 46,'AG': 47,'Ag': 47,'CD': 48,'Cd': 48,'IN': 49,'In': 49,'SN': 50,'Sn': 50,'SB': 51,'Sb': 51,'TE': 52,'Te': 52,'I': 53,'XE': 54,'Xe': 54,'CS': 55,'Cs': 55,'BA': 56,'Ba': 56,'LA': 57,'La': 57,'CE': 58,'Ce': 58,'PR': 59,'Pr': 59,'ND': 60,'Nd': 60,'PM': 61,'Pm': 61,'SM': 62,'Sm': 62,'EU': 63,'Eu': 63,'GD': 64,'Gd': 64,'TB': 65,'Tb': 65,'DY': 66,'Dy': 66,'HO': 67,'Ho': 67,'ER': 68,'Er': 68,'TM': 69,'Tm': 69,'YB': 70,'Yb': 70,'LU': 71,'Lu': 71,'HF': 72,'Hf': 72,'TA': 73,'Ta': 73,'W': 74,'RE': 75,'Re': 75,'OS': 76,'Os': 76,'IR': 77,'Ir': 77,'PT': 78,'Pt': 78,'AU': 79,'Au': 79,'HG': 80,'Hg': 80,'TL': 81,'Tl': 81,'PB': 82,'Pb': 82,'BI': 83,'Bi': 83,'PO': 84,'Po': 84,'AT': 85,'At': 85,'RN': 86,'Rn': 86,'FR': 87,'Fr': 87,'RA': 88,'Ra': 88,'AC': 89,'Ac': 89,'TH': 90,'Th': 90,'PA': 91,'Pa': 91,'U': 92,'NP': 93,'Np': 93,'PU': 94,'Pu': 94,'AM': 95,'Am': 95,'CM': 96,'Cm': 96,'BK': 97,'Bk': 97,'CF': 98,'Cf': 98,'ES': 99,'Es': 99,'FM': 100,'Fm': 100,'MD': 101,'Md': 101,'NO': 102,'No': 102,'LR': 103,'Lr': 103,'RF': 104,'Rf': 104,'DB': 105,'Db': 105,'SG': 106,'Sg': 106,'BH': 107,'Bh': 107,'HS': 108,'Hs': 108,'MT': 109,'Mt': 109}
 
+#from http://www2.riken.jp/BiomolChar/Aminoacidmolecularmasses.htm
+#mass divided by 2. maybe should make into integers?
+residue_electrons = {
+ 'ALA': 35.51855689,
+ 'SER': 43.5160142,
+ 'PRO': 48.526381925,
+ 'VAL': 49.534206955,
+ 'THR': 50.52383925,
+ 'CYS': 51.5045924,
+ 'ILE': 56.542032,
+ 'LEU': 56.542032,
+ 'ASN': 57.0214637,
+ 'ASP': 57.5134715,
+ 'GLN': 64.02928875,
+ 'LYS': 64.0474815,
+ 'GLU': 64.52129655,
+ 'MET': 65.52024245,
+ 'HIS': 68.52945595,
+ 'PHE': 73.53420695,
+ 'ARG': 78.0505555,
+ 'TYR': 81.53166425,
+ 'TRP': 93.0396565,
+ 'GLY': 28.51073186,
+ }
+
 radius = {'H': 1.10,'He': 1.4,'Li': 1.8,'Be': 1.5,'B': 1.9,'C': 1.7,'N': 1.6,'O': 1.5,'F': 1.5,'Ne': 1.5,'Na': 2.3,'Mg': 1.7,'Al': 1.8,'Si': 2.1,'P': 1.8,'S': 1.8,'Cl': 1.8,'Ar': 1.9,'K': 2.8,'Ca': 2.3,'Sc': 2.1,'Ti': 2.1,'V': 2.1,'Cr': 2.1,'Mn': 2.0,'Fe': 2.0,'Co': 2.0,'Ni': 2.0,'Cu': 2.0,'Zn': 2.0,'Ga': 1.9,'Ge': 2.1,'As': 1.9,'Se': 1.9,'Br': 1.9,'Kr': 2.0,'Rb': 3.0,'Sr': 2.5,'Y': 2.3,'Zr': 2.2,'Nb': 2.2,'Mo': 2.2,'Tc': 2.2,'Ru': 2.1,'Rh': 2.1,'Pd': 2.1,'Ag': 2.1,'Cd': 2.2,'In': 1.9,'Sn': 2.2,'Sb': 2.1,'Te': 2.1,'I': 2.0,'Xe': 2.2,'Cs': 3.4,'Ba': 2.7,'La': 2.4,'Ce': 2.4,'Pr': 2.4,'Nd': 2.4,'Pm': 2.4,'Sm': 2.4,'Eu': 2.4,'Gd': 2.3,'Tb': 2.3,'Dy': 2.3,'Ho': 2.3,'Er': 2.3,'Tm': 2.3,'Yb': 2.3,'Lu': 2.2,'Hf': 2.2,'Ta': 2.2,'W': 2.2,'Re': 2.2,'Os': 2.2,'Ir': 2.1,'Pt': 2.1,'Au': 2.1,'Hg': 2.2,'Tl': 2.0,'Pb': 2.0,'Bi': 2.1,'Po': 2.0,'At': 2.0,'Rn': 2.2,'Fr': 3.5,'Ra': 2.8,'Ac': 2.5,'Th': 2.5,'Pa': 2.4,'U': 2.4,'Np': 2.4,'Pu': 2.4,'Am': 2.4,'Cm': 2.5,'Bk': 2.4,'Cf': 2.5,'Es': 2.5,'Fm': 2.5,'Md': 2.5,'No': 2.5,'Lr': 2.5,'Rf': 1.8,'Db': 1.8,'Sg': 1.8,'Bh': 1.8,'Hs': 1.8,'Mt': 1.8,'Ds': 1.8,'Rg': 1.8,'Cn': 1.8,'Nh': 1.8,'Fl': 1.8,'Mc': 1.8,'Lv': 1.8,'Ts': 1.8,'Og': 1.8}
 
 radius = {
      # "H":  1.20 , #wiki 1.2
-     "H":  1.07 , #crysol
-     # "H":  0.885, #denss fit
+     # "H":  1.07 , #crysol
+     "H":  0.885, #denss fit
      "D":  1.20 ,
      "He": 1.40 ,
      "Li": 1.82 ,
      "Be": 0.63 ,
      "B":  1.75 ,
      # "C":  1.775, #wiki 1.7  #was 1.775 # CNS 2.3
-     "C":  1.58, #crysol
-     # "C":  1.704, #denss fit
+     # "C":  1.58, #crysol
+     "C":  1.704, #denss fit
      # "N":  1.50 , #wiki 1.55 #was 1.5 # CNS 1.6
-     "N":  0.84, #crysol
-     # "N":  0.937, #denss fit
+     # "N":  0.84, #crysol
+     "N":  0.937, #denss fit
      # "O":  1.45 , #wiki 1.52 #was 1.45 # CNS 1.6
-     "O":  1.30, #crysol
-     # "O":  1.357, #denss fit
+     # "O":  1.30, #crysol
+     "O":  1.357, #denss fit
      "F":  1.47 ,
      "Ne": 1.54 ,
      "Na": 2.27 ,
