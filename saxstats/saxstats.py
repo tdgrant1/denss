@@ -3311,7 +3311,7 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,use_b=False,ignore_wa
         nz = zmax-zmin
         #now lets create a column stack of coordinates for the cropped grid
         xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
-        dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
+        dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)[0]
         try:
             element = pdb.atomtype[i]
             ffcoeff[element]
@@ -3479,19 +3479,11 @@ def pdb2support_fast(pdb,x,y,z,dr=2.0):
 
 def u2B(u):
     """Calculate B-factor from atomic displacement, u"""
-    # if u<0:
-    #     return -8 * np.pi**2 * np.abs(u)**2
-    # else:
-    #     return 8 * np.pi**2 * u**2
-    return 8 * np.pi**2 * u**2
+    return np.sign(u) * 8 * np.pi**2 * u**2
 
 def B2u(B):
     """Calculate atomic displacement, u, from B-factor"""
-    # if B<0:
-    #     return -(np.abs(B)/(8*np.pi**2))**0.5
-    # else:
-    #     return (B/(8*np.pi**2))**0.5
-    return (B/(8*np.pi**2))**0.5
+    return np.sign(B)*(np.abs(B)/(8*np.pi**2))**0.5
 
 def res2B(res, element='C'):
     """Calculate B-factor from resolution estimate.
@@ -3549,15 +3541,10 @@ def realspace_formfactor(element, r=(np.arange(501))/1000., B=None):
     for i in range(4):
         ai = ffcoeff[element]['a'][i]
         bi = ffcoeff[element]['b'][i]
-        #the form factor in the next line additionally accounts for a B-factor
-        if B==0:
-            ff += 2*2**0.5*np.pi*ai/bi**0.5 * np.exp(-4 * np.pi**2 * r**2 /bi)
-        else:
-            ff += 8 * np.pi**2 * ai / (B/2+8*np.pi**2*bi)**0.5 * np.exp(-r**2 * 64*np.pi**4 / (B+16*np.pi**2*bi))
         # ff += 2*2**0.5*np.pi*ai/(bi+B)**0.5 * np.exp(-4 * np.pi**2 * r**2 /(bi+B))
+        ff += (4*np.pi/(bi+B))**(3/2.)* ai * np.exp(-4 * np.pi**2 * r**2 /(bi+B))
     i = np.where((r==0))
-    # ff += signal.unit_impulse(r.shape, i) * ffcoeff[element]['c']
-    ff[i] += ffcoeff[element]['c'] * (2*np.pi)**0.5
+    ff += signal.unit_impulse(r.shape, i) * ffcoeff[element]['c']
     return ff
 
 def reciprocalspace_gaussian_formfactor(q=np.linspace(0,0.5,501), rho0=0.334, V=None, radius=None):
@@ -3579,7 +3566,8 @@ def realspace_gaussian_formfactor(r=np.linspace(-3,3,101), rho0=0.334, V=None, r
     elif V is None:
         #calculate volume from radius assuming sphere
         V = (4*np.pi/3)*radius**3
-    ff = rho0 *(2*np.pi)**0.5 * V**(2./3) * np.exp(-np.pi*r**2/V**(2./3))
+    # ff = rho0 *(2*np.pi)**0.5 * V**(2./3) * np.exp(-np.pi*r**2/V**(2./3))
+    ff = rho0 * np.exp(-np.pi*r**2/V**(2./3))
     return ff
 
 # def realspace_exvol_gaussian(r=np.linspace(-3,3,101), ri=1.7, r0=1.62, rm=1.62):
