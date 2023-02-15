@@ -46,8 +46,8 @@ parser.add_argument("-n", "--nsamples", default=64, type=int, help="Desired numb
 parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (B-factor-like atomic displacement, default=3*voxel)")
 parser.add_argument("-rho0", "--rho0", default=0.334, type=float, help="Density of bulk solvent in e-/A^3 (default=0.334)")
 parser.add_argument("-vdW", "--vdW", "-vdw", "--vdw", dest="vdW", default=None, nargs=4, type=float, help="van der Waals radii of H, C, N, O, respectively. (optional)")
-parser.add_argument("-shell_density", "--shell_density", default=0.03, type=float, help="Contrast of hydration shell in e-/A^3 (default=0.03)")
-parser.add_argument("-shell_sigma", "--shell_sigma", default=3.0, type=float, help="Hydration shell thickness in A (default=3.0)")
+parser.add_argument("-shell_density", "--shell_density", default=0.00, type=float, help="Contrast of hydration shell in e-/A^3 (default=0.03)")
+parser.add_argument("-shell_sigma", "--shell_sigma", default=0.0, type=float, help="Hydration shell thickness in A (default=3.0)")
 parser.add_argument("-b", "--b", "--use_b", dest="use_b", action="store_true", help="Include B-factors in atomic model (optional, default=False)")
 parser.add_argument("-fit_rho0", "--fit_rho0", dest="fit_rho0", action="store_true", help="Fit rho0, the bulk solvent density (optional, default=False)")
 parser.add_argument("-fit_vdW", "--fit_vdW", "-fit_vdw", "--fit_vdw", dest="fit_vdW", action="store_true", help="Fit van der Waals radii (optional, default=False)")
@@ -56,6 +56,8 @@ parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", 
 parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB.")
 parser.add_argument("--ignore_waters", dest="ignore_waters", action="store_true", help="Ignore waters.")
 parser.add_argument("-d", "--data", type=str, help="Experimental SAXS data file for input (3-column ASCII text file (q, I, err), optional).")
+parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use of experimental data")
+parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use of experimental data")
 parser.add_argument("-u", "--units", default="a", type=str, help="Angular units of experimental data (\"a\" [1/angstrom] or \"nm\" [1/nanometer]; default=\"a\"). If nm, will convert output to angstroms.")
 parser.add_argument("--plot_on", dest="plot", action="store_true", help="Create simple plots of results (requires Matplotlib, default if module exists).")
 parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not create simple plots of results. (Default if Matplotlib does not exist)")
@@ -185,6 +187,12 @@ def calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo):
 def calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,qbinsc,qblravel,xcount):
     rho_sum = calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo)
     Iq = mrc2sas(rho_sum,qbinsc,qblravel,xcount)
+    #perform B-factor sharpening in rec space to correct for sampling issues
+    u = saxs.B2u(pdb.b.mean())
+    u += pdb.resolution
+    B = saxs.u2B(u)
+    B *= -1
+    Iq[:,1] *= np.exp(-2*B* (Iq[:,0] / (4*np.pi))**2)
     return Iq
 
 def mrc2sas(rho,qbinsc,qblravel,xcount):
@@ -276,6 +284,9 @@ if __name__ == "__main__":
     else:
         resolution = 0.0
 
+    #for now, add in resolution to pdb object to enable passing between functions easily.
+    pdb.resolution = resolution
+
     df = 1/side
     qx_ = np.fft.fftfreq(x_.size)*n*df*2*np.pi
     qx, qy, qz = np.meshgrid(qx_,qx_,qx_,indexing='ij')
@@ -308,6 +319,8 @@ if __name__ == "__main__":
     rho_invacuo = rho
 
     diff = rho - solv
+    # print(diff.sum())
+
     F = saxs.myfftn(diff)
     F[F.real==0] = 1e-16
     I3D = saxs.abs2(F)
@@ -330,6 +343,19 @@ if __name__ == "__main__":
         if args.units == "nm":
             Iq_exp[:,0] *= 0.1
         Iq_exp_orig = np.copy(Iq_exp)
+
+        if args.n1 is None:
+            n1 = 0
+        else:
+            n1 = args.n1
+        if args.n2 is None:
+            n2 = len(Iq_exp[:,0])
+        else:
+            n2 = args.n2
+
+        Iq_exp = Iq_exp[n1:n2]
+
+        print(Iq_exp[:,0])
 
         #for saving the fit, use the full original experimental profile
         q_exp = Iq_exp_orig[:,0]
@@ -392,16 +418,18 @@ if __name__ == "__main__":
         bounds[2,0] = shell_sigma_guess
         bounds[2,1] = shell_sigma_guess
     if args.fit_vdW:
-        vdWs_guess = [1.07, 1.58, 0.84, 1.30] #from crysol paper
+        # vdWs_guess = [1.07, 1.58, 0.84, 1.30] #from crysol paper
         # vdWs_guess = [1.20, 1.775, 1.50, 1.45] #online dictionary
         # vdWs_guess = [0.885, 1.704, 0.937, 1.357] #6lyz denss optimization
+        vdWs_guess = [saxs.radius.get(key) for key in ['H','C','N','O']]
         bounds[3:,0] = 0.0 #minimum vdW of 0
         bounds[3:,1] = 30.0 #maximum vdW of 3.0
         fit_params = True
     else:
-        vdWs_guess = [1.07, 1.58, 0.84, 1.30] #from crysol paper
+        # vdWs_guess = [1.07, 1.58, 0.84, 1.30] #from crysol paper
         # vdWs_guess = [1.20, 1.775, 1.50, 1.45] #online dictionary
         # vdWs_guess = [0.885, 1.704, 0.937, 1.357] #6lyz denss optimization
+        vdWs_guess = [saxs.radius.get(key) for key in ['H','C','N','O']]
         bounds[3:,0] = vdWs_guess
         bounds[3:,1] = vdWs_guess
 
@@ -424,19 +452,24 @@ if __name__ == "__main__":
 
     if fit_params:
         params = optimized_params
-        # rho_insolvent = calc_rho_with_modified_params(optimized_params,pdb,x,y,z,rho_invacuo)
-        # Iq_calc = calc_Iq_with_modified_params(optimized_params,pdb,x,y,z,rho_invacuo,qbinsc,qblravel,xcount)
     else:
         params = params_guess
-        # rho_insolvent = calc_rho_with_modified_params(params_guess,pdb,x,y,z,rho_invacuo)
-        # Iq_calc = np.vstack((qbinsc, I_calc, I_calc*.01 + I_calc[0]*0.002)).T
 
     shell = calc_shell_with_modified_params(params,pdb,x,y,z)
     rho_insolvent = calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo)
-    Iq_calc = calc_Iq_with_modified_params(optimized_params,pdb,x,y,z,rho_invacuo,qbinsc,qblravel,xcount)
+    Iq_calc = calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,qbinsc,qblravel,xcount)
+
+    #attempt to correct for b-factor and resolution by performing negative B factor sharpening in reciprocal space
+    #use average B-factor
+    # u = saxs.B2u(pdb.b.mean())
+    # u += resolution
+    # B = saxs.u2B(u)
+    # B *= -1
+    # #multiply B-factor by 2 since now in intensity space
+    # Iq_calc[:,1] *= np.exp(-2*B* (Iq_calc[:,0] / (4*np.pi))**2)
 
     if args.data:
-            #interpolate the calculated scattering profile which is usually pretty poorly sampled to
+        #interpolate the calculated scattering profile which is usually pretty poorly sampled to
         #the experimental q values for residual calculations and chi2 calculations. Use cubic spline
         #interpolation for better approximation.
         q_calc = Iq_calc[:,0]
