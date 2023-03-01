@@ -50,8 +50,10 @@ if __name__ == "__main__":
     print(" Voxel size:  %f x %f x %f" % (vx, vy, vz))
     print(" Voxel volume: %f" % (vx*vy*vz))
     print(" Total number of electrons:  %f" % (rho.sum()*vx*vy*vz))
+    print(" Min/max density:  %f , %f" % (rho.min(),rho.max()))
     gridcenter = (np.array(rho.shape)-1.)/2.
-    com = gridcenter - np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
+    # com = gridcenter - np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
+    com = gridcenter - np.array(ndimage.center_of_mass(np.abs(rho)))
     print(" Center of mass in angstroms: [ %f %f %f ]" % (com[0]*vx,com[1]*vy,com[2]*vz))
     print(" Mean Density (all voxels): %3.5f" % np.mean(rho))
     print(" Std. Dev. of Density (all voxels): %3.5f" % np.std(rho))

@@ -37,7 +37,7 @@ def parse_arguments(parser):
     parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
     parser.add_argument("-v", "--voxel", default=None, type=float, help="Set desired voxel size, setting resolution of map")
     parser.add_argument("-os","--oversampling", default=3., type=float, help="Sampling ratio")
-    parser.add_argument("--ne", default=10000, type=float, help="Number of electrons in object (default 10000, set to negative number to ignore.)")
+    parser.add_argument("--ne", default=None, type=float, help="Number of electrons in object (default 10000, set to negative number to ignore.)")
     parser.add_argument("--seed", default=None, help="Random seed to initialize the map")
     parser.add_argument("-rc","-rc_on", "--recenter_on", dest="recenter", action="store_true", help="Recenter electron density when updating support. (default)")
     parser.add_argument("-rc_off", "--recenter_off", dest="recenter", action="store_false", help="Do not recenter electron density when updating support.")
@@ -47,6 +47,7 @@ def parse_arguments(parser):
     parser.add_argument("-p_off","--positivity_off", dest="positivity", action="store_false", help="Do not enforce positivity restraint inside support.")
     parser.add_argument("-p_steps", "--positivity_steps", default=[1000], type=int, nargs='+', help="List of steps to enforce positivity.")
     parser.add_argument("-rho", "--rho_start", default=None, type=str, help="Starting electron density map filename (for use in denss.refine.py only)")
+    parser.add_argument("-support", "--support", "--support_start", dest="support_start", default=None, type=str, help="Starting electron density map filename of initial support (for use in denss.refine.py only)")
     parser.add_argument("--add_noise", default=None, type=float, help="Add noise to starting density map. Uniformly distributed random density is added to each voxel, by default from 0 to 1. The argument is a scale factor to multiply this by.")
     parser.add_argument("-e","-e_on","--extrapolate_on", dest="extrapolate", action="store_true", help=argparse.SUPPRESS) # help="Extrapolate data by Porod law to high resolution limit of voxels. (default)")
     parser.add_argument("-e_off","--extrapolate_off", dest="extrapolate", action="store_false", help=argparse.SUPPRESS) #help="Do not extrapolate data by Porod law to high resolution limit of voxels.")
@@ -75,12 +76,12 @@ def parse_arguments(parser):
     parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not create simple plots of results. (Default if Matplotlib does not exist)")
     parser.add_argument("-q", "--quiet", action="store_true", help="Do not display running statistics. (default False)")
     parser.add_argument("-gpu", "--gpu", dest="DENSS_GPU", action="store_true", help="Use GPU acceleration (requires CuPy). (default False)")
-    parser.set_defaults(shrinkwrap=True)
+    parser.set_defaults(shrinkwrap=None)
     parser.set_defaults(shrinkwrap_old_method=False)
-    parser.set_defaults(recenter=True)
+    parser.set_defaults(recenter=None)
     parser.set_defaults(positivity=None)
     parser.set_defaults(extrapolate=True)
-    parser.set_defaults(enforce_connectivity=True)
+    parser.set_defaults(enforce_connectivity=None)
     parser.set_defaults(cutout=False)
     parser.set_defaults(quiet = False)
     parser.set_defaults(DENSS_GPU = False)
@@ -360,11 +361,78 @@ def parse_arguments(parser):
     if args.steps is not None:
         steps = args.steps
 
-    if args.ne <= 0.0:
-        #if args.ne is negative, then assume that the user
-        #does not want to set the number of electrons, and just
-        #set it equal to the square root of the forward scattering I(0)
-        args.ne = I[0]**0.5
+    oversampling = args.oversampling
+    side = dmax * oversampling
+
+    #allow user to give initial density map for denss.refine.py
+    if args.rho_start is not None:
+        rho_start, rho_side = saxs.read_mrc(args.rho_start)
+        rho_nsamples = rho_start.shape[0]
+        rho_voxel = rho_side/rho_nsamples
+
+        if (not np.isclose(rho_side, side) or
+            not np.isclose(rho_voxel, voxel) or
+            not np.isclose(rho_nsamples, nsamples)):
+            print("rho_start density dimensions do not match given options.")
+            print("Oversampling and voxel size adjusted to match rho_start dimensions.")
+            side = rho_side
+            voxel = rho_voxel
+            oversampling = side/dmax
+            nsamples = rho_nsamples
+        #set args.rho_start to the actual density map, rather than the filename
+        args.rho_start = rho_start
+        if args.recenter is None:
+            args.recenter = False
+
+    #allow user to give initial support, check for consistency with given grid parameters
+    if args.support_start is not None:
+        support_start, support_side = saxs.read_mrc(args.support_start)
+        support_nsamples = support_start.shape[0]
+        support_voxel = support_side/support_nsamples
+
+        if (not np.isclose(support_side, side) or
+            not np.isclose(support_voxel, voxel) or
+            not np.isclose(support_nsamples, nsamples)):
+            print("Support dimensions do not match given options.")
+            print("Ignoring support.")
+            print("side (support, given): ", support_side, side)
+            print("voxel (support, given): ", support_voxel, voxel)
+            print("n (support, given): ", support_nsamples, nsamples)
+            args.support_start = None
+        else:
+            args.support_start = support_start.astype(bool)
+
+    if args.shrinkwrap is None:
+        if args.support_start is not None:
+            #assume if a user gives a support, that they do not want to
+            #run shrinkwrap. However, allow the user to enable shrinkwrap explicitly
+            #by setting the shrinkwrap option on
+            args.shrinkwrap = False
+            if args.enforce_connectivity is None:
+                args.enforce_connectivity = False
+            if args.recenter is None:
+                args.recenter = False
+        else:
+            args.shrinkwrap = True
+
+    if args.enforce_connectivity is None:
+        args.enforce_connectivity = True
+    if args.recenter is None:
+        args.recenter = True
+
+    if args.ne is not None:
+        if args.ne <= 0.0:
+            #if args.ne is negative, then assume that the user
+            #does not want to set the number of electrons, and just
+            #set it equal to the square root of the forward scattering I(0)
+            args.ne = I[0]**0.5
+    elif args.rho_start is not None:
+        #if args.ne is not given, and args.rho_start is given,
+        #then set ne to be the sum of the given density map
+        args.ne = args.rho_start.sum()
+    else:
+        #default to 10,000
+        args.ne = 10000.0
 
     #now recollect all the edited options back into args
     args.nsamples = nsamples
@@ -376,6 +444,7 @@ def parse_arguments(parser):
     args.enforce_connectivity_steps = enforce_connectivity_steps
     args.recenter_steps = recenter_steps
     args.positivity_steps = positivity_steps
+    args.oversampling = oversampling
     args.dmax = dmax
     args.voxel = voxel
     args.q = q

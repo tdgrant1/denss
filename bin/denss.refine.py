@@ -42,26 +42,6 @@ if args.rho_start is None:
     print(" denss.refine.py requires a .mrc file to be given to the --rho_start option.")
     sys.exit()
 
-args.rho_start, rho_side = saxs.read_mrc(args.rho_start)
-
-rho_nsamples = args.rho_start.shape[0]
-rho_voxel = rho_side/rho_nsamples
-
-args.side = args.dmax*args.oversampling
-
-if (not np.isclose(rho_side, args.side) or
-    not np.isclose(rho_voxel, args.voxel) or
-    not np.isclose(rho_nsamples, args.nsamples)):
-    print("rho_start density dimensions do not match given options.")
-    print("Oversampling and voxel size adjusted to match rho_start dimensions.")
-
-args.voxel = rho_voxel
-args.oversampling = rho_side/args.dmax
-args.nsamples = rho_nsamples
-
-#if args.add_noise is not None:
-#    args.rho_start += np.random.random(size=args.rho_start.shape)*args.add_noise
-
 if __name__ == "__main__":
 
     my_logger = logging.getLogger()
@@ -96,6 +76,7 @@ if __name__ == "__main__":
         voxel=args.voxel,
         oversampling=args.oversampling,
         rho_start=args.rho_start,
+        support_start=args.support_start,
         add_noise=args.add_noise,
         recenter=args.recenter,
         recenter_steps=args.recenter_steps,

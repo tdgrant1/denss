@@ -985,7 +985,7 @@ def filter_P(r,P,sigr=None,qmax=0.5,cutoff=0.75,qmin=0.0,cutoffmin=1.25):
 
 def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
     recenter_mode="com", positivity=True, positivity_steps=None, extrapolate=True, output="map",
-    steps=None, seed=None, flatten_low_density=True, rho_start=None, add_noise=None,
+    steps=None, seed=None, flatten_low_density=True, rho_start=None, support_start=None, add_noise=None,
     shrinkwrap=True, shrinkwrap_old_method=False,shrinkwrap_sigma_start=3,
     shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
     shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01,
@@ -1092,7 +1092,10 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     chi = np.zeros((steps+1))
     rg = np.zeros((steps+1))
     supportV = np.zeros((steps+1))
-    support = np.ones(x.shape,dtype=bool)
+    if support_start is not None:
+        support = np.copy(support_start)
+    else:
+        support = np.ones(x.shape,dtype=bool)
 
     if seed is None:
         #Have to reset the random seed to get a random in different from other processes
@@ -1104,7 +1107,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     prng = np.random.RandomState(seed)
 
     if rho_start is not None:
-        rho = rho_start*dV
+        rho_start *= dV
+        rho = np.copy(rho_start)
         if add_noise is not None:
             noise_factor = rho.max() * add_noise
             noise = prng.random_sample(size=x.shape)*noise_factor
@@ -1227,7 +1231,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         xcount = cp.array(xcount)
 
     #discrete lattice correction factor
-    latt_correction = (np.sinc(qx/2/(np.pi)) * np.sinc(qy/2/(np.pi)) * np.sinc(qz/2/(np.pi)))**2
+    latt_correction = 1.0 #(np.sinc(qx/2/(np.pi)) * np.sinc(qy/2/(np.pi)) * np.sinc(qz/2/(np.pi)))**2
+
 
     for j in range(steps):
         if abort_event is not None:
@@ -1275,13 +1280,11 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
 
         #Error Reduction
         newrho *= 0
-        # newrho *= 1e-8
         newrho[support] = rhoprime[support]
 
         # enforce positivity by making all negative density points zero.
         if positivity and j in positivity_steps:
             newrho[newrho<0] = 0.0
-            # newrho[newrho<-1e-8] *= 1e-8
 
         #apply non-crystallographic symmetry averaging
         if ncs != 0 and j in ncs_steps:
@@ -1519,13 +1522,11 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     F = np.fft.fftn(rho)
     #calculate spherical average intensity from 3D Fs
     I3D = np.abs(F)**2
-    I3D *= latt_correction
     Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
-    #chi[j+1] = np.sum(((Imean[j+1,qbin_args]-Idata)/sigqdata)**2)/qbin_args.size
 
     #scale Fs to match data
-    #factors = np.ones((len(qbins)))
     factors = np.sqrt(Idata/Imean)
+    factors[~qba] = 1.0
     F *= factors[qbin_labels]
     rho = np.fft.ifftn(F,rho.shape)
     rho = rho.real
@@ -3423,7 +3424,7 @@ def pdb2support(pdb,xyz,probe=0.0):
     support[np.unravel_index(xyz_nearby_i,support.shape)] = True
     return support
 
-def pdb2support_fast(pdb,x,y,z,dr=2.0):
+def pdb2support_fast(pdb,x,y,z,radius=None,probe=0.0):
     """Return a boolean 3D density map with support from PDB coordinates"""
 
     support = np.zeros(x.shape,dtype=np.bool_)
@@ -3431,6 +3432,16 @@ def pdb2support_fast(pdb,x,y,z,dr=2.0):
     side = x.max()-x.min()
     dx = side/n
     shift = np.ones(3)*dx/2.
+
+    if radius is None:
+        radius = pdb.radius
+
+    radius = np.atleast_1d(radius)
+    if len(radius) != pdb.natoms:
+        print("Error: radius argument does not have same length as pdb.")
+        exit()
+
+    dr = radius + probe
 
     natoms = pdb.natoms
     for i in range(natoms):
@@ -3444,12 +3455,12 @@ def pdb2support_fast(pdb,x,y,z,dr=2.0):
         #first, get the min and max distances for each dimension
         #also, convert those distances to indices by dividing by dx
         xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
-        xmin = int(np.floor((xa-dr)/dx)) + n//2
-        xmax = int(np.ceil((xa+dr)/dx)) + n//2
-        ymin = int(np.floor((ya-dr)/dx)) + n//2
-        ymax = int(np.ceil((ya+dr)/dx)) + n//2
-        zmin = int(np.floor((za-dr)/dx)) + n//2
-        zmax = int(np.ceil((za+dr)/dx)) + n//2
+        xmin = int(np.floor((xa-dr[i])/dx)) + n//2
+        xmax = int(np.ceil((xa+dr[i])/dx)) + n//2
+        ymin = int(np.floor((ya-dr[i])/dx)) + n//2
+        ymax = int(np.ceil((ya+dr[i])/dx)) + n//2
+        zmin = int(np.floor((za-dr[i])/dx)) + n//2
+        zmax = int(np.ceil((za+dr[i])/dx)) + n//2
         #handle edges
         xmin = max([xmin,0])
         xmax = min([xmax,n])
@@ -3470,7 +3481,7 @@ def pdb2support_fast(pdb,x,y,z,dr=2.0):
         #first, create a dummy array to hold booleans of size dist.size
         tmpenv = np.zeros(dist.shape,dtype=np.bool_)
         #now, any elements that have a dist less than dr make true
-        tmpenv[dist<=dr] = True
+        tmpenv[dist<=dr[i]] = True
         #now reshape for inserting into env
         tmpenv = tmpenv.reshape(nx,ny,nz)
         support[slc] += tmpenv
@@ -3730,7 +3741,6 @@ residue_electrons = {
 radius = {
      # "H":  1.09 , #1.20 , #wiki 1.2
      "H":  1.07 , #crysol
-     # "H":  0.885, #denss fit
      "D":  1.20 ,
      "He": 1.40 ,
      "Li": 1.82 ,
@@ -3738,35 +3748,40 @@ radius = {
      "B":  1.75 ,
      # "C":  1.70 , #1.775, #wiki 1.70  #was 1.775 # CNS 2.3
      "C":  1.58, #crysol
-     # "C":  1.704, #denss fit
      # "N":  1.55 , #1.50 , #wiki 1.55 #was 1.5 # CNS 1.6
      "N":  0.84, #crysol
-     # "N":  0.937, #denss fit
      # "O":  1.52 , #1.45 , #wiki 1.52 #was 1.45 # CNS 1.6
      "O":  1.30, #crysol
-     # "O":  1.357, #denss fit
      "F":  1.47 ,
      "Ne": 1.54 ,
      "Na": 2.27 ,
-     "Mg": 1.73 ,
+     # "Mg": 1.73 ,
+     "Mg": 1.60 , #crysol
      "Al": 1.50 ,
      "Si": 2.10 ,
-     "P":  1.90 ,
-     "S":  1.80 , #wiki 1.8 # CNS 1.9
+     # "P":  1.90 ,
+     "P":  1.11 , #crysol
+     # "S":  1.80 , #wiki 1.8 # CNS 1.9
+     "S":  1.68 , #crysol
      "Cl": 1.75 ,
      "Ar": 1.88 ,
      "K":  2.75 ,
-     "Ca": 1.95 ,
+     # "Ca": 1.95 ,
+     "Ca": 1.97 , #crysol
      "Sc": 1.32 ,
      "Ti": 1.95 ,
      "V":  1.06 ,
      "Cr": 1.13 ,
-     "Mn": 1.19 ,
-     "Fe": 1.26 ,
+     # "Mn": 1.19 ,
+     "Mn": 1.30 , #crysol
+     # "Fe": 1.26 ,
+     "Fe": 1.24 , #crysol
      "Co": 1.13 ,
      "Ni": 1.63 ,
-     "Cu": 1.40 ,
-     "Zn": 1.39 ,
+     # "Cu": 1.40 ,
+     "Cu": 1.28 , #crysol
+     # "Zn": 1.39 ,
+     "Zn": 1.33 , #crysol
      "Ga": 1.87 ,
      "Ge": 1.48 ,
      "As": 0.83 ,
