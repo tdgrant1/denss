@@ -46,7 +46,7 @@ parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired vox
 parser.add_argument("-n", "--nsamples", default=None, type=int, help="Desired number of samples per axis (default=None)")
 parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (B-factor-like atomic displacement.)")
 parser.add_argument("-rho0", "--rho0", default=0.334, type=float, help="Density of bulk solvent in e-/A^3 (default=0.334)")
-parser.add_argument("-vdW", "--vdW", "-vdw", "--vdw", dest="vdW", default=None, nargs=4, type=float, help="van der Waals radii of atom_types (H, C, N, O, by default). (optional)")
+parser.add_argument("-vdW", "--vdW", "-vdw", "--vdw", dest="vdW", default=None, nargs='+', type=float, help="van der Waals radii of atom_types (for H, C, N, O, by default). (optional)")
 parser.add_argument("-atom_types", "--atom_types", default=['H', 'C', 'N', 'O'], nargs='+', type=str, help="Atom types to allow modification of van der waals radii (space separated list, default = H C N O). (optional)")
 parser.add_argument("-exvol_type", "--exvol_type", default="gaussian", type=str, help="Type of excluded volume (gaussian (default) or flat)")
 parser.add_argument("-shell_contrast", "--shell_contrast", default=0.042, type=float, help="Initial contrast of hydration shell in e-/A^3 (default=0.042)")
@@ -58,10 +58,11 @@ parser.add_argument("-b", "--b", "--use_b", dest="use_b", action="store_true", h
 parser.add_argument("-fit_rho0", "--fit_rho0", dest="fit_rho0", action="store_true", help="Fit rho0, the bulk solvent density (optional, default=False)")
 parser.add_argument("-fit_vdW", "--fit_vdW", "-fit_vdw", "--fit_vdw", dest="fit_vdW", action="store_true", help="Fit van der Waals radii (optional, default=False)")
 parser.add_argument("-fit_shell", "--fit_shell", dest="fit_shell", action="store_true", help="Fit hydration shell parameters (optional, default=False)")
-parser.add_argument("-penalty_weight", "--penalty_weight", default=100, type=float, help="Penalty weight for fitting parameters (default=1000)")
+parser.add_argument("-p", "-penalty_weight", "--penalty_weight", default=100, type=float, help="Penalty weight for fitting parameters (default=1000)")
 parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB (default).")
 parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB.")
-parser.add_argument("--ignore_waters", dest="ignore_waters", action="store_true", help="Ignore waters.")
+parser.add_argument("-iw", "--iw", "-iw_on", "--iw_on", "--ignore_waters", "--ignore_waters_on", dest="ignore_waters", action="store_true", help="Ignore waters (default=False.")
+parser.add_argument("-iw_off", "--iw_off", "--ignore_waters_off", dest="ignore_waters", action="store_false", help="Turn Ignore waters off (i.e., read the waters).")
 parser.add_argument("-d", "--data", type=str, help="Experimental SAXS data file for input (3-column ASCII text file (q, I, err), optional).")
 parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use of experimental data")
 parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use of experimental data")
@@ -69,7 +70,7 @@ parser.add_argument("-u", "--units", default="a", type=str, help="Angular units 
 parser.add_argument("--plot_on", dest="plot", action="store_true", help="Create simple plots of results (requires Matplotlib, default if module exists).")
 parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not create simple plots of results. (Default if Matplotlib does not exist)")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix (default=basename_pdb)")
-parser.set_defaults(ignore_waters = False)
+parser.set_defaults(ignore_waters = True)
 parser.set_defaults(center = True)
 parser.set_defaults(plot=True)
 parser.set_defaults(use_b=False)
@@ -114,7 +115,8 @@ def calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type="gaussian",ignor
     vdWs = params[3:]
     for i in range(len(atom_types)):
         #set the vdW for each atom type in the temporary pdb
-        pdb.radius[pdb.atomtype==atom_types[i]] = vdWs[i]
+        # pdb.radius[pdb.atomtype==atom_types[i]] = vdWs[i]
+        pdb.radius[pdb.atomtype==atom_types[i]] = vdWs[i] * pdb.modified_radius[pdb.atomtype==atom_types[i]]
     if exvol_type == "gaussian":
         #generate excluded volume assuming gaussian dummy atoms
         exvol, supportexvol = saxs.pdb2map_simple_gauss_by_radius(pdb,x,y,z,rho0=rho0,ignore_waters=ignore_waters)
@@ -217,12 +219,12 @@ def estimate_side_from_pdb(pdb):
     #take the maximum of the three
     #triple that value to set the default side
     #i.e. set oversampling to 3, like in denss
-    xmin = np.min(pdb.coords[:,0])
-    xmax = np.max(pdb.coords[:,0])
-    ymin = np.min(pdb.coords[:,1])
-    ymax = np.max(pdb.coords[:,1])
-    zmin = np.min(pdb.coords[:,2])
-    zmax = np.max(pdb.coords[:,2])
+    xmin = np.min(pdb.coords[:,0]) - 1.7
+    xmax = np.max(pdb.coords[:,0]) + 1.7
+    ymin = np.min(pdb.coords[:,1]) - 1.7
+    ymax = np.max(pdb.coords[:,1]) + 1.7
+    zmin = np.min(pdb.coords[:,2]) - 1.7
+    zmax = np.max(pdb.coords[:,2]) + 1.7
     wx = xmax-xmin
     wy = ymax-ymin
     wz = zmax-zmin
@@ -243,7 +245,7 @@ if __name__ == "__main__":
     else:
         output = args.output
 
-    pdb = saxs.PDB(args.file)
+    pdb = saxs.PDB(args.file, ignore_waters=args.ignore_waters)
     if args.center:
         pdboutput = basename+"_centered.pdb"
         pdb.coords -= pdb.coords.mean(axis=0)
@@ -264,6 +266,15 @@ if __name__ == "__main__":
         vdWs_guess = args.vdW
     else:
         vdWs_guess = [saxs.radius.get(key) for key in atom_types]
+
+    pdb.generate_modified_pdb_radii()
+    for i in range(len(atom_types)):
+        #try using a scale factor for radii instead
+        vdWs_guess[i] = 1.0 
+        # print(pdb.radius[pdb.atomtype==atom_types[i]].mean())
+
+    print(vdWs_guess)
+    # print(pdb.modified_radius)
 
     pdb.exvol_type = args.exvol_type
 
@@ -339,14 +350,16 @@ if __name__ == "__main__":
         #if none given, set voxel to 1, estimate side length, adjust nsamples
         voxel = 1.0
         optimal_side = estimate_side_from_pdb(pdb)
-        nsamples = np.ceil(optimal_side/voxel).astype(int)
-        if nsamples > 256:
+        optimal_nsamples = np.ceil(optimal_side/voxel).astype(int)
+        if optimal_nsamples > 256:
             nsamples = 256
+        else:
+            nsamples = optimal_nsamples
         side = voxel * nsamples
         if side < optimal_side:
             print("This must be a large particle. To ensure the highest accuracy, manually set")
-            print("the -v option to 1 and the -s option to %.2f" % optimal_side)
-            print("This will set -n option to %d and thus may take a long time to calculate." % nsamples)
+            print("the -v option to 1 and the -s option to %.2f , " % optimal_side)
+            print("which will set -n option to %d and thus may take a long time to calculate." % (optimal_nsamples))
             print("To avoid long computation times, the side length has been set to %.2f for now," % side)
             print("which may be too small and may result in undersampling errors.")
 
@@ -415,6 +428,7 @@ if __name__ == "__main__":
     print()
 
     shell_contrast = args.shell_contrast
+    protein_with_shell_support = saxs.pdb2support_fast(pdb,x,y,z,radius=pdb.radius,probe=2*r_water)
 
     if args.shell_mrcfile is not None:
         #allow user to provide mrc filename to read in a custom shell
@@ -436,7 +450,8 @@ if __name__ == "__main__":
         shell_exvol = calc_gaussian_shell(sigma=exvol_shell_sigma,uniform_shell=uniform_shell)
 
         #remove shell density that overlaps with protein
-        protein = saxs.pdb2support_fast(pdb,x,y,z,radius=pdb.radius,probe=0.0)
+        print("hello")
+        protein = saxs.pdb2support_fast(pdb,x,y,z,radius=pdb.modified_radius,probe=0.0)
         shell_invacuo[protein] = 0.0
         shell_exvol[protein] = 0.0
 
@@ -597,6 +612,19 @@ if __name__ == "__main__":
         print("Scale factor: %.5e " % exp_scale_factor)
         print("Optimized chi2: %.5e " % optimized_chi2)
 
+    for i in range(len(atom_types)):
+        #try using a scale factor for radii instead
+        vdWs_guess[i] = 1.0 
+        # print(pdb.radius[pdb.atomtype==atom_types[i]].mean())
+
+    pdb.V = 4/3*np.pi*pdb.modified_radius**3
+    print(pdb.V.sum())
+    print(pdb.V)
+    print(4/3*np.pi*(1.7)**3)
+    # protein = saxs.pdb2support_fast(pdb,x,y,z,radius=pdb.radius,probe=0.0)
+    print(protein.sum()*dV)
+    saxs.write_mrc((protein)*1.0,side,output+"_proteinsupport.mrc")
+
     if args.data:
         #interpolate the calculated scattering profile which is usually pretty poorly sampled to
         #the experimental q values for residual calculations and chi2 calculations. Use cubic spline
@@ -654,6 +682,7 @@ if __name__ == "__main__":
     saxs.write_mrc(exvol,side,output+"_exvol.mrc")
     saxs.write_mrc(shell,side,output+"_shell.mrc")
     saxs.write_mrc(rho_insolvent,side,output+"_insolvent.mrc")
+    saxs.write_mrc((protein_with_shell_support)*1.0,side,output+"_supportwithshell.mrc")
 
 
 

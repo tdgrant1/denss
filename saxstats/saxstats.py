@@ -1047,8 +1047,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     xcount = np.bincount(qblravel)
 
     #create modified qbins and put qbins in center of bin rather than at left edge of bin.
-    # qbinsc = np.copy(qbins)
-    # qbinsc[1:] += qstep/2.
     qbinsc = mybinmean(qr.ravel(), qblravel, xcount=xcount, DENSS_GPU=False)
 
     #allow for any range of q data
@@ -1068,6 +1066,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     #set qba bins outside of scaling region to false.
     #start with bins in corners
     qba[qbinsc>qx_.max()] = False
+
+    #ignore some bins for testing
+    # qba[(qbinsc>1.00)] = False
 
     sigqdata = np.interp(qdata,q,sigq)
 
@@ -1233,6 +1234,23 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     #discrete lattice correction factor
     latt_correction = 1.0 #(np.sinc(qx/2/(np.pi)) * np.sinc(qy/2/(np.pi)) * np.sinc(qz/2/(np.pi)))**2
 
+    #perform B-factor sharpening in rec space to correct for sampling issues
+    # fit  = np.loadtxt('6lyz_withH_pdb.pdb2mrc2sas.dat')
+    # pdb = PDB('6lyz_withH.pdb')
+    # pdb.b *= 0
+    # pdb.resolution = 0.3 * dx
+    # u = B2u(pdb.b.mean())
+    # u += pdb.resolution
+    # B = u2B(u)
+    # # B *= -1
+    # Idata *= np.exp(-2*B* (qbinsc / (4*np.pi))**2)
+    # fit[:,1] *= np.exp(-2*B* (qbinsc / (4*np.pi))**2)
+
+    # rho_known = np.copy(rho_start)
+    # # known_idx = np.zeros_like(support)
+    # # known_idx[rho>0.01*rho.max()] = True
+    # # rho_known[~known_idx] = 0
+    # write_mrc(rho_known/dV, side, 'rho_known.mrc')
 
     for j in range(steps):
         if abort_event is not None:
@@ -1255,25 +1273,22 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         except:
             I3D = myabs(F,DENSS_GPU=DENSS_GPU)**2
         #discrete lattice correction
-        I3D *= latt_correction
+        # I3D *= latt_correction
         Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=DENSS_GPU)
 
         #scale Fs to match data
         factors = mysqrt(Idata/Imean, DENSS_GPU=DENSS_GPU)
         #do not scale bins outside of desired range
         #so set those factors to 1.0
+        # print(factors)
         factors[~qba] = 1.0
         F *= factors[qbin_labels]
 
-        chi[j] = mysum(((Imean[qba]-Idata[qba])/sigqdata[qba])**2, DENSS_GPU=DENSS_GPU)/Idata[qba].size
+        # chi[j] = mysum(((Imean[qba]-Idata[qba])/sigqdata[qba])**2, DENSS_GPU=DENSS_GPU)/Idata[qba].size
+        chi[j] = mysum(((Imean-Idata)/sigqdata)**2, DENSS_GPU=DENSS_GPU)/Idata.size
 
         #APPLY REAL SPACE RESTRAINTS
         rhoprime = myifftn(F, DENSS_GPU=DENSS_GPU).real
-
-        if not DENSS_GPU and j%write_freq == 0:
-            if write_xplor_format:
-                write_xplor(rhoprime/dV, side, fprefix+"_current.xplor")
-            write_mrc(rhoprime/dV, side, fprefix+"_current.mrc")
 
         # use Guinier's law to approximate quickly
         rg[j] = calc_rg_by_guinier_first_2_points(qbinsc, Imean, DENSS_GPU=DENSS_GPU)
@@ -1281,6 +1296,16 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         #Error Reduction
         newrho *= 0
         newrho[support] = rhoprime[support]
+
+        #restrain within known region
+        # newrho[known_idx] = rho_known[known_idx]
+        # newrho[~known_idx] = 0
+
+        if not DENSS_GPU and j%write_freq == 0:
+            if write_xplor_format:
+                write_xplor(rhoprime/dV, side, fprefix+"_current.xplor")
+            write_mrc(rhoprime/dV, side, fprefix+"_current.mrc")
+            write_mrc(newrho/dV, side, fprefix+"_newrho.mrc")
 
         # enforce positivity by making all negative density points zero.
         if positivity and j in positivity_steps:
@@ -1380,10 +1405,11 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
 
             if shrinkwrap_old_method:
                 #run the old method
-                if j>500:
-                    absv = True
-                else:
-                    absv = False
+                # if j>500:
+                #     absv = True
+                # else:
+                #     absv = False
+                absv = True
                 newrho, support = shrinkwrap_by_density_value(newrho,absv=absv,sigma=sigma,threshold=threshold,recenter=recenter,recenter_mode=recenter_mode)
             else:
                 swN = int(swV/dV)
@@ -1519,17 +1545,16 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         qblravel = cp.asnumpy(qblravel)
         xcount = cp.asnumpy(xcount)
 
-    F = np.fft.fftn(rho)
+    F = myfftn(rho)
     #calculate spherical average intensity from 3D Fs
-    I3D = np.abs(F)**2
-    Imean = ndimage.mean(I3D, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
+    I3D = abs2(F)
+    Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=DENSS_GPU)
 
     #scale Fs to match data
     factors = np.sqrt(Idata/Imean)
     factors[~qba] = 1.0
     F *= factors[qbin_labels]
-    rho = np.fft.ifftn(F,rho.shape)
-    rho = rho.real
+    rho = myifftn(F).real
 
     #negative images yield the same scattering, so flip the image
     #to have more positive than negative values if necessary
@@ -2821,6 +2846,7 @@ class PDB(object):
             self.read_pdb(filename, ignore_waters=ignore_waters)
         elif natoms is not None:
             self.generate_pdb_from_defaults(natoms)
+        self.rij = None
 
     def read_pdb(self, filename, ignore_waters=False):
         self.natoms = 0
@@ -2857,12 +2883,12 @@ class PDB(object):
                     self.cellgamma = float(cryst[6])
                 if line[0:4] != "ATOM" and line[0:4] != "HETA":
                     continue # skip other lines
+                if ignore_waters and ((line[17:20]=="HOH") or (line[17:20]=="TIP")):
+                    continue
                 try:
                     self.atomnum[atom] = int(line[6:11])
                 except ValueError as e:
                     self.atomnum[atom] = int(line[6:11],36)
-                if ignore_waters and ((line[17:20]=="HOH") or (line[17:20]=="TIP")):
-                    continue
                 self.atomname[atom] = line[12:16].split()[0]
                 self.atomalt[atom] = line[16]
                 self.resname[atom] = line[17:20]
@@ -2893,13 +2919,16 @@ class PDB(object):
                 else:
                     atomtype = self.atomtype[atom][0].upper() + self.atomtype[atom][1].lower()
                 try:
-                    dr = radius[atomtype]
+                    # dr = radius[atomtype]
+                    dr = vdW[atomtype]
                 except:
                     try:
-                        dr = radius[atomtype[0]]
+                        # dr = radius[atomtype[0]]
+                        dr = vdW[atomtype[0]]
                     except:
                         #default to carbon
-                        dr = radius['C']
+                        # dr = radius['C']
+                        dr = vdW['C']
                 self.radius[atom] = dr
                 atom += 1
 
@@ -2936,6 +2965,47 @@ class PDB(object):
         self.cellalpha = 90.0
         self.cellbeta = 90.0
         self.cellgamma = 90.0
+
+    def generate_modified_pdb_radii(self):
+        """Generate a new set of radii for a pdb by accounting for overlapping sphere volumes,
+        i.e., each radius is set to the value that yields a volume of a sphere equal to the
+        corrected volume of the sphere after subtracting spherical caps from bonded atoms."""
+        #first, for each atom, find all atoms closer than the sum of the two vdW radii
+        self.modified_radius = np.zeros(self.natoms)
+        if self.rij is None:
+            self.rij = spatial.distance.squareform(spatial.distance.pdist(self.coords[:,:3]))
+        Vtot = np.sum(4/3.*np.pi * self.radius**3)
+        for i in range(self.natoms):
+            #for convenience, grab all the distances for just this particular atom
+            distances = self.rij[i]
+            #generate a list of the sum of the vdW radius of this atom and each other atom
+            #this generates a maximum distance for which the atoms can be separated to be considered close
+            vdW_sum = self.radius[i] + self.radius
+            vdW_sum[i] = 0 #ignore this particular atom to itself
+            #find all atoms that are closer than the corresponding vdW_sum, should be just a few
+            idx_close = np.where((distances<=vdW_sum)&(distances>0))[0]
+            #for each of those close atoms, calculate the spherical cap of overlapping volume
+            nclose = len(idx_close)
+            V_caps = np.zeros(nclose)
+            #start the volume of the atom as being the sphere of vdW radius
+            V_mod = sphere_volume_from_radius(self.radius[i])
+            for j in range(nclose):
+                #get index of next closest atom
+                idx_j = idx_close[j]
+                h1,h2 = cap_heights(r1=self.radius[i],r2=self.radius[idx_j],d=distances[idx_j])
+                #get volume of spherical cap excluded by second atom. Note, the cap has radius r1,
+                #and height h1, as we want to remove the excess of sphere 1 that overlaps sphere 2
+                V_cap_j = spherical_cap_volume(R=self.radius[i],h=h1)
+                #now subtract spherical cap volume from the atom volume
+                V_mod -= V_cap_j
+            if V_mod < 0:
+                #in case so many atoms overlap that no volume is left, set the volume to be zero
+                V_mod = 0.0
+            #now that we've subtracted all the spherical caps from neighboring bonded atoms,
+            #create a modified radius based on that modified volume
+            self.modified_radius[i] = sphere_radius_from_volume(V_mod)
+        self.original_radius = np.copy(self.radius)
+        self.radius = np.copy(self.modified_radius)
 
     def remove_waters(self):
         idx = np.where((self.resname=="HOH") | (self.resname=="TIP"))
@@ -3012,129 +3082,24 @@ class PDB(object):
             records.append(['ATOM  ' + atomnum + '  ' + atomname + ' ' + resname + ' ' + chain + resnum + '    ' + x + y + z + o + b + '          ' + atomtype + charge])
         np.savetxt(filename, records, fmt='%80s'.encode('ascii'))
 
-def pdb2map_gauss(pdb,xyz,sigma,mode="slow",eps=1e-6):
-    """Simple isotropic gaussian sum at coordinate locations.
+def sphere_volume_from_radius(R):
+    V_sphere = 4*np.pi/3 * R**3
+    return V_sphere
 
-    Fast mode uses KDTree to only calculate density at grid points with
-    a density above a threshold.
-    see https://stackoverflow.com/questions/52208434"""
-    n = int(round(xyz.shape[0]**(1/3.)))
-    sigma /= 4.
-    dx = xyz[1,2] - xyz[0,2]
-    shift = np.ones(3)*dx/2.
-    #dist = spatial.distance.cdist(pdb.coords, xyz)
-    #rho = np.sum(values,axis=0).reshape(n,n,n)
-    #run cdist in a loop over atoms to avoid overloading memory
-    print("\n Calculate density map from PDB... ")
-    if mode == "fast":
-        if eps is None:
-            eps = np.finfo('float64').eps
-        thr = -np.log(eps) * 2 * sigma**2
-        data_tree = spatial.cKDTree(pdb.coords-shift)
-        discr = 1000 # you can tweak this to get best results on your system
-        values = np.empty(n**3)
-        for i in range(n**3//discr + 1):
-            sys.stdout.write("\r%i / %i chunks" % (i+1, n**3//discr + 1))
-            sys.stdout.flush()
-            slc = slice(i * discr, i * discr + discr)
-            grid_tree = spatial.cKDTree(xyz[slc])
-            dists = grid_tree.sparse_distance_matrix(data_tree, thr, output_type = 'coo_matrix')
-            dists.data = 1./np.sqrt(2*np.pi*sigma**2) * np.exp(-dists.data/(2*sigma**2))
-            values[slc] = dists.sum(1).squeeze()
-    else:
-        values = np.zeros((xyz.shape[0]))
-        for i in range(pdb.coords.shape[0]):
-            sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
-            sys.stdout.flush()
-            dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
-            dist *= dist
-            values += pdb.nelectrons[i]*1./np.sqrt(2*np.pi*sigma**2) * np.exp(-dist[0]/(2*sigma**2))
-    print()
-    return values.reshape(n,n,n)
+def sphere_radius_from_volume(V):
+    R_sphere = (3*V/(4*np.pi))**(1./3)
+    return R_sphere
 
-def pdb2map_fastgauss(pdb,x,y,z,cutoff=3.0,resolution=15.0,ignore_waters=True):
-    """Simple isotropic gaussian sum at coordinate locations.
+def cap_heights(r1,r2,d):
+    """Calculate the heights h1, h2 of spherical caps from overlapping spheres of radii r1, r2 a distance d apart"""
+    h1 = (r2-r1+d)*(r2+r1-d)/(2*d)
+    h2 = (r1-r2+d)*(r1+r2-d)/(2*d)
+    return h1, h2
 
-    This fastgauss function only calculates the values at
-    grid points near the atom for speed.
-
-    pdb - instance of PDB class (required)
-    x,y,z - meshgrids for x, y, and z (required)
-    sigma - width of Gaussian, i.e. effectively resolution
-    r - maximum distance from atom to calculate density
-    """
-    side = x[-1,0,0] - x[0,0,0]
-    halfside = side/2
-    n = x.shape[0]
-    dx = side/n
-    dV = dx**3
-    V = side**3
-    x_ = x[:,0,0]
-    shift = np.ones(3)*dx/2.
-    values = np.zeros(x.shape)
-    support = np.zeros(x.shape,dtype=bool)
-    if len(np.atleast_1d(resolution)) == 1:
-        resolution *= np.ones(pdb.natoms)
-    if len(np.atleast_1d(cutoff)) == 1:
-        cutoff *= np.ones(pdb.natoms)
-    cutoff = np.max(np.vstack((cutoff,2*resolution)),axis=0)
-    sigma = resolution/4. #to make compatible with e2pdb2mrc/chimera sigma
-    gxmin = x.min()
-    gxmax = x.max()
-    gymin = y.min()
-    gymax = y.max()
-    gzmin = z.min()
-    gzmax = z.max()
-    print("\n Calculate density map from PDB... ")
-    for i in range(pdb.coords.shape[0]):
-        if ignore_waters and pdb.resname[i]=="HOH":
-            continue
-        sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
-        sys.stdout.flush()
-        #this will cut out the grid points that are near the atom
-        #first, get the min and max distances for each dimension
-        #also, convert those distances to indices by dividing by dx
-        xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
-        #ignore atoms whose coordinates are outside the box limits
-        if (
-            (xa < gxmin) or
-            (xa > gxmax) or
-            (ya < gymin) or
-            (ya > gymax) or
-            (za < gzmin) or
-            (za > gzmax)
-           ):
-           print()
-           print("Atom %d outside boundary of cell ignored."%i)
-           continue
-        ci = cutoff[i]
-        xmin = int(np.floor((xa-ci)/dx)) + n//2
-        xmax = int(np.ceil((xa+ci)/dx)) + n//2
-        ymin = int(np.floor((ya-ci)/dx)) + n//2
-        ymax = int(np.ceil((ya+ci)/dx)) + n//2
-        zmin = int(np.floor((za-ci)/dx)) + n//2
-        zmax = int(np.ceil((za+ci)/dx)) + n//2
-        #handle edges
-        xmin = max([xmin,0])
-        xmax = min([xmax,n])
-        ymin = max([ymin,0])
-        ymax = min([ymax,n])
-        zmin = max([zmin,0])
-        zmax = min([zmax,n])
-        #now lets create a slice object for convenience
-        slc = np.s_[xmin:xmax,ymin:ymax,zmin:zmax]
-        nx = xmax-xmin
-        ny = ymax-ymin
-        nz = zmax-zmin
-        #now lets create a column stack of coordinates for the cropped grid
-        xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
-        dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
-        dist *= dist
-        tmpvalues = pdb.nelectrons[i]*1./np.sqrt(2*np.pi*sigma[i]**2) * np.exp(-dist[0]/(2*sigma[i]**2))
-        values[slc] += tmpvalues.reshape(nx,ny,nz)
-        support[slc] = True
-    print()
-    return values, support
+def spherical_cap_volume(R,h):
+    #sphere of radius R, cap of height h
+    V_cap = 1./3 * np.pi * h**2 * (3*R-h)
+    return V_cap
 
 def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters=True):
     """Simple isotropic single gaussian sum at coordinate locations.
@@ -3410,20 +3375,6 @@ def pdb2map_FFT(pdb,x,y,z,radii=None,restrict=True):
         rho[~pdbidx] = 0.0
     return rho, pdbidx
 
-def pdb2support(pdb,xyz,probe=0.0):
-    """Calculate support from pdb coordinates."""
-    n = int(round(xyz.shape[0]**(1/3.)))
-    support = np.zeros((n,n,n),dtype=bool)
-    xyz_nearby = []
-    xyz_nearby_i = []
-    for i in range(pdb.natoms):
-        sys.stdout.write("\r% 5i / % 5i" % (i+1,pdb.natoms))
-        sys.stdout.flush()
-        xyz_nearby_i.append(np.where(spatial.distance.cdist(pdb.coords[i,None],xyz) < 1.7+probe)[1])
-    xyz_nearby_i = np.unique(np.concatenate(xyz_nearby_i))
-    support[np.unravel_index(xyz_nearby_i,support.shape)] = True
-    return support
-
 def pdb2support_fast(pdb,x,y,z,radius=None,probe=0.0):
     """Return a boolean 3D density map with support from PDB coordinates"""
 
@@ -3485,7 +3436,6 @@ def pdb2support_fast(pdb,x,y,z,radius=None,probe=0.0):
         #now reshape for inserting into env
         tmpenv = tmpenv.reshape(nx,ny,nz)
         support[slc] += tmpenv
-    #print()
     return support
 
 def u2B(u):
@@ -3525,24 +3475,6 @@ def formfactor(element, q=(np.arange(500)+1)/1000.,B=None):
     ff *= np.exp(-B* (q / (4*np.pi))**2)
     return ff
 
-# def realspace_formfactor(element, r=(np.arange(501))/1000., B=None):
-#     """Calculate real space atomic form factors"""
-#     if B is None:
-#         B = 0.0
-#     r = np.atleast_1d(r)
-#     ff = np.zeros(r.shape)
-#     for i in range(4):
-#         ai = ffcoeff[element]['a'][i]
-#         bi = ffcoeff[element]['b'][i]
-#         #the form factor in the next line is based on an analytical Fourier
-#         #tranform of the form factor in reciprocal space
-#         #ff += 2*(2/bi)**0.5*np.pi * ai * np.exp(-(2*np.pi*r)**2/bi)
-#         #the form factor in the next line additionally accounts for a B-factor
-#         ff += 2*(6)**0.5 * np.pi * ai * np.exp(-3*(2*np.pi*r)**2/(3*bi+B)) / (3*bi+B)**0.5
-#     i = np.where((r==0))
-#     ff += signal.unit_impulse(r.shape, i) * ffcoeff[element]['c']
-#     return ff
-
 def realspace_formfactor(element, r=(np.arange(501))/1000., B=None):
     """Calculate real space atomic form factors"""
     if B is None:
@@ -3577,19 +3509,11 @@ def realspace_gaussian_formfactor(r=np.linspace(-3,3,101), rho0=0.334, V=None, r
     elif V is None:
         #calculate volume from radius assuming sphere
         V = (4*np.pi/3)*radius**3
-    # ff = rho0 *(2*np.pi)**0.5 * V**(2./3) * np.exp(-np.pi*r**2/V**(2./3))
-    ff = rho0 * np.exp(-np.pi*r**2/V**(2./3))
+    if V <= 0:
+        ff = r*0
+    else:
+        ff = rho0 * np.exp(-np.pi*r**2/V**(2./3))
     return ff
-
-# def realspace_exvol_gaussian(r=np.linspace(-3,3,101), ri=1.7, r0=1.62, rm=1.62):
-#     """Calculate real space atomic form factors.
-#     r - distance from center of atom
-#     ri - radius of gaussian atom(s), from which volume is calculated as Vi=4*pi/3*ri**3
-#     r0 - effective average atomic radius (a la crysol), a scalar
-#     rm - actual average atomic radius (a la crysol), a scalar
-#     """
-#     ff = (2*np.pi)**0.5 * V**(2./3) * np.exp(-np.pi*r**2/V**(2./3))
-#     return ff
 
 def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=True,
         output="map", steps=2001, seed=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
@@ -3782,6 +3706,125 @@ radius = {
      "Cu": 1.28 , #crysol
      # "Zn": 1.39 ,
      "Zn": 1.33 , #crysol
+     "Ga": 1.87 ,
+     "Ge": 1.48 ,
+     "As": 0.83 ,
+     "Se": 1.90 ,
+     "Br": 1.85 ,
+     "Kr": 2.02 ,
+     "Rb": 2.65 ,
+     "Sr": 2.02 ,
+     "Y":  1.61 ,
+     "Zr": 1.42 ,
+     "Nb": 1.33 ,
+     "Mo": 1.75 ,
+     "Tc": 2.00 ,
+     "Ru": 1.20 ,
+     "Rh": 1.22 ,
+     "Pd": 1.63 ,
+     "Ag": 1.72 ,
+     "Cd": 1.58 ,
+     "In": 1.93 ,
+     "Sn": 2.17 ,
+     "Sb": 1.12 ,
+     "Te": 1.26 ,
+     "I":  1.98 ,
+     "Xe": 2.16 ,
+     "Cs": 3.01 ,
+     "Ba": 2.41 ,
+     "La": 1.83 ,
+     "Ce": 1.86 ,
+     "Pr": 1.62 ,
+     "Nd": 1.79 ,
+     "Pm": 1.76 ,
+     "Sm": 1.74 ,
+     "Eu": 1.96 ,
+     "Gd": 1.69 ,
+     "Tb": 1.66 ,
+     "Dy": 1.63 ,
+     "Ho": 1.61 ,
+     "Er": 1.59 ,
+     "Tm": 1.57 ,
+     "Yb": 1.54 ,
+     "Lu": 1.53 ,
+     "Hf": 1.40 ,
+     "Ta": 1.22 ,
+     "W":  1.26 ,
+     "Re": 1.30 ,
+     "Os": 1.58 ,
+     "Ir": 1.22 ,
+     "Pt": 1.72 ,
+     "Au": 1.66 ,
+     "Hg": 1.55 ,
+     "Tl": 1.96 ,
+     "Pb": 2.02 ,
+     "Bi": 1.73 ,
+     "Po": 1.21 ,
+     "At": 1.12 ,
+     "Rn": 2.30 ,
+     "Fr": 3.24 ,
+     "Ra": 2.57 ,
+     "Ac": 2.12 ,
+     "Th": 1.84 ,
+     "Pa": 1.60 ,
+     "U":  1.75 ,
+     "Np": 1.71 ,
+     "Pu": 1.67 ,
+     "Am": 1.66 ,
+     "Cm": 1.65 ,
+     "Bk": 1.64 ,
+     "Cf": 1.63 ,
+     "Es": 1.62 ,
+     "Fm": 1.61 ,
+     "Md": 1.60 ,
+     "No": 1.59 ,
+     "Lr": 1.58 ,
+      }
+
+vdW = {
+     "H":  1.20 , #wiki 1.2
+     # "H":  1.07 , #crysol
+     "D":  1.20 ,
+     "He": 1.40 ,
+     "Li": 1.82 ,
+     "Be": 0.63 ,
+     "B":  1.75 ,
+     "C":  1.70 , #1.775, #wiki 1.70  #was 1.775 # CNS 2.3
+     # "C":  1.58, #crysol
+     "N":  1.55 , #1.50 , #wiki 1.55 #was 1.5 # CNS 1.6
+     # "N":  0.84, #crysol
+     "O":  1.52 , #1.45 , #wiki 1.52 #was 1.45 # CNS 1.6
+     # "O":  1.30, #crysol
+     "F":  1.47 ,
+     "Ne": 1.54 ,
+     "Na": 2.27 ,
+     "Mg": 1.73 ,
+     # "Mg": 1.60 , #crysol
+     "Al": 1.50 ,
+     "Si": 2.10 ,
+     "P":  1.90 ,
+     # "P":  1.11 , #crysol
+     "S":  1.80 , #wiki 1.8 # CNS 1.9
+     # "S":  1.68 , #crysol
+     "Cl": 1.75 ,
+     "Ar": 1.88 ,
+     "K":  2.75 ,
+     "Ca": 1.95 ,
+     # "Ca": 1.97 , #crysol
+     "Sc": 1.32 ,
+     "Ti": 1.95 ,
+     "V":  1.06 ,
+     "Cr": 1.13 ,
+     "Mn": 1.19 ,
+     # "Mn": 1.30 , #crysol
+     "Fe": 1.26 ,
+     # "Fe": 1.24 , #crysol
+     "Co": 1.13 ,
+     "Ni": 1.63 ,
+     "Cu": 1.40 ,
+     # "Cu": 1.28 , #crysol
+     "Zn": 1.39 ,
+     # "Zn": 1.33 , #crysol
      "Ga": 1.87 ,
      "Ge": 1.48 ,
      "As": 0.83 ,

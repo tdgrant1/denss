@@ -77,7 +77,7 @@ def parse_arguments(parser):
     parser.add_argument("-q", "--quiet", action="store_true", help="Do not display running statistics. (default False)")
     parser.add_argument("-gpu", "--gpu", dest="DENSS_GPU", action="store_true", help="Use GPU acceleration (requires CuPy). (default False)")
     parser.set_defaults(shrinkwrap=None)
-    parser.set_defaults(shrinkwrap_old_method=False)
+    parser.set_defaults(shrinkwrap_old_method=None)
     parser.set_defaults(recenter=None)
     parser.set_defaults(positivity=None)
     parser.set_defaults(extrapolate=True)
@@ -338,6 +338,8 @@ def parse_arguments(parser):
     elif args.shrinkwrap_sigma_end_in_vox is not None:
         shrinkwrap_sigma_end_in_A = args.shrinkwrap_sigma_end_in_vox * voxel
 
+    print(shrinkwrap_sigma_start_in_A, shrinkwrap_sigma_end_in_A)
+
     #as mentioned above, now that we have the voxel size, we need to convert
     #the shrinkwrap sigma values to voxels, rather than physical distance
     shrinkwrap_sigma_start_in_vox = shrinkwrap_sigma_start_in_A / voxel
@@ -383,6 +385,10 @@ def parse_arguments(parser):
         args.rho_start = rho_start
         if args.recenter is None:
             args.recenter = False
+        if args.shrinkwrap_old_method is None:
+            shrinkwrap_old_method = True
+        else:
+            shrinkwrap_old_method = args.shrinkwrap_old_method
 
     #allow user to give initial support, check for consistency with given grid parameters
     if args.support_start is not None:
@@ -419,6 +425,8 @@ def parse_arguments(parser):
         args.enforce_connectivity = True
     if args.recenter is None:
         args.recenter = True
+    if args.shrinkwrap_old_method is None:
+        args.shrinkwrap_old_method = False
 
     if args.ne is not None:
         if args.ne <= 0.0:
@@ -429,7 +437,8 @@ def parse_arguments(parser):
     elif args.rho_start is not None:
         #if args.ne is not given, and args.rho_start is given,
         #then set ne to be the sum of the given density map
-        args.ne = args.rho_start.sum()
+        dV = voxel**3
+        args.ne = args.rho_start.sum() * dV
     else:
         #default to 10,000
         args.ne = 10000.0
