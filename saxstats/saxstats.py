@@ -9,13 +9,16 @@
 #    Author: Thomas D. Grant
 #    Email:  <tdgrant@buffalo.edu>
 #    Alt Email:  <tgrant@hwi.buffalo.edu>
-#    Copyright 2017, 2018, 2019, 2020 The Research Foundation for SUNY
+#    Copyright 2017 - Present The Research Foundation for SUNY
 #
 #    Additional authors:
 #    Nhan D. Nguyen
 #    Jesse Hopkins
 #    Andrew Bruno
 #    Esther Gallmeier
+#    Sarah Chamberlain
+#    Stephen Moore
+#    Jitendra Singh
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -54,6 +57,8 @@ import pickle
 import numpy as np
 from scipy import ndimage, interpolate, spatial, special, optimize, signal, stats, fft
 from functools import reduce
+
+from saxstats import protein_residues 
 
 # import numba
 
@@ -1067,9 +1072,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     #start with bins in corners
     qba[qbinsc>qx_.max()] = False
 
-    #ignore some bins for testing
-    # qba[(qbinsc>1.00)] = False
-
     sigqdata = np.interp(qdata,q,sigq)
 
     scale_factor = ne**2 / Idata[0]
@@ -1231,27 +1233,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         qblravel = cp.array(qblravel)
         xcount = cp.array(xcount)
 
-    #discrete lattice correction factor
-    latt_correction = 1.0 #(np.sinc(qx/2/(np.pi)) * np.sinc(qy/2/(np.pi)) * np.sinc(qz/2/(np.pi)))**2
-
-    #perform B-factor sharpening in rec space to correct for sampling issues
-    # fit  = np.loadtxt('6lyz_withH_pdb.pdb2mrc2sas.dat')
-    # pdb = PDB('6lyz_withH.pdb')
-    # pdb.b *= 0
-    # pdb.resolution = 0.3 * dx
-    # u = B2u(pdb.b.mean())
-    # u += pdb.resolution
-    # B = u2B(u)
-    # # B *= -1
-    # Idata *= np.exp(-2*B* (qbinsc / (4*np.pi))**2)
-    # fit[:,1] *= np.exp(-2*B* (qbinsc / (4*np.pi))**2)
-
-    # rho_known = np.copy(rho_start)
-    # # known_idx = np.zeros_like(support)
-    # # known_idx[rho>0.01*rho.max()] = True
-    # # rho_known[~known_idx] = 0
-    # write_mrc(rho_known/dV, side, 'rho_known.mrc')
-
     for j in range(steps):
         if abort_event is not None:
             if abort_event.is_set():
@@ -1272,20 +1253,16 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
             I3D = abs2(F)
         except:
             I3D = myabs(F,DENSS_GPU=DENSS_GPU)**2
-        #discrete lattice correction
-        # I3D *= latt_correction
         Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=DENSS_GPU)
 
         #scale Fs to match data
         factors = mysqrt(Idata/Imean, DENSS_GPU=DENSS_GPU)
         #do not scale bins outside of desired range
         #so set those factors to 1.0
-        # print(factors)
         factors[~qba] = 1.0
         F *= factors[qbin_labels]
 
-        # chi[j] = mysum(((Imean[qba]-Idata[qba])/sigqdata[qba])**2, DENSS_GPU=DENSS_GPU)/Idata[qba].size
-        chi[j] = mysum(((Imean-Idata)/sigqdata)**2, DENSS_GPU=DENSS_GPU)/Idata.size
+        chi[j] = mysum(((Imean[qba]-Idata[qba])/sigqdata[qba])**2, DENSS_GPU=DENSS_GPU)/Idata[qba].size
 
         #APPLY REAL SPACE RESTRAINTS
         rhoprime = myifftn(F, DENSS_GPU=DENSS_GPU).real
@@ -1296,10 +1273,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         #Error Reduction
         newrho *= 0
         newrho[support] = rhoprime[support]
-
-        #restrain within known region
-        # newrho[known_idx] = rho_known[known_idx]
-        # newrho[~known_idx] = 0
 
         if not DENSS_GPU and j%write_freq == 0:
             if write_xplor_format:
@@ -1350,10 +1323,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
             #run shrinkwrap after ncs averaging to get new support
             if shrinkwrap_old_method:
                 #run the old method
-                if j>500:
-                    absv = True
-                else:
-                    absv = False
+                absv = True
                 newrho, support = shrinkwrap_by_density_value(newrho,absv=absv,sigma=sigma,threshold=threshold,recenter=recenter,recenter_mode=recenter_mode)
             else:
                 swN = int(swV/dV)
@@ -1404,11 +1374,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
                 support = cp.asnumpy(support)
 
             if shrinkwrap_old_method:
-                #run the old method
-                # if j>500:
-                #     absv = True
-                # else:
-                #     absv = False
                 absv = True
                 newrho, support = shrinkwrap_by_density_value(newrho,absv=absv,sigma=sigma,threshold=threshold,recenter=recenter,recenter_mode=recenter_mode)
             else:
@@ -1548,7 +1513,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     F = myfftn(rho)
     #calculate spherical average intensity from 3D Fs
     I3D = abs2(F)
-    Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=DENSS_GPU)
+    Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=False)
 
     #scale Fs to match data
     factors = np.sqrt(Idata/Imean)
@@ -1569,7 +1534,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     if ne is not None:
         rho *= ne / np.sum(rho)
 
-    # rg[j+1] = rho2rg(rho=rho,r=r,support=support,dx=dx)
     rg[j+1] = calc_rg_by_guinier_first_2_points(qbinsc, Imean)
     supportV[j+1] = supportV[j]
 
@@ -1690,7 +1654,6 @@ def shrinkwrap_by_volume(rho,N,absv=True,sigma=3.0,recenter=True,recenter_mode="
     #grab the N largest values of the array
     idx = largest_indices(rho_blurred, N)
     support = np.zeros(rho.shape,dtype=bool)
-    #support[rho_blurred >= threshold] = True
     support[idx] = True
     #now, calculate the threshold that would correspond to the by_density_value method
     threshold = np.min(rho_blurred[idx])/rho_blurred.max()
@@ -2870,6 +2833,12 @@ class PDB(object):
         self.charge = np.zeros((self.natoms),dtype=np.dtype((np.str,2)))
         self.nelectrons = np.zeros((self.natoms),dtype=int)
         self.radius = np.zeros(self.natoms)
+        self.vdW = np.zeros(self.natoms)
+        #set a variable with H radius to be used for exvol radii optimization
+        #set a variable for number of hydrogens bonded to atoms
+        self.exvolHradius = radius['H']
+        self.implicitH = False
+        self.numH = np.zeros((self.natoms), dtype=int)
         with open(filename) as f:
             atom = 0
             for line in f:
@@ -2919,17 +2888,14 @@ class PDB(object):
                 else:
                     atomtype = self.atomtype[atom][0].upper() + self.atomtype[atom][1].lower()
                 try:
-                    # dr = radius[atomtype]
                     dr = vdW[atomtype]
                 except:
                     try:
-                        # dr = radius[atomtype[0]]
                         dr = vdW[atomtype[0]]
                     except:
                         #default to carbon
-                        # dr = radius['C']
                         dr = vdW['C']
-                self.radius[atom] = dr
+                self.vdW[atom] = dr
                 atom += 1
 
     def generate_pdb_from_defaults(self, natoms):
@@ -2966,46 +2932,123 @@ class PDB(object):
         self.cellbeta = 90.0
         self.cellgamma = 90.0
 
-    def generate_modified_pdb_radii(self):
-        """Generate a new set of radii for a pdb by accounting for overlapping sphere volumes,
+    def calculate_unique_volume(self,n=8):
+        """Generate volumes and radii for each atom of a pdb by accounting for overlapping sphere volumes,
         i.e., each radius is set to the value that yields a volume of a sphere equal to the
         corrected volume of the sphere after subtracting spherical caps from bonded atoms."""
         #first, for each atom, find all atoms closer than the sum of the two vdW radii
-        self.modified_radius = np.zeros(self.natoms)
         if self.rij is None:
             self.rij = spatial.distance.squareform(spatial.distance.pdist(self.coords[:,:3]))
-        Vtot = np.sum(4/3.*np.pi * self.radius**3)
+        self.unique_volume = np.zeros(self.natoms)
+        self.unique_radius = np.zeros(self.natoms)
+        ns = np.array([8,16,32])
+        corrections = np.array([1.53,1.19,1.06]) #correction for n=8 voxels (1.19 for n=16, 1.06 for n=32)
+        correction = np.interp(n,ns,corrections) #a rough approximation.
+        print("Calculating unique atomic volumes...")
         for i in range(self.natoms):
+            sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,self.natoms))
+            sys.stdout.flush()
+            #for each atom, make a box of voxels around it
+            ra = self.vdW[i] #ra is the radius of the main atom
+            side = 2*ra
+            #n = 8 #yields somewhere around 0.2 A voxel spacing depending on atom size
+            dx = side/n
+            dV = dx**3
+            x_ = np.linspace(-side/2,side/2,n)
+            x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
+            minigrid = np.zeros(x.shape,dtype=np.bool_)
+            shift = np.ones(3)*dx/2.
+
+            #create a column stack of coordinates for the minigrid
+            xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
+            #for simplicity assume the atom is at the center of the minigrid, (0,0,0),
+            #therefore we need to subtract the vector shift (i.e. the coordinates
+            #of the atom) from each of the neighboring atoms, so grab those coordinates
+            p = np.copy(self.coords[i])
+            #calculate all distances from the atom to the minigrid points
+            center = np.zeros(3)
+            xa, ya, za = center
+            dist = spatial.distance.cdist(center[None,:], xyz)[0].reshape(n,n,n)
+            #now, any elements of minigrid that have a dist less than ra make true
+            minigrid[dist<=ra] = True
             #for convenience, grab all the distances for just this particular atom
             distances = self.rij[i]
             #generate a list of the sum of the vdW radius of this atom and each other atom
             #this generates a maximum distance for which the atoms can be separated to be considered close
-            vdW_sum = self.radius[i] + self.radius
+            vdW_sum = self.vdW[i] + self.vdW
             vdW_sum[i] = 0 #ignore this particular atom to itself
             #find all atoms that are closer than the corresponding vdW_sum, should be just a few
             idx_close = np.where((distances<=vdW_sum)&(distances>0))[0]
-            #for each of those close atoms, calculate the spherical cap of overlapping volume
+            #for each of those close atoms, calculate the overlapping volume
             nclose = len(idx_close)
-            V_caps = np.zeros(nclose)
-            #start the volume of the atom as being the sphere of vdW radius
-            V_mod = sphere_volume_from_radius(self.radius[i])
             for j in range(nclose):
                 #get index of next closest atom
                 idx_j = idx_close[j]
-                h1,h2 = cap_heights(r1=self.radius[i],r2=self.radius[idx_j],d=distances[idx_j])
-                #get volume of spherical cap excluded by second atom. Note, the cap has radius r1,
-                #and height h1, as we want to remove the excess of sphere 1 that overlaps sphere 2
-                V_cap_j = spherical_cap_volume(R=self.radius[i],h=h1)
-                #now subtract spherical cap volume from the atom volume
-                V_mod -= V_cap_j
-            if V_mod < 0:
-                #in case so many atoms overlap that no volume is left, set the volume to be zero
-                V_mod = 0.0
-            #now that we've subtracted all the spherical caps from neighboring bonded atoms,
+                #get the coordinates of the  neighboring atom, and shift using the same vector p as the main atom
+                cb = self.coords[idx_j] - p #center of neighboring atom in new coordinate frame
+                xb,yb,zb = cb
+                rb = self.vdW[idx_j]
+                a,b,c,d = equation_of_plane_from_sphere_intersection(xa,ya,za,ra,xb,yb,zb,rb)
+                normal = np.array([a,b,c]) #definition of normal to a plane
+                #for each grid point, calculate the distance to the plane in the direction of the vector normal
+                #if the distance is positive, then that gridpoint is beyond the plane
+                #we can calculate the center of the circle which lies on the plane, so thats a good point to use
+                circle_center = center_of_circle_from_sphere_intersection(xa,ya,za,ra,xb,yb,zb,rb,a,b,c,d)
+                xyz_minus_cc = xyz - circle_center
+                #calculate the distance to the plane for each minigrid voxel
+                #there may be a way to vectorize this if its too slow
+                d2plane = np.zeros(x.size)
+                for k in range(n**3):
+                    d2plane[k] = np.dot(normal,xyz_minus_cc[k,:])
+                d2plane = d2plane.reshape(n,n,n)
+                #all voxels with a positive d2plane value are _beyond_ the plane
+                minigrid[d2plane>0] = False
+            #add up all the remaining voxels in the minigrid to get the volume
+            #also correct for limited voxel size
+            self.unique_volume[i] = minigrid.sum()*dV * correction
             #create a modified radius based on that modified volume
-            self.modified_radius[i] = sphere_radius_from_volume(V_mod)
-        self.original_radius = np.copy(self.radius)
-        self.radius = np.copy(self.modified_radius)
+            self.unique_radius[i] = sphere_radius_from_volume(self.unique_volume[i])
+
+    def add_ImplicitH(self):
+        bondlist_resNorm = protein_residues.normal
+        bondlist_resCterm = protein_residues.c_terminal
+        bondlist_resNterm = protein_residues.n_terminal
+        
+        self.implicitH = True
+
+        if 'H' in self.atomtype:
+            self.remove_by_atomtype('H')
+
+        for i in range(len(self.atomname)):
+            H_count = 0
+            res = self.resname[i]
+            atom = self.atomname[i]
+            resnum = self.resnum[i]
+
+            #If first residue, read bonds from resNterm
+            #If not first residue and not last residue, read from resNorm
+            try:
+                if resnum == 1:
+                    Hbond_count = bondlist_resNterm[res]['numH']
+                else:
+                    Hbond_count = bondlist_resNorm[res]['numH']
+            except:
+                Hbond_count = 0
+
+            #For each atom, atom should be a key in "numH", so now just look up value 
+            # associated with atom
+            try:
+                H_count = Hbond_count[atom]
+            except:
+                #This except could be more complex and use bond lengths to count potential number 
+                #of hydrogens based on atom type and number of bonds
+                print("atom ", atom, " not in ", res, " list. setting numH to 0.")
+                H_count = 0
+
+            #Add number of hydrogens for the atom to a pdb object so it can
+            #be carried with pdb class
+            self.numH[i] = H_count
+            self.nelectrons[i]+=H_count
 
     def remove_waters(self):
         idx = np.where((self.resname=="HOH") | (self.resname=="TIP"))
@@ -3035,6 +3078,10 @@ class PDB(object):
         idx = np.where((self.chain==chain))
         self.remove_atoms_from_object(idx)
 
+    def remove_atomalt(self):
+        idx = np.where((self.atomalt!=' ') & (self.atomalt!='A'))
+        self.remove_atoms_from_object(idx)
+
     def remove_atoms_from_object(self, idx):
         mask = np.ones(self.natoms, dtype=bool)
         mask[idx] = False
@@ -3052,6 +3099,8 @@ class PDB(object):
         self.nelectrons = self.nelectrons[mask]
         self.natoms = len(self.atomnum)
         self.radius = self.radius[mask]
+        self.vdW = self.vdW[mask]
+        self.numH = self.numH[mask]
 
     def write(self, filename):
         """Write PDB file format using pdb object as input."""
@@ -3101,6 +3150,27 @@ def spherical_cap_volume(R,h):
     V_cap = 1./3 * np.pi * h**2 * (3*R-h)
     return V_cap
 
+def equation_of_plane_from_sphere_intersection(x1,y1,z1,r1,x2,y2,z2,r2):
+    """Calculate coefficients a,b,c,d of equation of a plane (ax+by+cz+d=0) formed by the
+    intersection of two spheres with centers (x1,y1,z1), (x2,y2,z2) and radii r1,r2.
+    from: http://ambrnet.com/TrigoCalc/Sphere/TwoSpheres/Intersection.htm"""
+    a = 2*(x2-x1)
+    b = 2*(y2-y1)
+    c = 2*(z2-z1)
+    d = x1**2 - x2**2 + y1**2 - y2**2 + z1**2 - z2**2 - r1**2 + r2**2
+    return a,b,c,d
+
+def center_of_circle_from_sphere_intersection(x1,y1,z1,r1,x2,y2,z2,r2,a,b,c,d):
+    """Calculate the center of the circle formed by the intersection of two spheres"""
+    # print(a*(x1-x2), b*(y1-y2), c*(z1-z2))
+    # print((a*(x1-x2) + b*(y1-y2) +c*(z1-z2)))
+    # print((x1*a + y1*b + z1*c + d))
+    t = (x1*a + y1*b + z1*c + d) / (a*(x1-x2) + b*(y1-y2) +c*(z1-z2))
+    xc = x1 + t*(x2-x1)
+    yc = y1 + t*(y2-y1)
+    zc = z1 + t*(z2-z1)
+    return (xc,yc,zc)
+
 def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters=True):
     """Simple isotropic single gaussian sum at coordinate locations.
 
@@ -3124,9 +3194,7 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
     values = np.zeros(x.shape)
     support = np.zeros(x.shape,dtype=bool)
     # cutoff = max(cutoff,2*resolution)
-    #convert resolution to B-factor for form factor calculation
-    #set resolution equal to atomic displacement
-    # B = u2B(resolution)
+    cutoffs = 2*pdb.vdW
     gxmin = x.min()
     gxmax = x.max()
     gymin = y.min()
@@ -3156,6 +3224,7 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
            # print()
            print("Atom %d outside boundary of cell ignored."%i)
            continue
+        cutoff = cutoffs[i]
         xmin = int(np.floor((xa-cutoff)/dx)) + n//2
         xmax = int(np.ceil((xa+cutoff)/dx)) + n//2
         ymin = int(np.floor((ya-cutoff)/dx)) + n//2
@@ -3178,7 +3247,8 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
         xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
         dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
 
-        V = (4*np.pi/3)*pdb.radius[i]**3
+        # V = (4*np.pi/3)*pdb.radius[i]**3
+        V = (4*np.pi/3)*pdb.radius[i]**3 + pdb.numH[i]*(4*np.pi/3)*pdb.exvolHradius**3
         tmpvalues = realspace_gaussian_formfactor(r=dist, rho0=rho0, V=V, radius=None)
 
         #rescale total number of electrons by expected number of electrons
@@ -3301,7 +3371,8 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,use_b=False,ignore_wa
         tmpvalues = realspace_formfactor(element=element,r=dist,B=B[i])
         #rescale total number of electrons by expected number of electrons
         if np.sum(tmpvalues)>1e-8:
-            tmpvalues *= electrons[element] / np.sum(tmpvalues)
+            ne_total = electrons[element] #+ pdb.numH[i]
+            tmpvalues *= ne_total / np.sum(tmpvalues)
         # else:
             # print()
             # print("Voxel spacing too coarse. No density for atom %d."%i)
@@ -3446,12 +3517,6 @@ def B2u(B):
     """Calculate atomic displacement, u, from B-factor"""
     return np.sign(B)*(np.abs(B)/(8*np.pi**2))**0.5
 
-def res2B(res, element='C'):
-    """Calculate B-factor from resolution estimate.
-    Taken from https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-018-2083-8"""
-
-    return 8 * np.pi**2 * u**2
-
 def sphere(R, q=np.linspace(0,0.5,501), I0=1.,amp=False):
     """Calculate the scattering of a uniform sphere."""
     q = np.atleast_1d(q)
@@ -3514,6 +3579,300 @@ def realspace_gaussian_formfactor(r=np.linspace(-3,3,101), rho0=0.334, V=None, r
     else:
         ff = rho0 * np.exp(-np.pi*r**2/V**(2./3))
     return ff
+
+#Section of functions from pdb2mrc
+# Later, it could be good to make these more versatile to be used in other areas of denss
+def calc_score_with_modified_params(params,params_target,penalty_weight,penalty_weights,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount,Iq_exp,interpolation):
+    """Calculates a final score comparing experimental vs calculated intensity profiles
+    for optimization of parameters defined in pdb2mrc. Score includes the chi2 and penalty 
+    due to parameter variation from target parameter.
+
+    params - An array of parameters being optimized for the Iq calculation. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii of atom_types to be optimized for excluded volume calculation
+    params_target (ndarray) - default or user defined target values for each parameter
+    penalty_weight (float) - total penalty weight of parameters using quadratic loss function (required)
+    penalty_weights (ndarray) - individual penalty weights of parameters using quadratic loss function (required)
+    pdb - instance of PDB class (required)
+    x,y,z (ndarray) - meshgrids for x, y, and z (required)
+    rho_invacuo (ndarray) - electron density in vacuum (required)
+    shell_invacuo (ndarray) - electron density of hydration shell in vacuum (required)
+    shell_exvol (ndarray) - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
+    qbinsc (ndarray) - q-bin centers (required)
+    qblravel (ndarray) - q bin labels (required)
+    xcount (ndarray) - number of voxels per qbin (required)
+    Iq_exp (ndarray) - Experimental data, q, I, sigq (required)
+    interpolate (bool) - whether or not to interpolate Icalc to exp q grid (required)
+    """
+    Iq_calc = calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount)
+    chi2, exp_scale_factor = calc_chi2(Iq_exp, Iq_calc,interpolation=interpolation,return_sf=True)
+    penalty = penalty_weight * calc_penalty(params, params_target,penalty_weights)
+    score = chi2 + penalty
+    print("%.5e"%exp_scale_factor, ' '.join("%.5e"%param for param in params), "%.3f"%penalty, "%.3f"%chi2)
+    return score
+
+def estimate_side_from_pdb(pdb):
+    #roughly estimate maximum dimension
+    #calculate max distance along x, y, z
+    #take the maximum of the three
+    #triple that value to set the default side
+    #i.e. set oversampling to 3, like in denss
+    xmin = np.min(pdb.coords[:,0]) - 1.7
+    xmax = np.max(pdb.coords[:,0]) + 1.7
+    ymin = np.min(pdb.coords[:,1]) - 1.7
+    ymax = np.max(pdb.coords[:,1]) + 1.7
+    zmin = np.min(pdb.coords[:,2]) - 1.7
+    zmax = np.max(pdb.coords[:,2]) + 1.7
+    wx = xmax-xmin
+    wy = ymax-ymin
+    wz = zmax-zmin
+    side = 3*np.max([wx,wy,wz])
+    return side
+
+def calc_penalty(params, params_target, penalty_weights=None):
+    """Calculates a penalty using quadratic loss function
+    for parameters dependent on a target value for each parameter
+
+    params - An array of parameters being optimized for the Iq calculation. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii of atom_types to be optimized for excluded volume calculation
+    params_target - default or user defined target values for each parameter
+    """
+    nparams = len(params)
+    params_weights = np.ones(nparams)
+    #set the individual parameter penalty weights
+    #to be 1/params_target, so that each penalty 
+    #is weighted as a fraction of the target rather than an
+    #absolute number.
+    for i in range(nparams):
+        if params_target[i] != 0:
+            params_weights[i] = 1/params_target[i]
+    #multiply each weight be the desired individual penalty weight
+    if penalty_weights is not None:
+        params_weights *= penalty_weights
+    #use quadratic loss function
+    penalty = 1/nparams * np.sum((params_weights * (params - params_target))**2)
+    return penalty
+
+def calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount):
+    """Calculates intensity profile for optimization of parameters
+    defined in pdb2mrc. 
+
+    params - An array of parameters being optimized for the Iq calculation. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii of atom_types to be optimized for excluded volume calculation
+    pdb - instance of PDB class (required)
+    x,y,z - meshgrids for x, y, and z (required)
+    rho_invacuo - electron density in vacuum (required)
+    shell_invacuo - electron density of hydration shell in vacuum (required)
+    shell_exvol - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
+    qbinsc - q-bin centers (required)
+    qblravel - q bin labels (required)
+    xcount - number of voxels per qbin (required)
+    Iq_exp - Experimental data, q, I, sigq (required)
+    """
+    rho_sum = calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol)
+    Iq = mrc2sas(rho_sum,qbinsc,qblravel,xcount)
+    #perform B-factor sharpening in rec space to correct for sampling issues
+    u = B2u(pdb.b.mean())
+    u += pdb.resolution
+    B = u2B(u)
+    B *= -1
+    Iq[:,1] *= np.exp(-2*B* (Iq[:,0] / (4*np.pi))**2)
+    return Iq
+
+def calc_chi2(Iq_exp, Iq_calc, scale=True, interpolation=True,return_sf=False,return_fit=False):
+    """Calculates a final score comparing experimental vs calculated intensity profiles
+    for optimization of parameters defined in pdb2mrc. Score includes the chi2 and penalty 
+    due to parameter variation from target parameter.
+
+    Iq_exp - Experimental data, q, I, sigq (required)
+    Iq_calc - calculated scattering profile's q, I, and sigq (required)
+    scale (boolean) - Scale I_calc to I_exp
+    """
+    q_exp = Iq_exp[:,0]
+    I_exp = Iq_exp[:,1]
+    sigq_exp = Iq_exp[:,2]
+    q_calc = Iq_calc[:,0]
+    I_calc = Iq_calc[:,1]
+    if interpolation:
+        I_calc_interpolator = interpolate.interp1d(q_calc,I_calc,kind='cubic',fill_value='extrapolate')
+        I_calc = I_calc_interpolator(q_exp)
+    else:
+        #if interpolation of (coarse) calculated profile is disabled, we still need to at least
+        #put the experimental data on the correct grid for comparison, so regrid the exp arrays
+        #with simple 1D linear interpolation
+        I_exp = np.interp(q_calc, q_exp, I_exp)
+        sigq_exp = np.interp(q_calc, q_exp, sigq_exp)
+        q_exp = np.copy(q_calc)
+    if scale:
+        exp_scale_factor = _fit_by_least_squares(I_calc/sigq_exp,I_exp/sigq_exp)
+    else:
+        exp_scale_factor = 1.0
+    I_calc /= exp_scale_factor
+    chi2 = 1/len(q_exp) * np.sum(((I_exp-I_calc)/sigq_exp)**2)
+    fit = np.vstack((q_exp,I_exp,sigq_exp,I_calc)).T
+    if return_sf and return_fit:
+        return chi2, exp_scale_factor, fit
+    elif return_sf and not return_fit:
+        return chi2, exp_scale_factor
+    elif not return_sf and return_fit:
+        return chi2, fit
+    else:
+        return chi2
+
+def mrc2sas(rho,qbinsc,qblravel,xcount):
+    """Calculates intensity profile from electron density map
+
+    rho - electron density map 
+    qbinsc - q-bin centers (required)
+    qblravel - q bin labels (required)
+    xcount - number of voxels per qbin (required)
+    """
+    F = myfftn(rho)
+    I3D = abs2(F)
+    # I3D *= latt_correction
+    I_calc = mybinmean(I3D.ravel(), qblravel, xcount=xcount)
+    Iq = np.vstack((qbinsc, I_calc, I_calc*.01 + I_calc[0]*0.002)).T
+    return Iq
+
+def calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol):
+    """Calculates electron denisty map for protein in solution. Includes the excluded volume and
+    hydration shell calculations
+
+    params - An array of parameters being optimized. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii of atom_types to be optimized for excluded volume calculation
+    pdb - instance of PDB class (required)
+    x,y,z - meshgrids for x, y, and z (required)
+    rho_invacuo - electron density in vacuum (required)
+    shell_invacuo - electron density of hydration shell in vacuum (required)
+    shell_exvol - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
+    """
+    exvol = calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type=pdb.exvol_type)
+    #subtract excluded volume density from rho_invacuo
+    rho_sum = rho_invacuo - exvol
+    #add hydration shell to density
+    shell, _, _ = calc_shell_with_modified_params(params,shell_invacuo,shell_exvol)
+    rho_sum += shell
+    return rho_sum
+
+def calc_shell_with_modified_params(params,shell_invacuo,shell_exvol):
+    """Modifies the hydration shell based on scaling parameters
+
+    params - An array of parameters being optimized. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii of atom_types to be optimized for excluded volume calculation
+    shell_invacuo - electron density of hydration shell in vacuum (required)
+    shell_exvol - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
+    """
+    shell_invacuo_density_scale_factor = params[1]
+    shell_exvol_density_scale_factor = params[2]
+    modified_shell_invacuo = shell_invacuo_density_scale_factor * shell_invacuo
+    modified_shell_exvol = shell_exvol_density_scale_factor * shell_exvol
+    shell_sum = modified_shell_invacuo - modified_shell_exvol
+    return shell_sum, modified_shell_invacuo, modified_shell_exvol
+
+def calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type="gaussian",ignore_waters=True):
+    """Calculates excluded volume with altered bulk solvent density and atom radii
+
+    params - An array of parameters being optimized. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii of atom_types to be optimized for excluded volume calculation
+    pdb - instance of PDB class (required)
+    x,y,z - meshgrids for x, y, and z (required)
+    exvol_type - Method of excluded volume estimation, either "gaussian" or "flat" (default="gaussian")
+    """
+    rho0 = params[0]
+    atom_types = pdb.modified_atom_types
+    radii = params[3:]
+    dx = x[1,0,0] - x[0,0,0]
+    for i in range(len(atom_types)):
+        #Consider if using implicit hydrogens, to use hydrogen radius saved to pdb 
+        if pdb.implicitH == True:
+            if atom_types[i]=='H':
+                pdb.exvolHradius = radii[i] * radius['H']
+            else:
+                # pdb.radius[pdb.atomtype==atom_types[i]] = radii[i]
+                pdb.radius[pdb.atomtype==atom_types[i]] = radii[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
+        else:
+            #set the radii for each atom type in the temporary pdb
+            pdb.radius[pdb.atomtype==atom_types[i]] = radii[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
+    if exvol_type == "gaussian":
+        #generate excluded volume assuming gaussian dummy atoms
+        #this function outputs in electron count units
+        exvol, supportexvol = pdb2map_simple_gauss_by_radius(pdb,x,y,z,rho0=rho0,ignore_waters=ignore_waters)
+    elif exvol_type == "flat":
+        #generate excluded volume assuming flat solvent
+        if pdb.implicitH:
+            v = 4*np.pi/3*pdb.vdW**3 + pdb.numH*4/3*np.pi*vdW['H']**3
+            radjusted = sphere_radius_from_volume(v)
+        else:
+            radjusted = pdb.vdW
+        supportexvol = pdb2support_fast(pdb,x,y,z,radius=radjusted,probe=B2u(pdb.b))
+        #estimate excluded volume electron count based on unique volumes of atoms
+        v = np.sum(4/3*np.pi*pdb.radius**3)
+        ne = v * rho0
+        #blur the exvol to have gaussian-like edges
+        sigma = 1.0/dx + B2u(pdb.b.mean()) #best exvol sigma to match water molecule exvol thing is 1 A
+        exvol = ndimage.gaussian_filter(supportexvol*1.0,sigma=sigma,mode='wrap')
+        exvol *= ne/exvol.sum() #put in electron count units
+    return exvol
+
+def calc_uniform_shell(pdb,x,y,z,thickness):
+    """create a one angstrom uniform layer around the particle
+
+    Centered one water molecule radius away from the particle surface,
+    #which means add the radius of a water molecule (1.4 A) to the radius of
+    #the pdb surface atom (say 1.7 A), for a total of 1.4+1.7 from the pdb coordinates
+    #since that is the center of the shell, and we want 1 A thick shell before blurring,
+    #subtract 0.5 A from the inner support, and add 0.5 A for the outer support,
+    #then subtract the inner support from the outer support
+
+    pdb - instance of PDB class (required)
+    x,y,z - meshgrids for x, y, and z (required)
+    thickness - thickness of the shell (required)
+    """
+    r_water = 1.4
+    inner_support = pdb2support_fast(pdb,x,y,z,radius=pdb.vdW,probe=r_water-thickness/2)
+    outer_support = pdb2support_fast(pdb,x,y,z,radius=pdb.vdW,probe=r_water+thickness/2)
+    shell_idx = outer_support
+    shell_idx[inner_support] = False
+    shell = shell_idx * 1.0
+    return shell
+
+def calc_gaussian_shell(sigma,uniform_shell=None,pdb=None,x=None,y=None,z=None,thickness=None):
+    """blur a uniform shell with a gaussian
+    
+    sigma - the width of the gaussian for blurring (required)
+    uniform_shell - a uniform layer around the particle (optional)
+    pdb - instance of PDB class(optional)
+    x,y,z - meshgrid for x, y, and z (optional)
+    thickness - thickness of the shell (optional)
+    """
+    if uniform_shell is None:
+        #either give the uniform shell and skip this step, or give everything else to make it
+        uniform_shell = calc_uniform_shell(pdb,x,y,z,thickness)
+    shell = ndimage.gaussian_filter(uniform_shell,sigma=sigma,mode='wrap')
+    return shell
 
 def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=True,
         output="map", steps=2001, seed=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
@@ -3664,7 +4023,8 @@ residue_electrons = {
 
 radius = {
      # "H":  1.09 , #1.20 , #wiki 1.2
-     "H":  1.07 , #crysol
+     # "H":  1.07 , #crysol
+     "H":  0.89 , #for implicit hydrogens, from distribution of corrected unique volumes we calculated
      "D":  1.20 ,
      "He": 1.40 ,
      "Li": 1.82 ,
