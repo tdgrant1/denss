@@ -81,6 +81,7 @@ if __name__ == "__main__":
         ncs_axis=args.ncs_axis,
         ncs_type=args.ncs_type,
         seed=args.seed,
+        support_start=args.support_start,
         shrinkwrap=args.shrinkwrap,
         shrinkwrap_old_method=args.shrinkwrap_old_method,
         shrinkwrap_sigma_start=args.shrinkwrap_sigma_start,

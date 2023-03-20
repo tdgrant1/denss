@@ -252,14 +252,14 @@ def parse_arguments(parser):
         if args.mode[0].upper() == "F":
             args.mode = "FAST"
             nsamples = 32
-            shrinkwrap_minstep = 1000
+            shrinkwrap_minstep = 0
             ec_steps_to_add = np.array([1000])
             enforce_connectivity_steps = shrinkwrap_minstep + ec_steps_to_add
             recenter_steps = list(range(501,2502,500))
         elif args.mode[0].upper() == "S":
             args.mode = "SLOW"
             nsamples = 64
-            shrinkwrap_minstep = 5000
+            shrinkwrap_minstep = 0
             ec_steps_to_add = np.array([1000])
             enforce_connectivity_steps = shrinkwrap_minstep + ec_steps_to_add
             recenter_steps = list(range(501,8002,500))
@@ -278,14 +278,14 @@ def parse_arguments(parser):
         if args.mode[0].upper() == "F":
             args.mode = "FAST"
             nsamples = 32
-            shrinkwrap_minstep = 1000
+            shrinkwrap_minstep = 0
             ec_steps_to_add = np.array([1000])
             enforce_connectivity_steps = shrinkwrap_minstep + ec_steps_to_add
             recenter_steps = list(range(501,2502,500))
         elif args.mode[0].upper() == "S":
             args.mode = "SLOW"
             nsamples = 64
-            shrinkwrap_minstep = 1000
+            shrinkwrap_minstep = 0
             ec_steps_to_add = np.array([1000])
             enforce_connectivity_steps = shrinkwrap_minstep + ec_steps_to_add
             recenter_steps = list(range(501,8002,500))
@@ -337,8 +337,6 @@ def parse_arguments(parser):
         shrinkwrap_sigma_end_in_A = args.shrinkwrap_sigma_end_in_A
     elif args.shrinkwrap_sigma_end_in_vox is not None:
         shrinkwrap_sigma_end_in_A = args.shrinkwrap_sigma_end_in_vox * voxel
-
-    print(shrinkwrap_sigma_start_in_A, shrinkwrap_sigma_end_in_A)
 
     #as mentioned above, now that we have the voxel size, we need to convert
     #the shrinkwrap sigma values to voxels, rather than physical distance

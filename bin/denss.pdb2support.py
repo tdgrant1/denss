@@ -33,7 +33,7 @@ import saxstats.saxstats as saxs
 import numpy as np
 from scipy import interpolate, ndimage, optimize
 import sys, argparse, os
-import copy
+import copy, time
 
 
 parser = argparse.ArgumentParser(description="A tool for calculating simple electron density maps from pdb files.", formatter_class=argparse.RawTextHelpFormatter)
@@ -89,9 +89,10 @@ if __name__ == "__main__":
             print("Error assigning van der Waals radii")
             print(e)
             exit()
-        vdWs_guess = args.vdW
+        vdWs = args.vdW
     else:
-        vdWs_guess = [saxs.radius.get(key) for key in atom_types]
+        vdWs = [saxs.vdW.get(key) for key in atom_types]
+        pdb.radius = pdb.vdW
 
     if not args.use_b:
         pdb.b *= 0
@@ -127,7 +128,7 @@ if __name__ == "__main__":
     elif args.voxel is not None and args.nsamples is None and args.side is None:
         #if v is given, estimate side, calculate nsamples.
         voxel = args.voxel
-        optimal_side = estimate_side_from_pdb(pdb)
+        optimal_side = saxs.estimate_side_from_pdb(pdb)
         nsamples = np.ceil(optimal_side/voxel).astype(int)
         side = voxel * nsamples
         #if n > 256, adjust side length
@@ -148,7 +149,7 @@ if __name__ == "__main__":
         nsamples = args.nsamples
         voxel = 1.0
         side = voxel * nsamples
-        optimal_side = estimate_side_from_pdb(pdb)
+        optimal_side = saxs.estimate_side_from_pdb(pdb)
         if side < optimal_side:
             print("Warning: side length may be too small and may result in undersampling errors.")
     elif args.voxel is None and args.nsamples is None and args.side is not None:
@@ -164,7 +165,7 @@ if __name__ == "__main__":
     elif args.voxel is None and args.nsamples is None and args.side is None:
         #if none given, set voxel to 1, estimate side length, adjust nsamples
         voxel = 1.0
-        optimal_side = estimate_side_from_pdb(pdb)
+        optimal_side = saxs.estimate_side_from_pdb(pdb)
         nsamples = np.ceil(optimal_side/voxel).astype(int)
         if nsamples > 256:
             nsamples = 256

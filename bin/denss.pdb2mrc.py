@@ -73,13 +73,13 @@ parser.add_argument("-atom_types", "--atom_types", default=['H', 'C', 'N', 'O'],
 parser.add_argument("-recalc","--recalc","--recalc_radii","--recalculate", default=False, dest="recalculate_unique_radii", action="store_true", help="Recalculate unique radii even if *_OccasRadius.pdb file given (default=False)")
 parser.add_argument("-fit_shell", "--fit_shell","-fit_shell_on", "--fit_shell_on", dest="fit_shell", action="store_true", help="Fit hydration shell parameters (optional, default=True)")
 parser.add_argument("-fit_shell_off", "--fit_shell_off", dest="fit_shell", action="store_false", help="Do not fit hydration shell parameters (optional, default=True)")
-parser.add_argument("-shell_contrast", "--shell_contrast", default=0.042, type=float, help="Initial contrast of hydration shell in e-/A^3 (default=0.042)")
-parser.add_argument("-shin","--shin","-shell_invacuo", "-shell_invacuo_density_scale_factor", "--shell_invacuo_density_scale_factor", dest="shell_invacuo_density_scale_factor", default=1.00, type=float, help="Contrast of hydration shell in e-/A^3 (default=0.03)")
-parser.add_argument("-shex","--shex","-shell_exvol","-shell_exvol_density_scale_factor", "--shell_exvol_density_scale_factor", dest="shell_exvol_density_scale_factor", default=1.00, type=float, help="Contrast of hydration shell in e-/A^3 (default=0.03)")
+parser.add_argument("-shell_contrast", "--shell_contrast", default=0.04, type=float, help="Initial contrast of hydration shell in e-/A^3 (default=0.04)")
+parser.add_argument("-shin","--shin","-shell_invacuo", "-shell_invacuo_density_scale_factor", "--shell_invacuo_density_scale_factor", dest="shell_invacuo_density_scale_factor", default=0.3, type=float, help="Contrast of hydration shell in e-/A^3 (default=0.03)")
+parser.add_argument("-shex","--shex","-shell_exvol","-shell_exvol_density_scale_factor", "--shell_exvol_density_scale_factor", dest="shell_exvol_density_scale_factor", default=0.03, type=float, help="Contrast of hydration shell in e-/A^3 (default=0.03)")
 parser.add_argument("-shell_type", "--shell_type", default="gaussian", type=str, help="Type of hydration shell (gaussian (default) or uniform)")
 parser.add_argument("-shell_mrcfile", "--shell_mrcfile", default=None, type=str, help="Filename of hydration shell mrc file (default=None)")
-parser.add_argument("-p", "-penalty_weight", "--penalty_weight", default=100, type=float, help="Overall penalty weight for fitting parameters (default=100)")
-parser.add_argument("-ps", "-penalty_weights", "--penalty_weights", default=[3.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0], type=float, nargs='+', help="Individual penalty weights for each of the seven (or more depending on atom_types) parameters (space separated listed of weight for [rho0,shin,shex,H,C,N,O], default=1.0 0.0 0.0 1.0 1.0 1.0 1.0)")
+parser.add_argument("-p", "-penalty_weight", "--penalty_weight", default=100., type=float, help="Overall penalty weight for fitting parameters (default=100)")
+parser.add_argument("-ps", "-penalty_weights", "--penalty_weights", default=[1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0], type=float, nargs='+', help="Individual penalty weights for each of the seven (or more depending on atom_types) parameters (space separated listed of weight for [rho0,shin,shex,H,C,N,O], default=1.0 0.0 0.0 1.0 1.0 1.0 1.0)")
 parser.add_argument("-min_method", "--min_method", "-minimization_method","--minimization_method", dest="method", default='Nelder-Mead', type=str, help="Minimization method (scipy.optimize method, default=Nelder-Mead).")
 parser.add_argument("-write_extras", "--write_extras", action="store_true", default=False, help="Write out extra MRC files for invacuo, exvol, shell densities and supports (default=False).")
 parser.add_argument("-interp_on", "--interp_on", dest="Icalc_interpolation", action="store_true", help="Interpolate I_calc to experimental q grid (default).")
@@ -156,55 +156,56 @@ if __name__ == "__main__":
 
     suffix = "_OccasRadius"
     occasradius = False
-    if basename[-len(suffix):] == suffix:
+    if args.radii is not None:
+        for i in range(len(atom_types)):
+            #Use pdb.exvolHradius for implicitH use
+            if atom_types[i]=='H' and not args.explicitH:
+                pdb.exvolHradius = args.radii[i]
+            else:    
+                pdb.radius[pdb.atomtype==atom_types[i]] = args.radii[i]
+                #if args.radii is given, make that the unique_radius
+                pdb.unique_radius[pdb.atomtype==atom_types[i]] = args.radii[i]
+                pdb.unique_volume = 4/3*np.pi*pdb.unique_radius**3
+    elif basename[-len(suffix):] == suffix:
         occasradius = True
         if args.recalculate_unique_radii:
-            pdb.calculate_unique_volume()
+            pdb.calculate_unique_volume(use_b=args.use_b)
         else:
             #if the file has unique radius in occupancy column, use it
             pdb.unique_radius = pdb.occupancy
             pdb.unique_volume = 4/3*np.pi*pdb.unique_radius**3
-    elif args.radii is not None:
-        try:
-            for i in range(len(atom_types)):
-                #Use pdb.exvolHradius for implicitH use
-                if atom_types[i]=='H' and not args.explicitH:
-                    pdb.exvolHradius = args.radii[i]
-                else:    
-                    pdb.radius[pdb.atomtype==atom_types[i]] = args.radii[i]
-                    #if args.radii is given, make that the unique_radius
-                    pdb.unique_radius[pdb.atomtype==atom_types[i]] = args.radii[i]
-                    pdb.unique_volume = 4/3*np.pi*pdb.unique_radius**3
-        except Error as e:
-            print("Error assigning radii")
-            print(e)
-            exit()
+        pdb.radius = np.copy(pdb.unique_radius)
     else:
-        pdb.calculate_unique_volume()
+        pdb.calculate_unique_volume(use_b=args.use_b)
+        pdb.radius = np.copy(pdb.unique_radius)
 
     if args.radii_sf is not None:
         radii_sf = args.radii_sf
     else:
         radii_sf = np.ones(len(atom_types))
 
+    if args.center:
+        pdb.coords -= pdb.coords.mean(axis=0)
+
     #write the modified pdb file, and store the 
     #new unique volume/radius value in the occupancy
     #column, to prevent needing to recalculate if wanting
     #to run the fitting again.
-    pdboutput = basename #overwrite if already has suffix (to prevent repeatedly adding suffixes)
+    #only write if not already an occasradius pdb file
+    pdboutput = basename
     if not occasradius:
         #write new file if it does not have the suffix
-        pdboutput += suffix + '.pdb'
-    else:
-        pdboutput += '.pdb'
-    if args.center:
-        pdb.coords -= pdb.coords.mean(axis=0)
-    pdbout = copy.deepcopy(pdb)
-    pdbout.occupancy = pdb.unique_radius
-    pdbout.write(filename=pdboutput)
+        if not args.explicitH:
+            pdboutput += '_noH_' + suffix + '.pdb'
+        else:
+            pdboutput += suffix + '.pdb'
 
-    print("Initial calculated average unique radii:")
-    logging.info("Initial calculated average unique radii:")
+        pdbout = copy.deepcopy(pdb)
+        pdbout.occupancy = pdb.unique_radius
+        pdbout.write(filename=pdboutput)
+
+    print("Initial calculated average radii:")
+    logging.info("Initial calculated average radii:")
     for i in range(len(atom_types)):
         #try using a scale factor for radii instead
         if atom_types[i]=='H' and not args.explicitH:
@@ -322,7 +323,7 @@ if __name__ == "__main__":
     xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
 
     if args.resolution is None and not args.use_b:
-        resolution = 0.3 * dx 
+        resolution = 0.15 #this helps with voxel sampling issues 
     elif args.resolution is not None:
         resolution = args.resolution
     else:
@@ -357,7 +358,13 @@ if __name__ == "__main__":
     qbinsc = saxs.mybinmean(qr.ravel(), qblravel, xcount=xcount, DENSS_GPU=False)
     q_calc = np.copy(qbinsc)
 
+    latt_correction = 1. #(np.sinc(qx/2/(np.pi)) * np.sinc(qy/2/(np.pi)) * np.sinc(qz/2/(np.pi)))**2
+
     rho_invacuo, support = saxs.pdb2map_multigauss(pdb,x=x,y=y,z=z,resolution=resolution,use_b=args.use_b,ignore_waters=args.ignore_waters)
+
+    #save some arrays for intensity calculations
+    pdb.latt_correction = latt_correction
+    pdb.qr = qr
 
     rho0 = args.rho0
 
@@ -389,8 +396,9 @@ if __name__ == "__main__":
         #the default is gaussian type shell
         #generate initial hydration shell
         thickness = 1.0 #in angstroms
-        invacuo_shell_sigma = 0.6 / dx #convert to pixel units
+        invacuo_shell_sigma = 0.25 / dx #convert to pixel units
         exvol_shell_sigma = 1.0 / dx #convert to pixel units
+
         uniform_shell = saxs.calc_uniform_shell(pdb,x,y,z,thickness=thickness)
         shell_invacuo = saxs.calc_gaussian_shell(sigma=invacuo_shell_sigma,uniform_shell=uniform_shell)
         shell_exvol = saxs.calc_gaussian_shell(sigma=exvol_shell_sigma,uniform_shell=uniform_shell)
@@ -400,11 +408,9 @@ if __name__ == "__main__":
         shell_invacuo[protein] = 0.0
         shell_exvol[protein] = 0.0
 
+        #put exvol and invacuo shells on a roughly correct scale
         ne_shell_exvol = V_H2O_in_shell * rho0 #10 electrons per water molecule
         shell_exvol *= ne_shell_exvol / shell_exvol.sum()
-        #put back in units of density rather than electron count
-        #actually, keep all density maps in electron count, so comment out next line
-        # shell_exvol /= dV
 
         #estimate initial shell_invacuo scale based on contrast with shell_exvol using mean densities
         shell_exvol_mean_density = np.mean(shell_exvol[water_shell_idx]) / dV
@@ -451,6 +457,14 @@ if __name__ == "__main__":
             n2 = args.n2
 
         Iq_exp = Iq_exp[n1:n2]
+
+        #artificially apply B-factor to data to deal with real space sampling issues
+        # u = resolution
+        # B = saxs.u2B(u)
+        # #multiply B by 2 since intensity space, not F space
+        # Bq = np.exp(-2*B* (Iq_exp[:,0] / (4*np.pi))**2)
+        # Iq_exp[:,1] *= Bq
+        # Iq_exp[:,2] *= Bq
 
         #for saving the fit, use the full original experimental profile
         q_exp = Iq_exp[:,0]
@@ -532,7 +546,7 @@ if __name__ == "__main__":
         params_target = params_guess
         print(["scale_factor"], param_names, ["penalty"], ["chi2"])
         print("-"*100)
-        results = optimize.minimize(saxs.calc_score_with_modified_params, params_guess,
+        results = optimize.minimize(saxs.pdb2mrc_calc_score_with_modified_params, params_guess,
             args = (params_target,penalty_weight,penalty_weights,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount,Iq_exp,args.Icalc_interpolation),
             bounds = bounds,
             method=args.method, options={'adaptive': True}
@@ -555,12 +569,12 @@ if __name__ == "__main__":
         print("%s : %.5e" % (param_names[i],params[i]))
         logging.info("%s : %.5e" % (param_names[i],params[i]))
 
-    rho_insolvent = saxs.calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol)
-    exvol = saxs.calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type=pdb.exvol_type)
-    shell, modified_shell_invacuo, modified_shell_exvol = saxs.calc_shell_with_modified_params(params,shell_invacuo,shell_exvol)
+    rho_insolvent = saxs.pdb2mrc_calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol)
+    exvol = saxs.pdb2mrc_calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type=pdb.exvol_type)
+    shell, modified_shell_invacuo, modified_shell_exvol = saxs.pdb2mrc_calc_shell_with_modified_params(params,shell_invacuo,shell_exvol)
     shell_invacuo_mean_density = np.mean(modified_shell_invacuo[water_shell_idx])
     shell_exvol_mean_density = np.mean(modified_shell_exvol[water_shell_idx])
-    Iq_calc = saxs.calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount)
+    Iq_calc = saxs.pdb2mrc_calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount)
 
     logging.info("Mean density of in vacuo shell: %.4f e-/A^3" % shell_invacuo_mean_density)
     logging.info("Mean density of exvol shell:    %.4f e-/A^3" % shell_exvol_mean_density)
@@ -574,8 +588,8 @@ if __name__ == "__main__":
         logging.info("Scale factor: %.5e " % exp_scale_factor)
         logging.info("chi2 of fit:  %.5e " % optimized_chi2)
 
-    print("Final calculated average unique radii:")
-    logging.info("Final calculated average unique radii:")
+    print("Final calculated average radii:")
+    logging.info("Final calculated average radii:")
     for i in range(len(atom_types)):
         #try using a scale factor for radii instead
         if atom_types[i]=='H' and not args.explicitH:
@@ -584,6 +598,8 @@ if __name__ == "__main__":
             mean_radius = pdb.radius[pdb.atomtype==atom_types[i]].mean()
         print("%s: %.3f"%(atom_types[i],mean_radius))
         logging.info("%s: %.3f"%(atom_types[i],mean_radius))
+    print("Final calculated excluded volume: %.2f"%(np.sum(4/3*np.pi*pdb.radius**3)))
+    logging.info("Final calculated excluded volume: %.2f"%(np.sum(4/3*np.pi*pdb.radius**3)))
 
     end = time.time()
     print("Total calculation time: %.3f seconds" % (end-start))
@@ -614,7 +630,7 @@ if __name__ == "__main__":
 
             ax0.plot(q_exp_to_q0[idx_overlap],I_exp_to_q0[idx_overlap],'.',c='gray',label=args.data)
             ax0.plot(q, Ie,'.',c='gray')
-            ax0.plot(q, Ic, '.-',c='red',label=basename+'.pdb2mrc2sas.fit \n' + r'$\chi^2 = $ %.2f'%optimized_chi2)
+            ax0.plot(q, Ic, '-',c='red',label=basename+'.pdb2mrc2sas.fit \n' + r'$\chi^2 = $ %.2f'%optimized_chi2)
             resid = (Ie - Ic)/err
             ax1.plot(q, resid*0, 'k--')
             ax1.plot(q, resid, '.',c='red')
@@ -638,8 +654,8 @@ if __name__ == "__main__":
         saxs.write_mrc(rho_invacuo/dV,side,output+"_invacuo.mrc")
         saxs.write_mrc(exvol/dV,side,output+"_exvol.mrc")
         saxs.write_mrc(shell/dV,side,output+"_shell.mrc")
-        saxs.write_mrc((protein)*1.0,side,output+"_proteinsupport.mrc")
-        saxs.write_mrc((protein_with_shell_support)*1.0,side,output+"_supportwithshell.mrc")
+        # saxs.write_mrc((protein)*1.0,side,output+"_proteinsupport.mrc")
+        # saxs.write_mrc((protein_with_shell_support)*1.0,side,output+"_supportwithshell.mrc")
 
 
 

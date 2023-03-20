@@ -408,6 +408,10 @@ def _fit_by_least_squares(radial, vectors, nmin=None,nmax=None):
     # coefficients, _ = optimize.nnls(a, b)
     return coefficients
 
+def running_mean(x, N):
+    # return ndimage.uniform_filter1d(x, N, mode='nearest', origin=-(N//2))[:-(N-1)]
+    return np.convolve(x, np.ones(N)/N, mode='same')
+
 def loadOutFile(filename):
     """Loads a GNOM .out file and returns q, Ireg, sqrt(Ireg), and a
     dictionary of miscellaneous results from GNOM. Taken from the BioXTAS
@@ -990,7 +994,7 @@ def filter_P(r,P,sigr=None,qmax=0.5,cutoff=0.75,qmin=0.0,cutoffmin=1.25):
 
 def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
     recenter_mode="com", positivity=True, positivity_steps=None, extrapolate=True, output="map",
-    steps=None, seed=None, flatten_low_density=True, rho_start=None, support_start=None, add_noise=None,
+    steps=None, seed=None, rho_start=None, support_start=None, add_noise=None,
     shrinkwrap=True, shrinkwrap_old_method=False,shrinkwrap_sigma_start=3,
     shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
     shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01,
@@ -1070,7 +1074,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     qba = qbin_args #just for brevity when using it later
     #set qba bins outside of scaling region to false.
     #start with bins in corners
-    qba[qbinsc>qx_.max()] = False
+    # qba[qbinsc>qx_.max()] = False
 
     sigqdata = np.interp(qdata,q,sigq)
 
@@ -1278,7 +1282,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
             if write_xplor_format:
                 write_xplor(rhoprime/dV, side, fprefix+"_current.xplor")
             write_mrc(rhoprime/dV, side, fprefix+"_current.mrc")
-            write_mrc(newrho/dV, side, fprefix+"_newrho.mrc")
 
         # enforce positivity by making all negative density points zero.
         if positivity and j in positivity_steps:
@@ -2834,6 +2837,8 @@ class PDB(object):
         self.nelectrons = np.zeros((self.natoms),dtype=int)
         self.radius = np.zeros(self.natoms)
         self.vdW = np.zeros(self.natoms)
+        self.unique_volume = np.zeros(self.natoms)
+        self.unique_radius = np.zeros(self.natoms)
         #set a variable with H radius to be used for exvol radii optimization
         #set a variable for number of hydrogens bonded to atoms
         self.exvolHradius = radius['H']
@@ -2924,6 +2929,15 @@ class PDB(object):
         self.charge = np.zeros((self.natoms),dtype=np.dtype((np.str,2)))
         #all atoms carbon so have six electrons by default
         self.nelectrons = np.ones((self.natoms),dtype=int)*6
+        self.radius = np.zeros(self.natoms)
+        self.vdW = np.zeros(self.natoms)
+        self.unique_volume = np.zeros(self.natoms)
+        self.unique_radius = np.zeros(self.natoms)
+        #set a variable with H radius to be used for exvol radii optimization
+        #set a variable for number of hydrogens bonded to atoms
+        self.exvolHradius = radius['H']
+        self.implicitH = False
+        self.numH = np.zeros((self.natoms), dtype=int)
         #for CRYST1 card, use default defined by PDB, but 100 A side
         self.cella = 100.0
         self.cellb = 100.0
@@ -2932,7 +2946,7 @@ class PDB(object):
         self.cellbeta = 90.0
         self.cellgamma = 90.0
 
-    def calculate_unique_volume(self,n=8):
+    def calculate_unique_volume(self,n=16,use_b=True):
         """Generate volumes and radii for each atom of a pdb by accounting for overlapping sphere volumes,
         i.e., each radius is set to the value that yields a volume of a sphere equal to the
         corrected volume of the sphere after subtracting spherical caps from bonded atoms."""
@@ -2950,6 +2964,8 @@ class PDB(object):
             sys.stdout.flush()
             #for each atom, make a box of voxels around it
             ra = self.vdW[i] #ra is the radius of the main atom
+            if use_b:
+                ra += B2u(self.b[i])
             side = 2*ra
             #n = 8 #yields somewhere around 0.2 A voxel spacing depending on atom size
             dx = side/n
@@ -2975,7 +2991,9 @@ class PDB(object):
             distances = self.rij[i]
             #generate a list of the sum of the vdW radius of this atom and each other atom
             #this generates a maximum distance for which the atoms can be separated to be considered close
-            vdW_sum = self.vdW[i] + self.vdW
+            vdW_sum = ra + self.vdW
+            if use_b:
+                vdW_sum += B2u(self.b)
             vdW_sum[i] = 0 #ignore this particular atom to itself
             #find all atoms that are closer than the corresponding vdW_sum, should be just a few
             idx_close = np.where((distances<=vdW_sum)&(distances>0))[0]
@@ -2988,6 +3006,8 @@ class PDB(object):
                 cb = self.coords[idx_j] - p #center of neighboring atom in new coordinate frame
                 xb,yb,zb = cb
                 rb = self.vdW[idx_j]
+                if use_b:
+                    rb += B2u(self.b[idx_j])
                 a,b,c,d = equation_of_plane_from_sphere_intersection(xa,ya,za,ra,xb,yb,zb,rb)
                 normal = np.array([a,b,c]) #definition of normal to a plane
                 #for each grid point, calculate the distance to the plane in the direction of the vector normal
@@ -3008,6 +3028,8 @@ class PDB(object):
             self.unique_volume[i] = minigrid.sum()*dV * correction
             #create a modified radius based on that modified volume
             self.unique_radius[i] = sphere_radius_from_volume(self.unique_volume[i])
+            self.radius[i] = self.unique_radius[i]
+        print()
 
     def add_ImplicitH(self):
         bondlist_resNorm = protein_residues.normal
@@ -3101,6 +3123,8 @@ class PDB(object):
         self.radius = self.radius[mask]
         self.vdW = self.vdW[mask]
         self.numH = self.numH[mask]
+        self.unique_radius = self.unique_radius[mask]
+        self.unique_volume = self.unique_volume[mask]
 
     def write(self, filename):
         """Write PDB file format using pdb object as input."""
@@ -3253,7 +3277,8 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
 
         #rescale total number of electrons by expected number of electrons
         if np.sum(tmpvalues)>1e-8:
-            tmpvalues *= rho0 * V / np.sum(tmpvalues)
+            ne_total = rho0*V
+            tmpvalues *= ne_total / np.sum(tmpvalues)
             # tmpvalues *= 1
         # else:
             # print()
@@ -3371,8 +3396,8 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,use_b=False,ignore_wa
         tmpvalues = realspace_formfactor(element=element,r=dist,B=B[i])
         #rescale total number of electrons by expected number of electrons
         if np.sum(tmpvalues)>1e-8:
-            ne_total = electrons[element] #+ pdb.numH[i]
-            tmpvalues *= ne_total / np.sum(tmpvalues)
+            ne_total = electrons[element] + pdb.numH[i]
+            tmpvalues *= ne_total / tmpvalues.sum()
         # else:
             # print()
             # print("Voxel spacing too coarse. No density for atom %d."%i)
@@ -3380,7 +3405,65 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,use_b=False,ignore_wa
         values[slc] += tmpvalues.reshape(nx,ny,nz)
         support[slc] = True
     # print()
+    # exit()
     return values, support
+
+def pdb2F_multigauss(pdb,qx,qy,qz,qr=None,radii=None,B=None):
+    """Calculate structure factors F from pdb coordinates.
+
+    pdb - instance of PDB class (required)
+    x,y,z - meshgrids for x, y, and z (required)
+    radii - float or list of radii of atoms in pdb (optional, uses spherical form factor rather than Kromer-Mann)
+    """
+    radii = np.atleast_1d(radii)
+    if qr is None:
+        qr = (qx**2+qy**2+qz**2)**0.5
+    n = qr.shape[0]
+    F = np.zeros(qr.shape,dtype=complex)
+    if B is None:
+        B = np.zeros(pdb.natoms)
+    if radii[0] is None:
+        useradii = False
+    else:
+        useradii = True
+        radii = np.ones(radii.size)*radii
+    for i in range(pdb.natoms):
+        sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.natoms))
+        sys.stdout.flush()
+        Fatom = formfactor(element=pdb.atomtype[i],q=qr,B=B[i]) * np.exp(-1j * (qx*pdb.coords[i,0] + qy*pdb.coords[i,1] + qz*pdb.coords[i,2]))
+        ne_total = electrons[pdb.atomtype[i]] + pdb.numH[i]
+        Fatom *= ne_total/Fatom[0,0,0].real
+        F += Fatom
+    return F
+
+def pdb2F_simple_gauss_by_radius(pdb,qx,qy,qz,qr=None,rho0=0.334,radii=None,B=None):
+    """Calculate structure factors F from pdb coordinates.
+
+    pdb - instance of PDB class (required)
+    x,y,z - meshgrids for x, y, and z (required)
+    radii - float or list of radii of atoms in pdb (optional, uses spherical form factor rather than Kromer-Mann)
+    """
+    radii = np.atleast_1d(radii)
+    if qr is None:
+        qr = (qx**2+qy**2+qz**2)**0.5
+    n = qr.shape[0]
+    F = np.zeros(qr.shape,dtype=complex)
+    if B is None:
+        B = np.zeros(pdb.natoms)
+    if radii[0] is None:
+        useradii = False
+    else:
+        useradii = True
+        radii = np.ones(radii.size)*radii
+    for i in range(pdb.natoms):
+        sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.natoms))
+        sys.stdout.flush()
+        V = (4*np.pi/3)*pdb.radius[i]**3 + pdb.numH[i]*(4*np.pi/3)*pdb.exvolHradius**3
+        Fatom = reciprocalspace_gaussian_formfactor(q=qr,rho0=rho0,V=V) * np.exp(-1j * (qx*pdb.coords[i,0] + qy*pdb.coords[i,1] + qz*pdb.coords[i,2]))
+        ne_total = rho0 * V
+        Fatom *= ne_total/Fatom[0,0,0].real
+        F += Fatom
+    return F
 
 def pdb2map_FFT(pdb,x,y,z,radii=None,restrict=True):
     """Calculate electron density from pdb coordinates by FFT of Fs.
@@ -3405,15 +3488,14 @@ def pdb2map_FFT(pdb,x,y,z,radii=None,restrict=True):
     qstep = np.min(qr[qr>0])
     nbins = int(qmax/qstep)
     qbins = np.linspace(0,nbins*qstep,nbins+1)
-    #create modified qbins and put qbins in center of bin rather than at left edge of bin.
-    qbinsc = np.copy(qbins)
-    #only move the non-zero terms, since the zeroth term should be at q=0.
-    qbinsc[1:] += qstep/2.
     #create an array labeling each voxel according to which qbin it belongs
     qbin_labels = np.searchsorted(qbins,qr,"right")
     qbin_labels -= 1
+    qblravel = qbin_labels.ravel()
+    xcount = np.bincount(qblravel)
+    #create modified qbins and put qbins in center of bin rather than at left edge of bin.
+    qbinsc = mybinmean(qr.ravel(), qblravel, xcount=xcount, DENSS_GPU=False)
     F = np.zeros(qr.shape,dtype=complex)
-    Fmean = np.zeros((len(qbins)))
     natoms = pdb.coords.shape[0]
     if radii[0] is None:
         useradii = False
@@ -3427,17 +3509,12 @@ def pdb2map_FFT(pdb,x,y,z,radii=None,restrict=True):
             F += sphere(q=qr, R=radii[i], I0=pdb.nelectrons[i],amp=True) * np.exp(-1j * (qx*pdb.coords[i,0] + qy*pdb.coords[i,1] + qz*pdb.coords[i,2]))
         else:
             F += formfactor(element=pdb.atomtype[i],q=qr) * np.exp(-1j * (qx*pdb.coords[i,0] + qy*pdb.coords[i,1] + qz*pdb.coords[i,2]))
-    # print()
-    # print("Total number of electrons = %f " % np.abs(F[0,0,0]))
-    qbin_labels = np.zeros(F.shape, dtype=int)
-    qbin_labels = np.digitize(qr, qbins)
-    qbin_labels -= 1
-    Imean = ndimage.mean(np.abs(F)**2, labels=qbin_labels, index=np.arange(0,qbin_labels.max()+1))
-    rho = np.fft.ifftn(F,x.shape).real
-    rho[rho<0] = 0
+    I3D = abs2(F)
+    Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=False)
+    rho = myifftn(F).real
+    # rho[rho<0] = 0
     #need to shift rho to center of grid, since FFT is offset by half a grid length
-    shift = np.array(rho.shape)/2
-    shift -= 1
+    shift = [n//2-1,n//2-1,n//2-1]
     rho = np.roll(np.roll(np.roll(rho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
     if restrict:
         xyz = np.column_stack([x.flat,y.flat,z.flat])
@@ -3535,9 +3612,11 @@ def formfactor(element, q=(np.arange(500)+1)/1000.,B=None):
     q = np.atleast_1d(q)
     ff = np.zeros(q.shape)
     for i in range(4):
+        # print(ffcoeff[element]['a'][i])
         ff += ffcoeff[element]['a'][i] * np.exp(-ffcoeff[element]['b'][i]*(q/(4*np.pi))**2)
-    ff += ffcoeff[element]['c']
+    # ff += ffcoeff[element]['c']
     ff *= np.exp(-B* (q / (4*np.pi))**2)
+    # print(ff[q==0])
     return ff
 
 def realspace_formfactor(element, r=(np.arange(501))/1000., B=None):
@@ -3549,10 +3628,9 @@ def realspace_formfactor(element, r=(np.arange(501))/1000., B=None):
     for i in range(4):
         ai = ffcoeff[element]['a'][i]
         bi = ffcoeff[element]['b'][i]
-        # ff += 2*2**0.5*np.pi*ai/(bi+B)**0.5 * np.exp(-4 * np.pi**2 * r**2 /(bi+B))
         ff += (4*np.pi/(bi+B))**(3/2.)* ai * np.exp(-4 * np.pi**2 * r**2 /(bi+B))
-    i = np.where((r==0))
-    ff += signal.unit_impulse(r.shape, i) * ffcoeff[element]['c']
+    # i = np.where((r==0))
+    # ff += signal.unit_impulse(r.shape, i) * ffcoeff[element]['c']
     return ff
 
 def reciprocalspace_gaussian_formfactor(q=np.linspace(0,0.5,501), rho0=0.334, V=None, radius=None):
@@ -3580,40 +3658,6 @@ def realspace_gaussian_formfactor(r=np.linspace(-3,3,101), rho0=0.334, V=None, r
         ff = rho0 * np.exp(-np.pi*r**2/V**(2./3))
     return ff
 
-#Section of functions from pdb2mrc
-# Later, it could be good to make these more versatile to be used in other areas of denss
-def calc_score_with_modified_params(params,params_target,penalty_weight,penalty_weights,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount,Iq_exp,interpolation):
-    """Calculates a final score comparing experimental vs calculated intensity profiles
-    for optimization of parameters defined in pdb2mrc. Score includes the chi2 and penalty 
-    due to parameter variation from target parameter.
-
-    params - An array of parameters being optimized for the Iq calculation. (required)
-        Parameter list includes:
-         - rho0 - density of bulk solvent
-         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
-         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
-         - radii of atom_types to be optimized for excluded volume calculation
-    params_target (ndarray) - default or user defined target values for each parameter
-    penalty_weight (float) - total penalty weight of parameters using quadratic loss function (required)
-    penalty_weights (ndarray) - individual penalty weights of parameters using quadratic loss function (required)
-    pdb - instance of PDB class (required)
-    x,y,z (ndarray) - meshgrids for x, y, and z (required)
-    rho_invacuo (ndarray) - electron density in vacuum (required)
-    shell_invacuo (ndarray) - electron density of hydration shell in vacuum (required)
-    shell_exvol (ndarray) - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
-    qbinsc (ndarray) - q-bin centers (required)
-    qblravel (ndarray) - q bin labels (required)
-    xcount (ndarray) - number of voxels per qbin (required)
-    Iq_exp (ndarray) - Experimental data, q, I, sigq (required)
-    interpolate (bool) - whether or not to interpolate Icalc to exp q grid (required)
-    """
-    Iq_calc = calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount)
-    chi2, exp_scale_factor = calc_chi2(Iq_exp, Iq_calc,interpolation=interpolation,return_sf=True)
-    penalty = penalty_weight * calc_penalty(params, params_target,penalty_weights)
-    score = chi2 + penalty
-    print("%.5e"%exp_scale_factor, ' '.join("%.5e"%param for param in params), "%.3f"%penalty, "%.3f"%chi2)
-    return score
-
 def estimate_side_from_pdb(pdb):
     #roughly estimate maximum dimension
     #calculate max distance along x, y, z
@@ -3631,64 +3675,6 @@ def estimate_side_from_pdb(pdb):
     wz = zmax-zmin
     side = 3*np.max([wx,wy,wz])
     return side
-
-def calc_penalty(params, params_target, penalty_weights=None):
-    """Calculates a penalty using quadratic loss function
-    for parameters dependent on a target value for each parameter
-
-    params - An array of parameters being optimized for the Iq calculation. (required)
-        Parameter list includes:
-         - rho0 - density of bulk solvent
-         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
-         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
-         - radii of atom_types to be optimized for excluded volume calculation
-    params_target - default or user defined target values for each parameter
-    """
-    nparams = len(params)
-    params_weights = np.ones(nparams)
-    #set the individual parameter penalty weights
-    #to be 1/params_target, so that each penalty 
-    #is weighted as a fraction of the target rather than an
-    #absolute number.
-    for i in range(nparams):
-        if params_target[i] != 0:
-            params_weights[i] = 1/params_target[i]
-    #multiply each weight be the desired individual penalty weight
-    if penalty_weights is not None:
-        params_weights *= penalty_weights
-    #use quadratic loss function
-    penalty = 1/nparams * np.sum((params_weights * (params - params_target))**2)
-    return penalty
-
-def calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount):
-    """Calculates intensity profile for optimization of parameters
-    defined in pdb2mrc. 
-
-    params - An array of parameters being optimized for the Iq calculation. (required)
-        Parameter list includes:
-         - rho0 - density of bulk solvent
-         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
-         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
-         - radii of atom_types to be optimized for excluded volume calculation
-    pdb - instance of PDB class (required)
-    x,y,z - meshgrids for x, y, and z (required)
-    rho_invacuo - electron density in vacuum (required)
-    shell_invacuo - electron density of hydration shell in vacuum (required)
-    shell_exvol - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
-    qbinsc - q-bin centers (required)
-    qblravel - q bin labels (required)
-    xcount - number of voxels per qbin (required)
-    Iq_exp - Experimental data, q, I, sigq (required)
-    """
-    rho_sum = calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol)
-    Iq = mrc2sas(rho_sum,qbinsc,qblravel,xcount)
-    #perform B-factor sharpening in rec space to correct for sampling issues
-    u = B2u(pdb.b.mean())
-    u += pdb.resolution
-    B = u2B(u)
-    B *= -1
-    Iq[:,1] *= np.exp(-2*B* (Iq[:,0] / (4*np.pi))**2)
-    return Iq
 
 def calc_chi2(Iq_exp, Iq_calc, scale=True, interpolation=True,return_sf=False,return_fit=False):
     """Calculates a final score comparing experimental vs calculated intensity profiles
@@ -3730,7 +3716,7 @@ def calc_chi2(Iq_exp, Iq_calc, scale=True, interpolation=True,return_sf=False,re
     else:
         return chi2
 
-def mrc2sas(rho,qbinsc,qblravel,xcount):
+def mrc2sas(rho,qbinsc,qblravel,xcount,pdb):
     """Calculates intensity profile from electron density map
 
     rho - electron density map 
@@ -3740,102 +3726,11 @@ def mrc2sas(rho,qbinsc,qblravel,xcount):
     """
     F = myfftn(rho)
     I3D = abs2(F)
-    # I3D *= latt_correction
+    I3D *= pdb.latt_correction
+    I3D *= np.exp(-2*(-u2B(pdb.resolution))*(pdb.qr/(4*np.pi))**2)
     I_calc = mybinmean(I3D.ravel(), qblravel, xcount=xcount)
     Iq = np.vstack((qbinsc, I_calc, I_calc*.01 + I_calc[0]*0.002)).T
     return Iq
-
-def calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol):
-    """Calculates electron denisty map for protein in solution. Includes the excluded volume and
-    hydration shell calculations
-
-    params - An array of parameters being optimized. (required)
-        Parameter list includes:
-         - rho0 - density of bulk solvent
-         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
-         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
-         - radii of atom_types to be optimized for excluded volume calculation
-    pdb - instance of PDB class (required)
-    x,y,z - meshgrids for x, y, and z (required)
-    rho_invacuo - electron density in vacuum (required)
-    shell_invacuo - electron density of hydration shell in vacuum (required)
-    shell_exvol - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
-    """
-    exvol = calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type=pdb.exvol_type)
-    #subtract excluded volume density from rho_invacuo
-    rho_sum = rho_invacuo - exvol
-    #add hydration shell to density
-    shell, _, _ = calc_shell_with_modified_params(params,shell_invacuo,shell_exvol)
-    rho_sum += shell
-    return rho_sum
-
-def calc_shell_with_modified_params(params,shell_invacuo,shell_exvol):
-    """Modifies the hydration shell based on scaling parameters
-
-    params - An array of parameters being optimized. (required)
-        Parameter list includes:
-         - rho0 - density of bulk solvent
-         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
-         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
-         - radii of atom_types to be optimized for excluded volume calculation
-    shell_invacuo - electron density of hydration shell in vacuum (required)
-    shell_exvol - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
-    """
-    shell_invacuo_density_scale_factor = params[1]
-    shell_exvol_density_scale_factor = params[2]
-    modified_shell_invacuo = shell_invacuo_density_scale_factor * shell_invacuo
-    modified_shell_exvol = shell_exvol_density_scale_factor * shell_exvol
-    shell_sum = modified_shell_invacuo - modified_shell_exvol
-    return shell_sum, modified_shell_invacuo, modified_shell_exvol
-
-def calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type="gaussian",ignore_waters=True):
-    """Calculates excluded volume with altered bulk solvent density and atom radii
-
-    params - An array of parameters being optimized. (required)
-        Parameter list includes:
-         - rho0 - density of bulk solvent
-         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
-         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
-         - radii of atom_types to be optimized for excluded volume calculation
-    pdb - instance of PDB class (required)
-    x,y,z - meshgrids for x, y, and z (required)
-    exvol_type - Method of excluded volume estimation, either "gaussian" or "flat" (default="gaussian")
-    """
-    rho0 = params[0]
-    atom_types = pdb.modified_atom_types
-    radii = params[3:]
-    dx = x[1,0,0] - x[0,0,0]
-    for i in range(len(atom_types)):
-        #Consider if using implicit hydrogens, to use hydrogen radius saved to pdb 
-        if pdb.implicitH == True:
-            if atom_types[i]=='H':
-                pdb.exvolHradius = radii[i] * radius['H']
-            else:
-                # pdb.radius[pdb.atomtype==atom_types[i]] = radii[i]
-                pdb.radius[pdb.atomtype==atom_types[i]] = radii[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
-        else:
-            #set the radii for each atom type in the temporary pdb
-            pdb.radius[pdb.atomtype==atom_types[i]] = radii[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
-    if exvol_type == "gaussian":
-        #generate excluded volume assuming gaussian dummy atoms
-        #this function outputs in electron count units
-        exvol, supportexvol = pdb2map_simple_gauss_by_radius(pdb,x,y,z,rho0=rho0,ignore_waters=ignore_waters)
-    elif exvol_type == "flat":
-        #generate excluded volume assuming flat solvent
-        if pdb.implicitH:
-            v = 4*np.pi/3*pdb.vdW**3 + pdb.numH*4/3*np.pi*vdW['H']**3
-            radjusted = sphere_radius_from_volume(v)
-        else:
-            radjusted = pdb.vdW
-        supportexvol = pdb2support_fast(pdb,x,y,z,radius=radjusted,probe=B2u(pdb.b))
-        #estimate excluded volume electron count based on unique volumes of atoms
-        v = np.sum(4/3*np.pi*pdb.radius**3)
-        ne = v * rho0
-        #blur the exvol to have gaussian-like edges
-        sigma = 1.0/dx + B2u(pdb.b.mean()) #best exvol sigma to match water molecule exvol thing is 1 A
-        exvol = ndimage.gaussian_filter(supportexvol*1.0,sigma=sigma,mode='wrap')
-        exvol *= ne/exvol.sum() #put in electron count units
-    return exvol
 
 def calc_uniform_shell(pdb,x,y,z,thickness):
     """create a one angstrom uniform layer around the particle
@@ -3873,6 +3768,392 @@ def calc_gaussian_shell(sigma,uniform_shell=None,pdb=None,x=None,y=None,z=None,t
         uniform_shell = calc_uniform_shell(pdb,x,y,z,thickness)
     shell = ndimage.gaussian_filter(uniform_shell,sigma=sigma,mode='wrap')
     return shell
+
+#Section of functions from pdb2mrc
+# Later, it could be good to make these more versatile to be used in other areas of denss
+def pdb2mrc_calc_score_with_modified_params(params,params_target,penalty_weight,penalty_weights,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount,Iq_exp,interpolation):
+    """Calculates a final score comparing experimental vs calculated intensity profiles
+    for optimization of parameters defined in pdb2mrc. Score includes the chi2 and penalty 
+    due to parameter variation from target parameter.
+
+    params - An array of parameters being optimized for the Iq calculation. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii of atom_types to be optimized for excluded volume calculation
+    params_target (ndarray) - default or user defined target values for each parameter
+    penalty_weight (float) - total penalty weight of parameters using quadratic loss function (required)
+    penalty_weights (ndarray) - individual penalty weights of parameters using quadratic loss function (required)
+    pdb - instance of PDB class (required)
+    x,y,z (ndarray) - meshgrids for x, y, and z (required)
+    rho_invacuo (ndarray) - electron density in vacuum (required)
+    shell_invacuo (ndarray) - electron density of hydration shell in vacuum (required)
+    shell_exvol (ndarray) - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
+    qbinsc (ndarray) - q-bin centers (required)
+    qblravel (ndarray) - q bin labels (required)
+    xcount (ndarray) - number of voxels per qbin (required)
+    Iq_exp (ndarray) - Experimental data, q, I, sigq (required)
+    interpolate (bool) - whether or not to interpolate Icalc to exp q grid (required)
+    """
+    Iq_calc = pdb2mrc_calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount)
+    chi2, exp_scale_factor = calc_chi2(Iq_exp, Iq_calc,interpolation=interpolation,return_sf=True)
+    penalty = penalty_weight * pdb2mrc_calc_penalty(params, params_target,penalty_weights)
+    score = chi2 + penalty
+    print("%.5e"%exp_scale_factor, ' '.join("%.5e"%param for param in params), "%.3f"%penalty, "%.3f"%chi2)
+    return score
+
+def pdb2mrc_calc_penalty(params, params_target, penalty_weights=None):
+    """Calculates a penalty using quadratic loss function
+    for parameters dependent on a target value for each parameter
+
+    params - An array of parameters being optimized for the Iq calculation. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii of atom_types to be optimized for excluded volume calculation
+    params_target - default or user defined target values for each parameter
+    """
+    nparams = len(params)
+    params_weights = np.ones(nparams)
+    #set the individual parameter penalty weights
+    #to be 1/params_target, so that each penalty 
+    #is weighted as a fraction of the target rather than an
+    #absolute number.
+    for i in range(nparams):
+        if params_target[i] != 0:
+            params_weights[i] = 1/params_target[i]
+    #multiply each weight be the desired individual penalty weight
+    if penalty_weights is not None:
+        params_weights *= penalty_weights
+    #use quadratic loss function
+    penalty = 1/nparams * np.sum((params_weights * (params - params_target))**2)
+    return penalty
+
+def pdb2mrc_calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount):
+    """Calculates intensity profile for optimization of parameters
+    defined in pdb2mrc. 
+
+    params - An array of parameters being optimized for the Iq calculation. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii of atom_types to be optimized for excluded volume calculation
+    pdb - instance of PDB class (required)
+    x,y,z - meshgrids for x, y, and z (required)
+    rho_invacuo - electron density in vacuum (required)
+    shell_invacuo - electron density of hydration shell in vacuum (required)
+    shell_exvol - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
+    qbinsc - q-bin centers (required)
+    qblravel - q bin labels (required)
+    xcount - number of voxels per qbin (required)
+    Iq_exp - Experimental data, q, I, sigq (required)
+    """
+    rho_sum = pdb2mrc_calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol)
+    Iq = mrc2sas(rho_sum,qbinsc,qblravel,xcount,pdb)
+    #try another approach for speed
+    #store exvol maps for each atom type as FFTs (maybe in pdb object?)
+    #to modify the radii, determine the gaussian kernel for convolution based on the radius change
+    #
+
+    #perform B-factor sharpening in rec space to correct for sampling issues
+    # u = 0 #B2u(pdb.b.mean())
+    # u += pdb.resolution
+    # B = u2B(u)
+    # B *= -1
+    # print(pdb.resolution, B, np.exp(-2*B* (Iq[:,0] / (4*np.pi))**2))
+    # exit()
+    # Iq[:,1] *= np.exp(-2*B* (Iq[:,0] / (4*np.pi))**2)
+    return Iq
+
+def pdb2mrc_calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol):
+    """Calculates electron denisty map for protein in solution. Includes the excluded volume and
+    hydration shell calculations
+
+    params - An array of parameters being optimized. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii of atom_types to be optimized for excluded volume calculation
+    pdb - instance of PDB class (required)
+    x,y,z - meshgrids for x, y, and z (required)
+    rho_invacuo - electron density in vacuum (required)
+    shell_invacuo - electron density of hydration shell in vacuum (required)
+    shell_exvol - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
+    """
+    exvol = pdb2mrc_calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type=pdb.exvol_type)
+    #subtract excluded volume density from rho_invacuo
+    rho_sum = rho_invacuo - exvol
+    #add hydration shell to density
+    shell, _, _ = pdb2mrc_calc_shell_with_modified_params(params,shell_invacuo,shell_exvol)
+    rho_sum += shell
+    return rho_sum
+
+def pdb2mrc_calc_shell_with_modified_params(params,shell_invacuo,shell_exvol):
+    """Modifies the hydration shell based on scaling parameters
+
+    params - An array of parameters being optimized. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii of atom_types to be optimized for excluded volume calculation
+    shell_invacuo - electron density of hydration shell in vacuum (required)
+    shell_exvol - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
+    """
+    shell_invacuo_density_scale_factor = params[1]
+    shell_exvol_density_scale_factor = params[2]
+    modified_shell_invacuo = shell_invacuo_density_scale_factor * shell_invacuo
+    modified_shell_exvol = shell_exvol_density_scale_factor * shell_exvol
+    shell_sum = modified_shell_invacuo - modified_shell_exvol
+    return shell_sum, modified_shell_invacuo, modified_shell_exvol
+
+def pdb2mrc_calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type="gaussian",ignore_waters=True):
+    """Calculates excluded volume with altered bulk solvent density and atom radii
+
+    params - An array of parameters being optimized. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii scale factor of each atom_types to be optimized for excluded volume calculation
+    pdb - instance of PDB class (required)
+    x,y,z - meshgrids for x, y, and z (required)
+    exvol_type - Method of excluded volume estimation, either "gaussian" or "flat" (default="gaussian")
+    """
+    rho0 = params[0]
+    atom_types = pdb.modified_atom_types
+    radii_sf = params[3:]
+    dx = x[1,0,0] - x[0,0,0]
+    for i in range(len(atom_types)):
+        #Consider if using implicit hydrogens, to use hydrogen radius saved to pdb 
+        if pdb.implicitH == True:
+            if atom_types[i]=='H':
+                pdb.exvolHradius = radii_sf[i] * radius['H']
+            else:
+                # pdb.radius[pdb.atomtype==atom_types[i]] = radii[i]
+                pdb.radius[pdb.atomtype==atom_types[i]] = radii_sf[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
+        else:
+            #set the radii for each atom type in the temporary pdb
+            pdb.radius[pdb.atomtype==atom_types[i]] = radii_sf[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
+    if exvol_type == "gaussian":
+        #generate excluded volume assuming gaussian dummy atoms
+        #this function outputs in electron count units
+        exvol, supportexvol = pdb2map_simple_gauss_by_radius(pdb,x,y,z,rho0=rho0,ignore_waters=ignore_waters)
+    elif exvol_type == "flat":
+        #generate excluded volume assuming flat solvent
+        if pdb.implicitH:
+            v = 4*np.pi/3*pdb.vdW**3 + pdb.numH*4/3*np.pi*vdW['H']**3
+            radjusted = sphere_radius_from_volume(v)
+        else:
+            radjusted = pdb.vdW
+        supportexvol = pdb2support_fast(pdb,x,y,z,radius=radjusted,probe=B2u(pdb.b))
+        #estimate excluded volume electron count based on unique volumes of atoms
+        # print(supportexvol.sum()*dx**3)
+        # v = 15580.0 #MSMS solvent excluded surface from chimera for 6lyz_withH.pdb #np.sum(4/3*np.pi*pdb.radius**3)
+        v = np.sum(4/3*np.pi*pdb.radius**3)
+        ne = v * rho0
+        #blur the exvol to have gaussian-like edges
+        sigma = 1.0/dx #best exvol sigma to match water molecule exvol thing is 1 A
+        write_mrc(supportexvol*ne/supportexvol.sum(),x[-1,0,0]-x[0,0,0],'exvol.mrc')
+        exvol = ndimage.gaussian_filter(supportexvol*1.0,sigma=sigma,mode='wrap')
+        exvol *= ne/exvol.sum() #put in electron count units
+    return exvol
+
+#Section of functions from pdb2F
+# Later, it could be good to make these more versatile to be used in other areas of denss
+def pdb2F_calc_score_with_modified_params(params,params_target,penalty_weight,penalty_weights,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount,Iq_exp,interpolation):
+    """Calculates a final score comparing experimental vs calculated intensity profiles
+    for optimization of parameters defined in pdb2mrc. Score includes the chi2 and penalty 
+    due to parameter variation from target parameter.
+
+    params - An array of parameters being optimized for the Iq calculation. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii of atom_types to be optimized for excluded volume calculation
+    params_target (ndarray) - default or user defined target values for each parameter
+    penalty_weight (float) - total penalty weight of parameters using quadratic loss function (required)
+    penalty_weights (ndarray) - individual penalty weights of parameters using quadratic loss function (required)
+    pdb - instance of PDB class (required)
+    x,y,z (ndarray) - meshgrids for x, y, and z (required)
+    rho_invacuo (ndarray) - electron density in vacuum (required)
+    shell_invacuo (ndarray) - electron density of hydration shell in vacuum (required)
+    shell_exvol (ndarray) - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
+    qbinsc (ndarray) - q-bin centers (required)
+    qblravel (ndarray) - q bin labels (required)
+    xcount (ndarray) - number of voxels per qbin (required)
+    Iq_exp (ndarray) - Experimental data, q, I, sigq (required)
+    interpolate (bool) - whether or not to interpolate Icalc to exp q grid (required)
+    """
+    Iq_calc = pdb2mrc_calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount)
+    chi2, exp_scale_factor = calc_chi2(Iq_exp, Iq_calc,interpolation=interpolation,return_sf=True)
+    penalty = penalty_weight * pdb2mrc_calc_penalty(params, params_target,penalty_weights)
+    score = chi2 + penalty
+    print("%.5e"%exp_scale_factor, ' '.join("%.5e"%param for param in params), "%.3f"%penalty, "%.3f"%chi2)
+    return score
+
+def pdb2F_calc_penalty(params, params_target, penalty_weights=None):
+    """Calculates a penalty using quadratic loss function
+    for parameters dependent on a target value for each parameter
+
+    params - An array of parameters being optimized for the Iq calculation. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii of atom_types to be optimized for excluded volume calculation
+    params_target - default or user defined target values for each parameter
+    """
+    nparams = len(params)
+    params_weights = np.ones(nparams)
+    #set the individual parameter penalty weights
+    #to be 1/params_target, so that each penalty 
+    #is weighted as a fraction of the target rather than an
+    #absolute number.
+    for i in range(nparams):
+        if params_target[i] != 0:
+            params_weights[i] = 1/params_target[i]
+    #multiply each weight be the desired individual penalty weight
+    if penalty_weights is not None:
+        params_weights *= penalty_weights
+    #use quadratic loss function
+    penalty = 1/nparams * np.sum((params_weights * (params - params_target))**2)
+    return penalty
+
+def pdb2F_calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount):
+    """Calculates intensity profile for optimization of parameters
+    defined in pdb2mrc. 
+
+    params - An array of parameters being optimized for the Iq calculation. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii of atom_types to be optimized for excluded volume calculation
+    pdb - instance of PDB class (required)
+    x,y,z - meshgrids for x, y, and z (required)
+    rho_invacuo - electron density in vacuum (required)
+    shell_invacuo - electron density of hydration shell in vacuum (required)
+    shell_exvol - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
+    qbinsc - q-bin centers (required)
+    qblravel - q bin labels (required)
+    xcount - number of voxels per qbin (required)
+    Iq_exp - Experimental data, q, I, sigq (required)
+    """
+    rho_sum = pdb2F_calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol)
+    Iq = mrc2sas(rho_sum,qbinsc,qblravel,xcount,pdb)
+    #try another approach for speed
+    #store exvol maps for each atom type as FFTs (maybe in pdb object?)
+    #to modify the radii, determine the gaussian kernel for convolution based on the radius change
+    #
+
+    #perform B-factor sharpening in rec space to correct for sampling issues
+    u = 0 #B2u(pdb.b.mean())
+    # u += pdb.resolution
+    B = u2B(u)
+    B *= -1
+    Iq[:,1] *= np.exp(-1*B* (Iq[:,0] / (4*np.pi))**2)
+    return Iq
+
+def pdb2F_calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol):
+    """Calculates electron denisty map for protein in solution. Includes the excluded volume and
+    hydration shell calculations
+
+    params - An array of parameters being optimized. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii of atom_types to be optimized for excluded volume calculation
+    pdb - instance of PDB class (required)
+    x,y,z - meshgrids for x, y, and z (required)
+    rho_invacuo - electron density in vacuum (required)
+    shell_invacuo - electron density of hydration shell in vacuum (required)
+    shell_exvol - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
+    """
+    exvol = pdb2F_calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type=pdb.exvol_type)
+    #subtract excluded volume density from rho_invacuo
+    rho_sum = rho_invacuo - exvol
+    #add hydration shell to density
+    shell, _, _ = pdb2F_calc_shell_with_modified_params(params,shell_invacuo,shell_exvol)
+    rho_sum += shell
+    return rho_sum
+
+def pdb2F_calc_shell_with_modified_params(params,shell_invacuo,shell_exvol):
+    """Modifies the hydration shell based on scaling parameters
+
+    params - An array of parameters being optimized. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii of atom_types to be optimized for excluded volume calculation
+    shell_invacuo - electron density of hydration shell in vacuum (required)
+    shell_exvol - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
+    """
+    shell_invacuo_density_scale_factor = params[1]
+    shell_exvol_density_scale_factor = params[2]
+    modified_shell_invacuo = shell_invacuo_density_scale_factor * shell_invacuo
+    modified_shell_exvol = shell_exvol_density_scale_factor * shell_exvol
+    shell_sum = modified_shell_invacuo - modified_shell_exvol
+    return shell_sum, modified_shell_invacuo, modified_shell_exvol
+
+def pdb2F_calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type="gaussian",ignore_waters=True):
+    """Calculates excluded volume with altered bulk solvent density and atom radii
+
+    params - An array of parameters being optimized. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii scale factor of each atom_types to be optimized for excluded volume calculation
+    pdb - instance of PDB class (required)
+    x,y,z - meshgrids for x, y, and z (required)
+    exvol_type - Method of excluded volume estimation, either "gaussian" or "flat" (default="gaussian")
+    """
+    rho0 = params[0]
+    atom_types = pdb.modified_atom_types
+    radii_sf = params[3:]
+    dx = x[1,0,0] - x[0,0,0]
+    for i in range(len(atom_types)):
+        #Consider if using implicit hydrogens, to use hydrogen radius saved to pdb 
+        if pdb.implicitH == True:
+            if atom_types[i]=='H':
+                pdb.exvolHradius = radii_sf[i] * radius['H']
+            else:
+                # pdb.radius[pdb.atomtype==atom_types[i]] = radii[i]
+                pdb.radius[pdb.atomtype==atom_types[i]] = radii_sf[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
+        else:
+            #set the radii for each atom type in the temporary pdb
+            pdb.radius[pdb.atomtype==atom_types[i]] = radii_sf[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
+    if exvol_type == "gaussian":
+        #generate excluded volume assuming gaussian dummy atoms
+        #this function outputs in electron count units
+        exvol, supportexvol = pdb2map_simple_gauss_by_radius(pdb,x,y,z,rho0=rho0,ignore_waters=ignore_waters)
+    elif exvol_type == "flat":
+        #generate excluded volume assuming flat solvent
+        if pdb.implicitH:
+            v = 4*np.pi/3*pdb.vdW**3 + pdb.numH*4/3*np.pi*vdW['H']**3
+            radjusted = sphere_radius_from_volume(v)
+        else:
+            radjusted = pdb.vdW
+        supportexvol = pdb2support_fast(pdb,x,y,z,radius=radjusted,probe=B2u(pdb.b))
+        #estimate excluded volume electron count based on unique volumes of atoms
+        # print(supportexvol.sum()*dx**3)
+        # v = 15580.0 #MSMS solvent excluded surface from chimera for 6lyz_withH.pdb #np.sum(4/3*np.pi*pdb.radius**3)
+        v = np.sum(4/3*np.pi*pdb.radius**3)
+        ne = v * rho0
+        #blur the exvol to have gaussian-like edges
+        sigma = 1.0/dx #best exvol sigma to match water molecule exvol thing is 1 A
+        write_mrc(supportexvol*ne/supportexvol.sum(),x[-1,0,0]-x[0,0,0],'exvol.mrc')
+        exvol = ndimage.gaussian_filter(supportexvol*1.0,sigma=sigma,mode='wrap')
+        exvol *= ne/exvol.sum() #put in electron count units
+    return exvol
 
 def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=True,
         output="map", steps=2001, seed=None, shrinkwrap=True, shrinkwrap_sigma_start=3,
@@ -4261,7 +4542,7 @@ vdW = {
       }
 
 #form factors taken from http://lampx.tugraz.at/~hadley/ss1/crystaldiffraction/atomicformfactors/formfactors.php
-ffcoeff = {
+ffcoeff_old = {
     "H": {"a": [0.489918, 0.262003, 0.196767, 0.049879], "b": [20.6593, 7.74039, 49.5519, 2.20159], "c": 0.001305},
     "H1-": {"a": [0.897661, 0.565616, 0.415815, 0.116973], "b": [53.1368, 15.187, 186.576, 3.56709], "c": 0.002389},
     "He": {"a": [0.8734, 0.6309, 0.3112, 0.178], "b": [9.1037, 3.3568, 22.9276, 0.9821], "c": 0.0064},
@@ -4476,8 +4757,220 @@ ffcoeff = {
 }
 
 
-
-
+#new coefficients obtained by fitting four gaussian sum _without_ any c offset to standard cromer-mann coefficients to enable better behavior in real space.
+ffcoeff = {
+'H': {'a': [0.48964434865164597, 0.25795506418162684, 0.19862808650933614, 0.05398838736648019], 'b': [20.659384838283998, 7.740482800259867, 49.551905131184874, 2.2010683273966882]} ,
+'H1-': {'a': [0.9071753985631006, 0.5547447306202674, 0.4115769050296404, 0.12447711090054299], 'b': [53.136705476073885, 15.188432591359481, 186.575978405005, 3.5617171474702056]} ,
+'He': {'a': [0.8402922443501193, 0.6770417172598773, 0.3232320715891434, 0.15997466322213108], 'b': [9.09424670699855, 3.3772384290126336, 22.929576163282476, 0.7981420961478064]} ,
+'Li': {'a': [1.343609673471987, 0.5581460903914761, 0.6658627628946067, 0.4297009293162577], 'b': [3.4186798862221264, 0.7097939424452019, 85.3914626034448, 168.2600051988492]} ,
+'Li1+': {'a': [0.6521325007637485, 0.8713921608933449, 0.30384786383519363, 0.17325108516049692], 'b': [4.60746938127854, 1.943068012377627, 0.4989788685624173, 10.098249257464639]} ,
+'Be': {'a': [1.5994303672876535, 1.2478102584629966, 0.5339734402314658, 0.6185783589344618], 'b': [43.644988718536744, 1.7575840483943501, 103.48264477722779, 0.4201575607825604]} ,
+'Be2+': {'a': [1.4925894596616573, -2.997317044757223, 2.9716243406311458, 0.5325085179518985], 'b': [0.5007632237312274, 0.7724419338026846, 1.0230595840990484, 3.590969161148091]} ,
+'B': {'a': [2.0574620263921792, 1.257240860265411, 1.0956144348175705, 0.5880097963382053], 'b': [23.218442527004388, 1.0411009520183316, 60.3496687850438, 0.2505910912714547]} ,
+'C': {'a': [3.049502465329157, 0.9469490189353504, 0.9205181585530644, 1.0895088896753868], 'b': [16.122830991045564, 0.879328843206143, 0.2466316869059288, 51.88436420676904]} ,
+'Cval': {'a': [2.932013507490663, 0.8160532965401153, 1.1234353890187063, 1.137903084035025], 'b': [16.51213525878479, 0.19986107169540498, 0.9733924016132077, 55.68201812702491]} ,
+'N': {'a': [5.551459140691302, 2.480555683008789, 2.773120764746902, -3.8187500178972695], 'b': [0.3145270000398675, 7.917446957141198, 24.43261890668131, 0.3145232450476127]} ,
+'O': {'a': [3.2844165713667874, 2.1863494590744375, 1.734158144526276, 0.7918335350536696], 'b': [13.427747243117944, 5.212997411416355, 0.24282907358098274, 32.87575302824983]} ,
+'O1-': {'a': [4.224882908837335, 1.831296845810794, 2.9124978314912977, -0.00047209932300866167], 'b': [7.76577712362189, 0.27544797766020385, 31.29055593973186, -1.4660236391560162]} ,
+'F': {'a': [3.6762412015418953, 2.60065420705191, 1.7420151081741362, 0.9787401742292346], 'b': [10.364707057431389, 4.079237346883059, 0.19463190393042593, 26.12658850187785]} ,
+'F1-': {'a': [2.482295216093523, 4.736356610988728, 1.6761532518219728, 1.110174052761956], 'b': [3.7134925956696763, 11.81776769187783, 0.17403637609617464, 47.59964081720466]} ,
+'Ne': {'a': [4.055730269122589, 3.0998667969555798, 1.7505299617295156, 1.0916156990940862], 'b': [8.454980638330753, 3.3007667744262896, 0.16047469144754145, 21.7022092253482]} ,
+'Na': {'a': [4.367451307758355, 3.723708903958624, 1.77879968238579, 1.1243459810203416], 'b': [2.9482062298952902, 8.200827604895427, 0.13827661121196047, 129.44511395457567]} ,
+'Na1+': {'a': [3.2799886235669637, 3.9596293759294316, 1.7525359468423036, 1.0082777045790943], 'b': [2.609617328989359, 6.1176923173324145, 0.13371642453893953, 14.035869144602884]} ,
+'Mg': {'a': [4.818076047335444, 2.1875633144226194, 1.7944008622352252, 3.189046687147888], 'b': [2.434499912312549, 79.40242393599029, 0.1197273318089302, 6.279937730139619]} ,
+'Mg2+': {'a': [3.519572807270986, 3.8786505321226734, 1.7527677662942893, 0.8493666825150271], 'b': [2.117126429542827, 4.757392456792007, 0.11312219259845034, 10.132102208317802]} ,
+'Al': {'a': [7.131647526944289, 2.052237395760297, 1.6777005913633178, 2.145059987171763], 'b': [2.605480932115646, 0.14405362103885988, 23.900259857804425, 87.0731462362444]} ,
+'Al3+': {'a': [4.215201503680869, 3.4664591461366374, 1.787953514807232, 0.5309487717025967], 'b': [1.8687554144251337, 4.141629472459154, 0.10335255253614334, 8.270426349821584]} ,
+'Siv': {'a': [7.177842532089736, 2.979233663655885, 2.115396326947422, 1.732368108082893], 'b': [2.1471528723641295, 29.156303522037696, 0.13610466792249196, 82.09299264982448]} ,
+'Sival': {'a': [7.283489866937556, 2.9446452003186616, 2.0712098516533555, 1.711456507844776], 'b': [2.1602180093474126, 32.93110363598472, 0.12538274411646538, 94.159406410391]} ,
+'Si4+': {'a': [4.479210923307321, 3.308079396828919, 1.8042959299452555, 0.4085515358831025], 'b': [1.581533581234293, 3.437288224831375, 0.09236081995334067, 6.628264673006444]} ,
+'P': {'a': [7.138789042249852, 4.142606814307699, 2.128293691849062, 1.5929377824602673], 'b': [1.7548326959642166, 26.16163488546785, 0.12230615790259426, 68.26204711582082]} ,
+'S': {'a': [7.1088513543231375, 5.215028849933757, 2.091806378705691, 1.583611951864076], 'b': [1.4377552638137123, 22.18043778213814, 0.10418335440325559, 56.17384058069765]} ,
+'Cl': {'a': [1.9675809012785415, 7.134250887705102, 6.233287662565015, 1.6648772411362953], 'b': [0.07802936441900629, 1.1734538042863885, 18.504210586649002, 47.40001481268868]} ,
+'Cl1-': {'a': [1.9797087751903877, 7.141842567575879, 6.4621750349341704, 2.4083590826533365], 'b': [0.07935371271621547, 1.1783215880574136, 19.42441234878529, 59.166678815987005]} ,
+'Ar': {'a': [2.134311333383945, 7.048364017604981, -42.54265350919579, 51.266219019124605], 'b': [0.08816736534588678, 1.0403197028738291, 18.756223989671735, 18.756228496362894]} ,
+'K': {'a': [7.128272700184678, 1.84675077855445, 1.3047710718253969, 8.754974969411487], 'b': [0.8346440074564205, 0.05336834294143281, 213.59269919690686, 13.834219672415935]} ,
+'K1+': {'a': [7.944603928601062, 7.491903004891839, 1.3604015189795347, 1.2051140678974082], 'b': [12.621630459473565, 0.7671925307800991, -0.009314751010806187, 31.72580083414482]} ,
+'Ca': {'a': [7.293370149744261, 1.4918644094208173, 8.695226611602525, 2.501556322788237], 'b': [0.6722854061968923, 0.015079185750225878, 10.574975039109164, 117.64743359674988]} ,
+'Ca2+': {'a': [0.854464166648321, 7.847870117074988, 8.187136693755233, 1.110267478701466], 'b': [-0.09393101327901535, 0.6104018757577403, 10.156644775059668, 22.917226121946168]} ,
+'Sc': {'a': [6.927716637509347, 1.8406189781185702, 2.8136124472016806, 9.388668559325467], 'b': [0.6152464249726448, 0.0545188013823816, 94.8780054779866, 9.319601027722328]} ,
+'Sc3+': {'a': [0.0817349659497468, 12.607511351012718, -4.064516754545099, 9.338805092158417], 'b': [-0.6945002189745337, 0.4727673635973685, 0.4725265268626642, 9.101032168568663]} ,
+'Ti': {'a': [5.798010397584866, 2.986715517050453, 10.143729517004187, 3.0321993153415723], 'b': [0.6191507176029577, 0.1299204448311216, 8.329940725940265, 80.3754663832968]} ,
+'Ti2+': {'a': [2.2735088158146275, 6.717072996397934, 10.460700433558953, 0.5835022648484749], 'b': [1.1509867160518434, 0.2952971935099805, 8.931984896745671, 61.26058897167574]} ,
+'Ti3+': {'a': [8.407411200151689, 8.833401429274844, 0.03204659115183811, 1.7244847417346636], 'b': [0.39734049188184956, 7.221690045271849, -0.8228198626145534, 16.28463077354178]} ,
+'Ti4+': {'a': [8.476658138704183, 14.441920812371531, 0.03208255824326217, -4.978879154891721], 'b': [0.4024551482238033, 7.5664191322581065, -0.8750173641735599, 7.56641736169824]} ,
+'V': {'a': [3.3194328838976803, 5.564007129352879, 10.879782505212269, 3.189706659771217], 'b': [0.8004604109968732, 0.2170743259814505, 7.556847000507465, 70.33440719348388]} ,
+'V2+': {'a': [2.428302951323674, 7.410525470212022, 10.822124925456993, 0.38622798931619795], 'b': [1.9443349727202766, 0.27967991987671936, 8.834247919473418, 115.00508996707138]} ,
+'V3+': {'a': [1.8483337959280466, 7.910957332616291, 10.011513171648161, 0.24829388842407749], 'b': [2.6239568396117297, 0.3104100357943613, 8.032333631198057, 63.81787797852419]} ,
+'V5+': {'a': [12.014180750919468, 9.774468510524875, 9.536559159536635, -13.346321661732093], 'b': [-0.03174470437607606, 0.33650729809417274, 6.424674366316235, -0.005825976728445994]} ,
+'Cr': {'a': [7.8741948280687355, 8.02821825507154, 6.380182817714588, 1.733734242205387], 'b': [4.665025971179984, 0.28051188026144186, 13.073238958909593, 99.23633042114646]} ,
+'Cr2+': {'a': [3.9944671521822, 8.060536959370573, 9.034600589461204, 0.9212279820454514], 'b': [3.7494763581047357, 0.28931995688802403, 8.427580952099639, 32.50859056032136]} ,
+'Cr3+': {'a': [3.9803720028685063, 8.079385646943878, 8.527881463755337, 0.4211649162780186], 'b': [3.8447094204450867, 0.2895904227833914, 7.971672197671396, 32.721953281312516]} ,
+'Mn': {'a': [9.679809368496745, 8.070655740259923, 4.864372125200564, 2.391372058969052], 'b': [4.578312394600616, 0.2576607566059864, 12.961828784388233, 84.42449085089338]} ,
+'Mn2+': {'a': [5.834072311965402, 7.983497001746192, 8.576602006733218, 0.6229893450380755], 'b': [3.6556191713972668, 0.25395236854452957, 8.691222344728285, 41.25369125784355]} ,
+'Mn3+': {'a': [9.627068289952064, 8.154810243348713, 4.037035391015142, 0.17755809941086245], 'b': [4.741558048475204, 0.2678652729655168, 10.990005922395714, 24.101840727795633]} ,
+'Mn4+': {'a': [9.833496900137092, 8.154802732652835, 3.0168085539475245, -0.007119000195157985], 'b': [4.74508972274041, 0.2670155695812446, 10.597117602191526, 27.570564917908712]} ,
+'Fe': {'a': [10.688900319565898, 8.088685887682288, 4.820323476012463, 2.4014580387467794], 'b': [4.2825433607661125, 0.23701813386013074, 12.503475815560247, 77.24478277789902]} ,
+'Fe2+': {'a': [7.52163739958737, 8.027526091498078, 7.6690618564183435, 0.7918982713887573], 'b': [3.6913933367545257, 0.23465530530429618, 8.46673608197085, 31.322835831678848]} ,
+'Fe3+': {'a': [7.709749721783281, 8.022725556732716, 7.000073235342508, 0.2767741909384679], 'b': [3.7148102943753054, 0.2337650772854649, 8.172612519331967, 38.5042229226976]} ,
+'Co': {'a': [11.499293816512356, 8.09146785252594, 4.986773996024937, 2.4177540443964842], 'b': [3.955799054905932, 0.2182472013789286, 11.762488158071305, 71.38290050598879]} ,
+'Co2+': {'a': [8.737363288806632, 8.039921557827999, 7.250154466599938, 0.9786787316026032], 'b': [3.5287464192658953, 0.2163103314764206, 8.060544279970765, 25.763634385128736]} ,
+'Co3+': {'a': [10.290952438757389, 8.10618776705137, 4.9501359083873115, 0.651154890957391], 'b': [3.8500242471870987, 0.2239448468652033, 8.45942482884542, 18.31978823121851]} ,
+'Ni': {'a': [12.228560624787853, 8.086439780457194, 5.244069898673469, 2.4332622490013924], 'b': [3.641884069277759, 0.2013763900123453, 10.97344889054884, 66.47979770670938]} ,
+'Ni2+': {'a': [9.663739003815504, 8.036055871377453, 7.1439447698249765, 1.1598515951663935], 'b': [3.3011032101014557, 0.1994774540660824, 7.575597205980667, 22.314955718079155]} ,
+'Ni3+': {'a': [10.753799063560493, 8.06850344666784, 5.406794686850915, 0.7692174285281526], 'b': [3.490932875312508, 0.2050907943630945, 7.746508829674841, 16.932459861874786]} ,
+'Cu': {'a': [12.809376984231838, 8.098010632746204, 6.357765183035302, 1.725122630314828], 'b': [3.37492912785031, 0.18740577737899483, 10.526955852134309, 64.86680684817746]} ,
+'Cu1+': {'a': [11.016697483289493, 8.0460899812387, 7.292783621193453, 1.645365380086967], 'b': [3.1435261714060605, 0.18532821819319567, 7.944401588153332, 25.988681725155512]} ,
+'Cu2+': {'a': [9.677874798834255, 7.951204176450752, 8.032430252455619, 1.3419653500156055], 'b': [2.9580156405229387, 0.18455372567416234, 6.745585408932257, 20.07910374097473]} ,
+'Zn': {'a': [13.609647713903893, 8.069746100746938, 5.856791667902585, 2.453106395886765], 'b': [3.0948668481635084, 0.1728941891912288, 9.547948888213368, 58.78824499323322]} ,
+'Zn2+': {'a': [11.981604305278022, 8.036994731438769, 6.649176457941015, 1.3297639070473135], 'b': [2.9353619709575365, 0.17176674096039274, 7.150594105752649, 18.063972564784844]} ,
+'Ga': {'a': [14.891152516727383, 8.068375948334818, 5.009789220033591, 3.011852155999751], 'b': [2.9011908179266426, 0.16097568008517638, 9.80459484875494, 61.5217013121947]} ,
+'Ga3+': {'a': [10.26428482365009, 7.846556968401461, 8.664270313815388, 1.227688075991066], 'b': [2.445742520452998, 0.1556373854373596, 5.371470968887742, 14.545736206772403]} ,
+'Ge': {'a': [15.916069364354462, 8.060104064902745, 4.26416150337424, 3.7430009906335346], 'b': [2.695421101450001, 0.15006368031238693, 10.242480718074383, 54.960551218032435]} ,
+'Ge4+': {'a': [12.960979135805113, 7.900503059711587, 6.433384423499361, 0.7024180390606878], 'b': [2.453518685708239, 0.14764665594710813, 5.607313169883798, 11.495773441485255]} ,
+'As': {'a': [16.546046440254102, 8.025859803876386, 3.709618117665297, 4.695204913379802], 'b': [2.4685838748852316, 0.13932675514449963, 10.17066097718369, 45.16465982217951]} ,
+'Se': {'a': [17.322347906266007, 8.035659386649552, 4.181630304523794, 4.45538558070083], 'b': [2.295018054339401, 0.13134701551535444, 13.958070846499647, 44.16138539990943]} ,
+'Br': {'a': [17.598199482462583, 5.303045987858294, 7.977840732705101, 4.119119436227171], 'b': [2.085289104906673, 15.66629268701866, 0.12172380749665068, 41.63799635316099]} ,
+'Br1-': {'a': [17.716706588540525, 6.396745813643356, 8.019334033097135, 3.8590133847192356], 'b': [2.106663613342509, 18.425351013871694, 0.12327637670136245, 58.26418914597132]} ,
+'Kr': {'a': [17.736237964281305, 6.733419721135826, 7.878437543564538, 3.6509502411805768], 'b': [1.882521647850299, 16.07503935024332, 0.1114692716170516, 39.478219164922734]} ,
+'Rb': {'a': [17.86427210314376, 9.728713237341527, 7.8355761204620284, 1.5531529301401938], 'b': [1.7194415198809374, 17.08235241528327, 0.10431798153572124, 164.93128372439642]} ,
+'Rb1+': {'a': [17.77803654883815, 7.65399052526326, 7.734332623204072, 2.833775378642999], 'b': [1.6914552007200476, 14.643361278632849, 0.10057923206820207, 31.23108965166537]} ,
+'Sr': {'a': [17.833200657321598, 9.85029936926106, 7.623132493957599, 2.676887918076099], 'b': [1.5336253471267733, 14.036115829061147, 0.09185781687226496, 132.36953801892722]} ,
+'Sr2+': {'a': [7.5576376280521345, 8.728591071759498, 1.8906361614298586, 17.823633215040545], 'b': [0.0893493405104573, 13.241071189167167, 26.81767231319672, 1.520862659880473]} ,
+'Y': {'a': [17.925549529791752, 10.30913274963786, 7.470923147563964, 3.2697162477600665], 'b': [1.3922518363683456, 12.775111436619321, 0.08258558768988813, 104.34088422438373]} ,
+'Y3+': {'a': [7.686583103886185, 51.28964009715699, 10.553948044972422, -33.56874993409134], 'b': [0.08968069403772926, 1.4157962532938413, 12.869781336073437, 1.4156457739154786]} ,
+'Zr': {'a': [18.02947856216866, 10.959340266967383, 7.3189557352086965, 3.6608014858556817], 'b': [1.267144098312377, 11.897317210552744, 0.07393449005858094, 87.63891494848176]} ,
+'Zr4+': {'a': [17.724450449800077, 9.328389919452698, 1.6897128793915053, 7.254196712575971], 'b': [1.2426109659717193, 9.967521758373682, 17.725765933571477, 0.07144483381497152]} ,
+'Nb': {'a': [18.186394435483777, 12.040504915935923, 7.1881609106371105, 3.5453869019221615], 'b': [1.1617794569749893, 11.720318125113405, 0.06661139711431247, 69.73056591736231]} ,
+'Nb3+': {'a': [7.0880514205453, 17.93305220963883, 10.777264909817958, 2.1970230173186267], 'b': [0.06300048579087202, 1.136702113278468, 10.025273586350396, 26.4760608308937]} ,
+'Nb5+': {'a': [7.05459699772521, 17.817676656044288, 10.76954933457027, 0.35911914157140296], 'b': [0.06204440916193552, 1.129419992006384, 9.27881053724674, 24.645401617526986]} ,
+'Mo': {'a': [6.98924374895165, 18.289186255416038, 12.919989236877681, 3.7584219590883823], 'b': [0.05773531836099571, 1.056410060557956, 10.954181341406386, 61.58476361233627]} ,
+'Mo3+': {'a': [6.826693523854915, 18.102528983384722, 11.523083068329322, 2.5430091026986688], 'b': [0.05222105951778729, 1.0315833084024293, 9.418202480596367, 25.235470558884792]} ,
+'Mo5+': {'a': [6.786874356813757, 18.001628841076297, 11.297558634821002, 0.9138176780550937], 'b': [0.05104716293002873, 1.0246614305730266, 8.71368899375687, 21.00151626411173]} ,
+'Mo6+': {'a': [17.896013692287035, 11.175609326677826, 6.7493376384118315, 0.1649732771785508], 'b': [1.0361014721761084, 8.480243995537196, 0.05632867184829788, 0.015796839735227674]} ,
+'Tc': {'a': [6.096734719862069, 18.833925258053807, 13.606487722628122, 4.406861701872697], 'b': [0.025598280364449038, 0.9175484395543193, 9.66279992154511, 60.046913913611924]} ,
+'Ru': {'a': [5.994561155996193, 18.93567855915201, 14.823045439115054, 4.18527989861619], 'b': [0.022216614030365338, 0.8490374076607612, 9.46969394478458, 48.68361979245615]} ,
+'Ru3+': {'a': [18.541601448484673, 13.312995515349357, 6.1631735301613615, 2.981355524651754], 'b': [0.8483649327780811, 8.384095948280406, 0.02828023674034836, 23.001940355101304]} ,
+'Ru4+': {'a': [20.919028802285496, 13.233315558669844, 3.684640054209721, 2.1649591772711196], 'b': [0.8030780473811314, 8.111931515730669, 0.11751830636099739, 21.055011916322563]} ,
+'Rh': {'a': [5.993696498167812, 18.880516303116227, 15.868281563235248, 4.195262437602287], 'b': [0.023189837626479068, 0.7892431942662751, 8.988091508779519, 45.518367970180336]} ,
+'Rh3+': {'a': [12.473247481612963, 16.86992009490624, 16.21075504039705, -3.699547329210125], 'b': [0.10131670361036627, 0.9613688439831227, 9.957680774895453, 0.1011115270635728]} ,
+'Rh4+': {'a': [11.838166828283663, 17.376583744609615, 15.596948777806794, -3.9116264029764394], 'b': [0.07983733554353012, 0.900742388547325, 9.130578416958032, 0.07997826133848704]} ,
+'Pd': {'a': [5.585122455105748, 19.11565442669995, 16.33896667355388, 4.934005879811926], 'b': [0.011051064920156861, 0.7142769532749469, 8.31424190970012, 31.619191725135053]} ,
+'Pd2+': {'a': [19.170716935639273, 15.209319247572717, 4.322778976414755, 5.290821508519311], 'b': [0.6961852354043655, 7.555507391835464, 22.504583104340806, -2.858360398734787e-05]} ,
+'Pd4+': {'a': [10.154619272413669, 16.940541038310272, 16.6168324599612, -1.818090099420638], 'b': [0.0882613276456976, 0.8563799652930173, 8.672291845857146, 0.08815941128014315]} ,
+'Ag': {'a': [6.200419878651503, 18.515775652778405, 17.993617387496748, 4.22492300390107], 'b': [0.03247796522315408, 0.6881256632610405, 8.03377231153247, 40.00772998129887]} ,
+'Ag1+': {'a': [5.492798082124939, 18.982347669555033, 16.606630566882366, 4.902366952240362], 'b': [0.009240748912280394, 0.6581528718468714, 7.398063465690764, 25.263521787505038]} ,
+'Ag2+': {'a': [19.164897094678665, 16.24531698443506, 4.3712986896657755, 5.2133222774326775], 'b': [0.645615815560667, 7.185286221407857, 21.406101640114798, -2.5352283513989697e-05]} ,
+'Cd': {'a': [6.684763915704815, 17.933995966750835, 18.793232974298558, 4.524022623440256], 'b': [0.047612347291735975, 0.6551081780008208, 7.438714071254825, 44.00612231946612]} ,
+'Cd2+': {'a': [19.1528551390452, 17.253097564932425, 4.471952207950897, 5.117639315817369], 'b': [0.5978622949749756, 6.806109349056603, 20.250595515926822, -5.897362882625187e-05]} ,
+'In': {'a': [7.646229713690459, 16.895999084388986, 19.493874779352403, 4.8822626007371674], 'b': [0.07167142598290258, 0.6381716171985667, 6.893014144454027, 49.25939296022993]} ,
+'In3+': {'a': [19.107370644651628, 18.10993977791651, 3.790255094367243, 4.993047778615268], 'b': [0.5514232195465032, 6.3242814651361545, 17.35693391733262, -0.00011021183957204235]} ,
+'Sn': {'a': [15.944188548989132, 8.420970540542418, 19.840611887610837, 5.716612980300875], 'b': [0.6117747304064486, 0.08773789790339957, 6.256651649612374, 48.0138705072425]} ,
+'Sn2+': {'a': [5.5057903682299045, 18.49430023908842, 19.372635872614403, 4.610498870825351], 'b': [0.021421813749264267, 0.5237094089338343, 5.9556831033006565, 27.2776123071188]} ,
+'Sn4+': {'a': [18.787731147414878, 21.64210387054202, 3.6507452794990796, 1.9208632834022978], 'b': [5.702758972972682, 0.4280446731396779, 13.67848379588595, -0.1477658506811732]} ,
+'Sb': {'a': [14.912926877860817, 9.222324672712686, 20.04599059373399, 6.748509113528009], 'b': [0.5842821262098832, 0.10162718429922638, 5.6409380506341185, 44.31670958548569]} ,
+'Sb3+': {'a': [5.436934011536769, 18.33067086723167, 19.203438598731857, 5.016812850804455], 'b': [0.021191172143032556, 0.4858345858388681, 5.311247117209016, 21.64675384279665]} ,
+'Sb5+': {'a': [19.86884197595894, 19.03336603156193, 2.412488433358039, 4.689174074577019], 'b': [5.448437604642272, 0.4678930768268693, 14.126723170411257, -0.00010928089749756589]} ,
+'Te': {'a': [13.444293410464944, 10.454966466263755, 20.17472594426033, 7.858879893950705], 'b': [0.5693196209449595, 0.11954406995642837, 5.095649520146917, 40.237063663414844]} ,
+'I': {'a': [10.868743489342876, 12.83630122916029, 20.180280530192785, 9.05025525191156], 'b': [0.5901142344364548, 0.14616647324662135, 4.601099173381122, 36.11276928305425]} ,
+'I1-': {'a': [7.826191959313713, 16.450701025568613, 20.012580443648126, 9.58939225131849], 'b': [0.8093990924490041, 0.18488879489634585, 4.793489978094477, 42.55472287082024]} ,
+'Xe': {'a': [7.484944723940286, 16.108456500821987, 20.08554387925215, 10.257545429219183], 'b': [0.6819562814577115, 0.17481885128253288, 4.182301200436235, 32.581518935073156]} ,
+'Cs': {'a': [20.778896936356997, 21.399750252124672, 11.202659959114532, 1.624184393061515], 'b': [3.284694895908563, 0.22532056304473003, 22.798928094859768, 213.91131120654234]} ,
+'Cs1+': {'a': [20.55982957260471, 21.35638551694399, 10.454357845587635, 1.6529853483322146], 'b': [3.243182677769799, 0.2246299715673662, 20.847286185055037, 59.52636885166727]} ,
+'Ba': {'a': [20.622148119582846, 21.294181289111954, 11.302462071229492, 2.782421846168423], 'b': [3.027215676334376, 0.21311801661288926, 19.29046836898035, 167.20869458574015]} ,
+'Ba2+': {'a': [20.38893939674827, 21.23724277505373, 11.120190307822249, 1.273314698195083], 'b': [2.9795344252789215, 0.2126007022692342, 18.28273952919527, 51.78133468555797]} ,
+'La': {'a': [20.804093998491467, 21.220171501160248, 11.619774026499877, 3.346303936542478], 'b': [2.836959952577033, 0.20208489565596802, 18.255797559901822, 133.12785110867748]} ,
+'La3+': {'a': [20.453339003394234, 21.15510510208706, 11.852851524184576, 0.5492307776668323], 'b': [2.780965565376222, 0.20150338293279974, 16.99895051643849, 54.94790483702286]} ,
+'Ce': {'a': [21.351628666547644, 21.218274002314608, 12.042745667752657, 3.373228380017131], 'b': [2.732134150763417, 0.1932332057976821, 17.25857882228192, 127.11381571549278]} ,
+'Ce3+': {'a': [20.95770490841373, 21.15188354617442, 12.06237150246465, 0.8361384236233754], 'b': [2.6746509522161035, 0.19265746523114172, 15.904131307034614, 43.1776683196551]} ,
+'Ce4+': {'a': [20.46780658785507, 21.050692482112346, 12.272875800137761, 0.21436649977640013], 'b': [2.59053252866421, 0.19073658470100335, 15.483558103865061, 62.235311432155044]} ,
+'Pr': {'a': [22.232289357104968, 21.292333148730588, 12.599871648233327, 2.862268445960792], 'b': [2.693803909281057, 0.1864002957654481, 16.44196727411959, 143.64311853937306]} ,
+'Pr3+': {'a': [21.48834917137474, 21.136121251490938, 12.202385072588186, 1.178647371928732], 'b': [2.5721014792817463, 0.1841953572020822, 14.856269470209613, 36.42217743314406]} ,
+'Pr4+': {'a': [21.038301249114365, 21.040693184637654, 12.555573073166693, 0.36963206681154914], 'b': [2.4988535515898023, 0.18243667426544635, 14.584616503425261, 45.46443752062808]} ,
+'Nd': {'a': [22.860093697660574, 21.278339750056404, 12.962042276474051, 2.8830434407097902], 'b': [2.596556334283178, 0.17843612127560346, 15.629012372472031, 137.90087541048754]} ,
+'Nd3+': {'a': [22.045104741826865, 21.115860179035383, 12.150198967802003, 1.6929163620100862], 'b': [2.4752790562906832, 0.1761973082984479, 13.83369647749148, 30.90012743124577]} ,
+'Pm': {'a': [23.516718265530972, 21.260930299087423, 13.300107511159672, 2.9033053721740787], 'b': [2.5044199872795176, 0.17092829513032773, 14.884043898776243, 132.71801628268963]} ,
+'Pm3+': {'a': [22.614213035300804, 21.08668262262865, 12.086885051108618, 2.2147546764301476], 'b': [2.3815567171516716, 0.16857171576308796, 12.890340723433617, 27.482589937285102]} ,
+'Sm': {'a': [24.195949760216834, 21.241697390412433, 13.618354494734005, 2.9226884251749516], 'b': [2.416986538588082, 0.16386741601112575, 14.201210390654035, 128.0026275934193]} ,
+'Sm3+': {'a': [23.218059983359883, 21.057743069792117, 11.969154929101158, 2.754744131357956], 'b': [2.2945178585488186, 0.16142278559142087, 12.064442722960177, 24.829222408477147]} ,
+'Eu': {'a': [24.85374648309956, 21.213613325803614, 13.958363942197979, 2.9515195512485017], 'b': [2.329381255932067, 0.15708986458845103, 13.552801349925566, 123.16767505640108]} ,
+'Eu2+': {'a': [24.0890671513384, 21.092251672287084, 11.880834387348129, 3.934813508157573], 'b': [2.2477259867902117, 0.15571776061546067, 11.465732054998245, 26.525198090869484]} ,
+'Eu3+': {'a': [23.796719726752272, 21.016805919213553, 11.886162947720237, 3.2997744315472977], 'b': [2.207195231174613, 0.15453834657750679, 11.240954120612608, 23.00361719428446]} ,
+'Gd': {'a': [25.2814185997105, 21.106061122259135, 14.012223597491934, 3.5707710477975936], 'b': [2.2075468589521816, 0.1495029992876105, 12.777842480418922, 101.38765688513575]} ,
+'Gd3+': {'a': [24.381276621444933, 20.971620393931826, 11.897973427376451, 3.747552486305546], 'b': [2.123832569892709, 0.1480063050555474, 10.520433990481896, 21.71204160270305]} ,
+'Tb': {'a': [26.21142667806698, 21.17005012186444, 14.564101950769615, 3.0201266154220576], 'b': [2.170956913982665, 0.1449679489827454, 12.381705948587939, 112.45833333640589]} ,
+'Tb3+': {'a': [24.988044943446795, 20.921319812961073, 12.273420099644742, 3.8128583133553366], 'b': [2.0444984802816495, 0.14182054236584518, 9.9880455107844, 21.289528265698877]} ,
+'Dy': {'a': [26.91133582297724, 21.154138174356508, 14.856219275412181, 3.0417947692928666], 'b': [2.0985200876617944, 0.13952815530236076, 11.878459514702051, 108.67140388777987]} ,
+'Dy3+': {'a': [25.564217832582813, 20.881116363708387, 12.00889697497743, 4.5437854141030085], 'b': [1.9696464210243518, 0.13605619048644613, 9.286375563067452, 19.598520108952133]} ,
+'Ho': {'a': [27.376984412611606, 21.05431646316108, 14.857668395289394, 3.6792341411221487], 'b': [1.9962634583696501, 0.1332110801481831, 11.215438136419634, 92.62076693188642]} ,
+'Ho3+': {'a': [26.150042369258347, 20.835504890890796, 12.016961650444753, 4.99618984014991], 'b': [1.897787818968079, 0.13057403859539174, 8.71699846029907, 18.617632420960373]} ,
+'Er': {'a': [28.331474748224093, 21.13959515593194, 15.406215228806182, 3.0822526564340866], 'b': [1.9655869087981321, 0.1298369977344657, 10.977210158466955, 101.75618804162296]} ,
+'Er3+': {'a': [26.77491834197368, 20.79976217460133, 12.192865850343411, 5.230318946603022], 'b': [1.8323544288807225, 0.12553974013458918, 8.291427407238599, 17.892094286530423]} ,
+'Tm': {'a': [29.093351406947022, 21.160934380835286, 15.671732174457567, 3.0461566814242946], 'b': [1.9092287945754616, 0.12580459435699043, 10.66255566219408, 102.92188659033714]} ,
+'Tm3+': {'a': [27.38511129124567, 20.76085592743977, 12.388833586642825, 5.462807575523996], 'b': [1.7687359091007433, 0.12074711149707033, 7.8784004846984965, 17.274206531234004]} ,
+'Yb': {'a': [29.76783760033415, 21.155772685895244, 15.913499842673373, 3.118734345001671], 'b': [1.8472432769832943, 0.12165573303545035, 10.196795513245357, 95.60546695804919]} ,
+'Yb2+': {'a': [28.259706819608194, 20.808819661495843, 13.125179566890662, 5.796898561538107], 'b': [1.7334591020411518, 0.1173321622406408, 7.77048627776402, 19.530091689717764]} ,
+'Yb3+': {'a': [28.004620399778858, 20.726308140573117, 12.675003035401955, 5.59157856506838], 'b': [1.7088228542820003, 0.11627312028764382, 7.529540908194306, 16.77437400781091]} ,
+'Lu': {'a': [30.190606889259936, 15.846306604396084, 21.056257342034176, 3.8600762276032277], 'b': [1.7602246663185135, 9.52826189426161, 0.11652006538366007, 80.95304159941352]} ,
+'Lu3+': {'a': [28.540819288883586, 20.67542304405619, 12.563427544273216, 6.2158376108649085], 'b': [1.6469579487564097, 0.11183219860122598, 7.026694055074942, 15.824787810404143]} ,
+'Hf': {'a': [30.664800529674537, 15.831911254590995, 20.974709048614887, 4.477730904147435], 'b': [1.6817031343555595, 9.114401069402001, 0.11188409411240202, 69.20524402650419]} ,
+'Hf4+': {'a': [28.933403353682937, 20.563276471449583, 12.774718656273098, 5.7270682430808275], 'b': [1.57104476024411, 0.10687918080224937, 6.666761254293958, 13.993823309037207]} ,
+'Ta': {'a': [31.136723527428696, 15.920472413597443, 20.900574527571955, 4.987629028331005], 'b': [1.6080064622882575, 8.842398856890476, 0.10759203074165964, 60.7637076356592]} ,
+'Ta5+': {'a': [29.245758734384186, 20.428011473717078, 12.85288640765996, 5.4723494967563635], 'b': [1.4946245744547273, 0.10189868932243736, 6.259131194489869, 12.402981803620309]} ,
+'W': {'a': [31.577112820370758, 16.142244719817846, 20.82700190036082, 5.396558777219381], 'b': [1.537287810663225, 8.653603635020888, 0.10354273640293733, 54.53077708104311]} ,
+'W6+': {'a': [29.5410859247549, 20.28647465957908, 13.065361454843337, 5.1063779634657065], 'b': [1.4217840207089896, 0.09709501381204079, 5.912131221289429, 11.188876638442817]} ,
+'Re': {'a': [31.97149113432179, 16.44378389014609, 20.748440228266094, 5.777917055318315], 'b': [1.4687734032283828, 8.480963729949352, 0.09965101599722397, 49.61079032248328]} ,
+'Os': {'a': [32.31910265768036, 16.882500358474424, 20.662762784803874, 6.076828914917404], 'b': [1.4022122973287576, 8.33637428857383, 0.09588700000867463, 45.691183315346905]} ,
+'Os4+': {'a': [31.114326463985083, 15.16716727007314, 20.154146414673168, 5.55706137955854], 'b': [1.3220155406851877, 6.595172013558815, 0.08982487670918048, 17.3768116854278]} ,
+'Ir': {'a': [32.617649413509405, 17.455546421591578, 20.565744824251073, 6.302388258614014], 'b': [1.3372924276349412, 8.199500915074758, 0.09219412925560784, 42.50222326326727]} ,
+'Ir3+': {'a': [31.72458852782645, 15.849314535474273, 20.097665759653236, 6.3173273895617], 'b': [1.2729877651218446, 6.814253290661127, 0.08662391882860124, 19.63790928832728]} ,
+'Ir4+': {'a': [31.49875318879973, 15.29751699309206, 19.98118007997426, 6.213879245847549], 'b': [1.2584832583500443, 6.421313506515947, 0.085271228995903, 16.699100408473043]} ,
+'Pt': {'a': [32.96432928925383, 18.26083878972203, 20.36054046989642, 6.359548655712784], 'b': [1.2685496817352055, 8.187794756342075, 0.08738585806906068, 36.28765289254246]} ,
+'Pt2+': {'a': [32.23203949701645, 16.784258403836652, 20.059365934295343, 6.907078903915291], 'b': [1.2254359291803811, 7.02930233030864, 0.08384670316117493, 22.07235354309194]} ,
+'Pt4+': {'a': [31.847104228712418, 15.48523902310183, 19.770754381603666, 6.886329460839567], 'b': [1.195335648318536, 6.243285609685901, 0.08050799998403217, 15.922897968063221]} ,
+'Au': {'a': [20.206506183557714, 19.07265591176942, 33.168216582200465, 6.500003685912872], 'b': [0.08347434015883237, 8.002954958839846, 1.2049901583396525, 34.089209054753844]} ,
+'Au1+': {'a': [32.65046117737725, 18.010010378861036, 20.077148008866697, 7.234653005058141], 'b': [1.1822037274132289, 7.272200284738968, 0.0819173371788424, 25.154224577312483]} ,
+'Au3+': {'a': [32.39771193014597, 16.83083029014533, 19.749174165833622, 7.012284375282704], 'b': [1.1536036690550835, 6.586994728211824, 0.07813202712517017, 18.1281446285586]} ,
+'Hg': {'a': [20.18829184437555, 19.84247081000301, 33.24675775858782, 6.666512165242892], 'b': [0.08135383334367963, 7.7271528906139935, 1.1526295272116451, 35.57875003628969]} ,
+'Hg1+': {'a': [32.79093465281916, 18.91797075733871, 20.06338474240891, 7.193764734042212], 'b': [1.1330378095681466, 7.103999181147633, 0.07981698150507942, 26.65271963883946]} ,
+'Hg2+': {'a': [32.79799136134202, 18.044252045471247, 19.674934006025023, 7.467269330149924], 'b': [1.1072187593828857, 6.756031827331673, 0.07534064713473054, 20.04536437630334]} ,
+'Tl': {'a': [20.33194223071459, 20.9070890723771, 33.284148713073506, 6.396563220168269], 'b': [0.081199427806335, 7.612525265983518, 1.1126062352265023, 40.96748850608644]} ,
+'Tl1+': {'a': [32.85257166592103, 20.032616562288535, 19.473987269623624, 7.60445419233929], 'b': [1.0837958676401729, 0.07765539974100971, 6.803411927934827, 27.115909954479783]} ,
+'Tl3+': {'a': [32.96890328672284, 18.243106381662543, 19.29685509544275, 7.4484539128628295], 'b': [1.0403835585607422, 6.357386120424931, 0.06934034893047368, 16.81272545449983]} ,
+'Pb': {'a': [20.28631272483533, 33.22776030638617, 21.41011705587274, 6.996205392377766], 'b': [0.07899366775958007, 1.0605253388515676, 7.17593190081012, 41.651474630076436]} ,
+'Pb2+': {'a': [32.93500051525247, 19.638466187180484, 19.670894527123075, 7.731215820853677], 'b': [1.0162016172183594, 0.07161789998685739, 6.295572440886542, 22.640174127708054]} ,
+'Pb4+': {'a': [33.15434014052007, 18.699389821007607, 18.91250705963444, 7.228494495700378], 'b': [0.978721615467574, 6.02556898997778, 0.06355101777568761, 14.531025667313903]} ,
+'Bi': {'a': [20.108428670965036, 33.1864353136083, 21.86071149475039, 7.76179334471166], 'b': [0.07546264862796209, 1.0045666296149989, 6.6973553176684595, 41.42170101496954]} ,
+'Bi3+': {'a': [33.03144934350525, 19.91011388682681, 19.26336706470245, 7.777816704742979], 'b': [0.9553164086496952, 5.865477960917584, 0.06606600423084817, 19.465446153501645]} ,
+'Bi5+': {'a': [38.56224766071817, 17.90764930397914, 17.54880535052353, 4.054682911169283], 'b': [0.8841513530149444, 0.884151603631334, 8.879770497948725, 8.879755922838646]} ,
+'Po': {'a': [19.695007042116135, 33.22276795369767, 22.20173653990443, 8.794288559272518], 'b': [0.06958364126947765, 0.9418625033188421, 6.164271571511025, 39.40071699385926]} ,
+'At': {'a': [19.16423321298916, 33.291155302646416, 22.46895494087548, 9.98745741435394], 'b': [0.06274368695582329, 0.8789621140916205, 5.637753480578911, 36.66664923214832]} ,
+'Rn': {'a': [18.754345686501075, 33.271002751555265, 22.650443978694845, 11.23633379645956], 'b': [0.057505094080891946, 0.8247619003757612, 5.1677870417669185, 33.96657782272902]} ,
+'Fr': {'a': [19.28790956179968, 33.01918267737003, 22.902568536286957, 11.396878989360188], 'b': [0.0616204382525962, 0.8118414777229082, 5.0424520127681305, 33.67248609497652]} ,
+'Ra': {'a': [24.986132865820668, 30.388539922375575, 21.964797917314737, 10.203674190698699], 'b': [0.11209111951722556, 1.009302659555598, 5.835806708395191, 40.49000531505381]} ,
+'Ra2+': {'a': [18.48844461919266, 32.7110412721449, 22.31291697820626, 12.438512010815295], 'b': [0.05305687633790193, 0.7422699954496351, 4.301707675555792, 23.70544916780889]} ,
+'Ac': {'a': [28.355287347669762, 29.28634105022964, 21.09666305091714, 9.896091927110797], 'b': [0.13699867303100935, 1.1555443377007573, 6.385817774674845, 46.128050447013514]} ,
+'Ac3+': {'a': [17.802427090481203, 32.80896883222214, 22.329184803708046, 13.024101142552796], 'b': [0.04590188029667876, 0.6897781477453503, 3.917697682196261, 20.465239179115848]} ,
+'Th': {'a': [30.31923668038516, 28.760420130707484, 20.27949720869558, 10.33831834413739], 'b': [0.14883811425901744, 1.2394619079536477, 6.5561713897928655, 46.96264095639936]} ,
+'Th4+': {'a': [17.154848803978847, 32.90677139585852, 22.359047163324494, 13.553131600457675], 'b': [0.039421902613470346, 0.6429131597277128, 3.5897252648035534, 17.969670421054715]} ,
+'Pa': {'a': [31.98559639043836, 28.4423399146534, 20.71620659165121, 9.545490786331202], 'b': [0.1578037399796097, 1.3099957173813332, 7.105987017313643, 45.879659347159325]} ,
+'U': {'a': [33.575876599037315, 28.228143932558112, 20.90732859276934, 9.01539381334477], 'b': [0.1654099726295301, 1.3883322841092274, 7.569607713853529, 47.12530552317038]} ,
+'U3+': {'a': [21.064605925491744, 30.796391077048234, 22.27098229979784, 14.822053635753363], 'b': [0.07169427403836304, 0.6973218090265524, 3.760209909702603, 18.186092789081602]} ,
+'U4+': {'a': [19.27518181139392, 31.617259590052946, 22.242947986659726, 14.833695714342834], 'b': [0.05713495364250147, 0.6463505008785546, 3.4955826296183634, 16.553145923765836]} ,
+'U6+': {'a': [16.064135720083556, 32.99957603685267, 22.426766491355043, 14.494111786121831], 'b': [0.02926772281235677, 0.5643782057695792, 3.0568808152039875, 14.353416117307892]} ,
+'Np': {'a': [34.96395456347403, 28.059406891536742, 21.33019800856106, 8.40491893349928], 'b': [0.17118732377997417, 1.4576859429636262, 7.984749092453818, 49.05310451045045]} ,
+'Np3+': {'a': [22.510938126602294, 29.86908562317578, 22.293189239310447, 15.279860898064282], 'b': [0.08143987133147122, 0.7097336354849217, 3.7471497837775773, 17.477888339718973]} ,
+'Np4+': {'a': [20.66905288838749, 30.732798892372262, 22.215510158412624, 15.35022088983083], 'b': [0.06736773652419717, 0.6561039968981242, 3.4798103278950174, 15.918644872765011]} ,
+'Np6+': {'a': [17.202396833738216, 32.329357347670424, 22.293449627695413, 15.158099830472246], 'b': [0.03924770045847983, 0.5680053456966027, 3.029706677172008, 13.762233936591125]} ,
+'Pu': {'a': [35.99194908162117, 27.617022217554332, 22.500447208120534, 7.632537371711295], 'b': [0.1740140868002542, 1.4857096084384125, 8.14885843937281, 47.37530288900378]} ,
+'Pu3+': {'a': [24.043505351696517, 28.873011993966305, 22.378014216259572, 15.659083466456156], 'b': [0.09083293397429283, 0.7254188698635026, 3.7460257392320306, 16.832313898090675]} ,
+'Pu4+': {'a': [22.189388168486335, 29.742292201419804, 22.239588797998703, 15.79574556171176], 'b': [0.07750351606462184, 0.6692870487191902, 3.4755933447800462, 15.329977212904776]} ,
+'Pu6+': {'a': [18.65747781159686, 31.414218927040633, 22.16151606629879, 15.748768950058261], 'b': [0.05079413105421273, 0.5777744375181861, 3.0193432557750395, 13.21554201291412]} ,
+'Am': {'a': [37.130113384584625, 27.509660830943172, 23.1119489883673, 7.023638280462391], 'b': [0.17726712217475304, 1.54389271801707, 8.414666503784138, 49.985384082630276]} ,
+'Cm': {'a': [38.02710267378455, 27.57881656487396, 23.15680820572782, 7.064756670009228], 'b': [0.17851105618357427, 1.5884470495492526, 8.46612722887841, 53.38527579039251]} ,
+'Bk': {'a': [38.846839479387704, 27.459132272908132, 23.769257332996418, 6.767054483757886], 'b': [0.17916006545142038, 1.6194479696021395, 8.457528306298578, 54.31449974191302]} ,
+'Cf': {'a': [39.60540285385262, 27.37601578275248, 24.352702792083782, 6.519981168216521], 'b': [0.1792753694574756, 1.6480625541705138, 8.39892193233561, 54.99145248549249]} ,
+}
 
 
 
