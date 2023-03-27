@@ -385,9 +385,16 @@ def zoom_rho(rho,vx,dx):
     elif len(vx) == 3:
         vx, vy, vz = vx
     else:
-        print("Error. Argument 'side' must be float or 3-tuple")
+        print("Error. Argument 'vx' must be float or 3-tuple")
+    dx = np.atleast_1d(dx)
+    if len(dx) == 1:
+        dx, dy, dz = dx, dx, dx
+    elif len(dx) == 3:
+        dx, dy, dz = dx
+    else:
+        print("Error. Argument 'vx' must be float or 3-tuple")
     #zoom factors
-    zx, zy, zz = vx/dx, vy/dx, vz/dx
+    zx, zy, zz = vx/dx, vy/dy, vz/dz
     newrho = ndimage.zoom(rho,(zx, zy, zz),order=1,mode="wrap")
 
     return newrho

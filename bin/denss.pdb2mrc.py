@@ -73,9 +73,9 @@ parser.add_argument("-atom_types", "--atom_types", default=['H', 'C', 'N', 'O'],
 parser.add_argument("-recalc","--recalc","--recalc_radii","--recalculate", default=False, dest="recalculate_unique_radii", action="store_true", help="Recalculate unique radii even if *_OccasRadius.pdb file given (default=False)")
 parser.add_argument("-fit_shell", "--fit_shell","-fit_shell_on", "--fit_shell_on", dest="fit_shell", action="store_true", help="Fit hydration shell parameters (optional, default=True)")
 parser.add_argument("-fit_shell_off", "--fit_shell_off", dest="fit_shell", action="store_false", help="Do not fit hydration shell parameters (optional, default=True)")
-parser.add_argument("-shell_contrast", "--shell_contrast", default=0.04, type=float, help="Initial contrast of hydration shell in e-/A^3 (default=0.04)")
-parser.add_argument("-shin","--shin","-shell_invacuo", "-shell_invacuo_density_scale_factor", "--shell_invacuo_density_scale_factor", dest="shell_invacuo_density_scale_factor", default=0.3, type=float, help="Contrast of hydration shell in e-/A^3 (default=0.03)")
-parser.add_argument("-shex","--shex","-shell_exvol","-shell_exvol_density_scale_factor", "--shell_exvol_density_scale_factor", dest="shell_exvol_density_scale_factor", default=0.03, type=float, help="Contrast of hydration shell in e-/A^3 (default=0.03)")
+parser.add_argument("-contrast","--contrast","-shell_contrast", "--shell_contrast", dest="shell_contrast", default=0.03, type=float, help="Initial contrast of hydration shell in e-/A^3 (default=0.04)")
+parser.add_argument("-shin","--shin","-shell_invacuo", "-shell_invacuo_density_scale_factor", "--shell_invacuo_density_scale_factor", dest="shell_invacuo_density_scale_factor", default=1.0, type=float, help="Contrast of hydration shell in e-/A^3 (default=0.03)")
+parser.add_argument("-shex","--shex","-shell_exvol","-shell_exvol_density_scale_factor", "--shell_exvol_density_scale_factor", dest="shell_exvol_density_scale_factor", default=1.0, type=float, help="Contrast of hydration shell in e-/A^3 (default=0.03)")
 parser.add_argument("-shell_type", "--shell_type", default="gaussian", type=str, help="Type of hydration shell (gaussian (default) or uniform)")
 parser.add_argument("-shell_mrcfile", "--shell_mrcfile", default=None, type=str, help="Filename of hydration shell mrc file (default=None)")
 parser.add_argument("-p", "-penalty_weight", "--penalty_weight", default=100., type=float, help="Overall penalty weight for fitting parameters (default=100)")
@@ -182,7 +182,18 @@ if __name__ == "__main__":
     if args.radii_sf is not None:
         radii_sf = args.radii_sf
     else:
+        #some good guesses for initial radii scale factors
+        radii_sf_dict = {'H':1.10113e+00, 
+                         'C':1.24599e+00, 
+                         'N':1.02375e+00, 
+                         'O':1.05142e+00,
+                         }
         radii_sf = np.ones(len(atom_types))
+        for i in range(len(atom_types)):
+            if atom_types[i] in radii_sf_dict.keys():
+                radii_sf[i] = radii_sf_dict[atom_types[i]]
+            else:
+                radii_sf[i] = 1.0
 
     if args.center:
         pdb.coords -= pdb.coords.mean(axis=0)
@@ -323,7 +334,7 @@ if __name__ == "__main__":
     xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
 
     if args.resolution is None and not args.use_b:
-        resolution = 0.15 #this helps with voxel sampling issues 
+        resolution = 0.30 #this helps with voxel sampling issues 
     elif args.resolution is not None:
         resolution = args.resolution
     else:
@@ -371,12 +382,13 @@ if __name__ == "__main__":
     #calculate the volume of a shell of water diameter
     #this assumes a single layer of hexagonally packed water molecules on the surface
     r_water = 1.4 
-    water_shell_idx = saxs.calc_uniform_shell(pdb,x,y,z,thickness=r_water).astype(bool)
+    uniform_shell = saxs.calc_uniform_shell(pdb,x,y,z,thickness=r_water)
+    water_shell_idx = uniform_shell.astype(bool)
     V_shell = water_shell_idx.sum() * dV
     N_H2O_in_shell = 2/(3**0.5) * V_shell / (2*r_water)**3
     V_H2O = 4/3*np.pi*r_water**3
     V_H2O_in_shell = N_H2O_in_shell * V_H2O
-    print("Estimated number of H2O molecules in hydration shell: %d " % N_H2O_in_shell)
+    # print("Estimated number of H2O molecules in hydration shell: %d " % N_H2O_in_shell)
     print()
 
     shell_contrast = args.shell_contrast
@@ -395,11 +407,12 @@ if __name__ == "__main__":
     elif args.shell_type == "gaussian":
         #the default is gaussian type shell
         #generate initial hydration shell
-        thickness = 1.0 #in angstroms
-        invacuo_shell_sigma = 0.25 / dx #convert to pixel units
-        exvol_shell_sigma = 1.0 / dx #convert to pixel units
+        thickness = max(1.0,dx) #in angstroms
+        invacuo_shell_sigma = resolution / dx #convert to pixel units
+        exvol_shell_sigma = 0.85 / dx #convert to pixel units
 
         uniform_shell = saxs.calc_uniform_shell(pdb,x,y,z,thickness=thickness)
+        uniform_shell *= 1.0/uniform_shell.sum() #scale to one total
         shell_invacuo = saxs.calc_gaussian_shell(sigma=invacuo_shell_sigma,uniform_shell=uniform_shell)
         shell_exvol = saxs.calc_gaussian_shell(sigma=exvol_shell_sigma,uniform_shell=uniform_shell)
 
@@ -409,16 +422,18 @@ if __name__ == "__main__":
         shell_exvol[protein] = 0.0
 
         #put exvol and invacuo shells on a roughly correct scale
-        ne_shell_exvol = V_H2O_in_shell * rho0 #10 electrons per water molecule
-        shell_exvol *= ne_shell_exvol / shell_exvol.sum()
+        # ne_shell_exvol = V_H2O_in_shell * rho0 #10 electrons per water molecule
+        # shell_exvol *= ne_shell_exvol / shell_exvol.sum()
 
         #estimate initial shell_invacuo scale based on contrast with shell_exvol using mean densities
         shell_exvol_mean_density = np.mean(shell_exvol[water_shell_idx]) / dV
-        shell_invacuo_mean_density = shell_exvol_mean_density + shell_contrast
+        shell_exvol *= 1e-4 / shell_exvol_mean_density # pretty much gone, but possible to scale up still
+        shell_exvol_mean_density = np.mean(shell_exvol[water_shell_idx]) / dV
+        shell_invacuo_mean_density = np.mean(shell_invacuo[water_shell_idx]) / dV
         #scale the mean density of the invacuo shell to match the desired mean density
-        shell_invacuo *= shell_invacuo_mean_density / np.mean(shell_invacuo[water_shell_idx])
-        #now convert shell_invacuo to electron count units
-        shell_invacuo *= dV
+        shell_invacuo *= (shell_exvol_mean_density + shell_contrast) / shell_invacuo_mean_density
+        #shell_invacuo should still be in electron count units
+
 
     elif args.shell_type == "uniform":
         #flat excluded volume in shell
@@ -560,7 +575,7 @@ if __name__ == "__main__":
 
     params = optimized_params
 
-    logging.info('Estimated number of waters in shell: %d', N_H2O_in_shell)
+    # logging.info('Estimated number of waters in shell: %d', N_H2O_in_shell)
     logging.info('Final Parameter Values:')
 
     print()
@@ -576,11 +591,11 @@ if __name__ == "__main__":
     shell_exvol_mean_density = np.mean(modified_shell_exvol[water_shell_idx])
     Iq_calc = saxs.pdb2mrc_calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount)
 
-    logging.info("Mean density of in vacuo shell: %.4f e-/A^3" % shell_invacuo_mean_density)
-    logging.info("Mean density of exvol shell:    %.4f e-/A^3" % shell_exvol_mean_density)
+    logging.info("Mean density of in vacuo shell: %.4f e-/A^3" % (shell_invacuo_mean_density/dV))
+    logging.info("Mean density of exvol shell:    %.4f e-/A^3" % (shell_exvol_mean_density/dV))
 
-    print("Mean density of in vacuo shell: %.4f e-/A^3" % shell_invacuo_mean_density)
-    print("Mean density of exvol shell:    %.4f e-/A^3" % shell_exvol_mean_density)
+    print("Mean density of in vacuo shell: %.4f e-/A^3" % (shell_invacuo_mean_density/dV))
+    print("Mean density of exvol shell:    %.4f e-/A^3" % (shell_exvol_mean_density/dV))
     if args.data:
         optimized_chi2, exp_scale_factor, fit = saxs.calc_chi2(Iq_exp, Iq_calc,interpolation=args.Icalc_interpolation,return_sf=True,return_fit=True)
         print("Scale factor: %.5e " % exp_scale_factor)
@@ -654,6 +669,8 @@ if __name__ == "__main__":
         saxs.write_mrc(rho_invacuo/dV,side,output+"_invacuo.mrc")
         saxs.write_mrc(exvol/dV,side,output+"_exvol.mrc")
         saxs.write_mrc(shell/dV,side,output+"_shell.mrc")
+        saxs.write_mrc(shell_invacuo/dV,side,output+"_shellinvacuo.mrc")
+        saxs.write_mrc(shell_exvol/dV,side,output+"_shellexvol.mrc")
         # saxs.write_mrc((protein)*1.0,side,output+"_proteinsupport.mrc")
         # saxs.write_mrc((protein_with_shell_support)*1.0,side,output+"_supportwithshell.mrc")
 

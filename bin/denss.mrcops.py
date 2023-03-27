@@ -42,6 +42,7 @@ parser.add_argument("-f", "--file", type=str, help="Electron density filename (.
 parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired length of voxel of map (resamples map, before any padding)")
 parser.add_argument("-n", "--n", default=None, type=int, help="Desired number of samples (creates cubic map by padding with zeros or clipping, after any resampling)")
 parser.add_argument("-s", "--side", default=None, type=float, help="Desired length of side of map (creates cubic map by padding with zeros or clipping, after any resampling)")
+parser.add_argument("-ongrid", "--ongrid", "--onGrid", dest='ongrid', default=None, type=str, help="Filename of mrc file to match grid size to. (default=None)")
 parser.add_argument("-t","--threshold", default=None, type=float, help="Minimum density threshold (given as e-/A^3; sets lesser values to zero).")
 parser.add_argument("-ne","--ne", default=None, type=float, help="Desired number of electrons in map.")
 parser.add_argument("-zflip","--zflip", action="store_true", help="Generate the enantiomer by flipping map over Z axis.")
@@ -93,18 +94,33 @@ if __name__ == "__main__":
     V = a*b*c
     dV = vx*vy*vz
 
-    if args.voxel is None:
+    if args.ongrid is not None:
+        rho2, (a2,b2,c2) = saxs.read_mrc(args.ongrid, returnABC=True)
+        #check that grid is a cube
+        if not np.allclose(rho2.shape, rho2.shape[0]) or not np.allclose([a2,b2,c2], a2):
+            print("mrc file for --ongrid option is not a cube. Please resample to a cube using denss.mrcops.py first.")
+            print(rho2.shape, (a2,b2,c2))
+            exit()
+        else:
+            args.n = rho2.shape[0]
+            args.side = a2
+            args.voxel = voxel = args.side / args.n
+    else:
+        voxel = args.voxel
+
+    if voxel is None:
         voxel = min((vx, vy, vz))
     else:
         voxel = args.voxel
 
-    if args.voxel is not None:
+    if voxel is not None:
         #only resample if voxel option is defined by user
-        rho = saxs.zoom_rho(rho,(vx,vy,vz),voxel)
+        rho = saxs.zoom_rho(rho,(vx,vy,vz),(voxel,voxel,voxel))
         #the zooming isn't exact due to integer voxels
         #so reset voxel sizes here
-        vx, vy, vz = np.array((a,b,c))/np.array(rho.shape)
+        vx = vy = vz = voxel
         dV = vx*vy*vz
+        a, b, c = rho.shape * np.array([vx, vy, vz])
 
     print("postzoom")
     print("Shape:  ", rho.shape)
