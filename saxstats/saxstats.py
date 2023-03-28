@@ -3896,7 +3896,7 @@ def pdb2mrc_calc_rho_with_modified_params(params,pdb2mrc_dict):
     #subtract excluded volume density from rho_invacuo
     rho_sum = pdb2mrc_dict['rho_invacuo'] - exvol
     #add hydration shell to density
-    shell, _, _ = pdb2mrc_calc_shell_with_modified_params(params,pdb2mrc_dict)
+    shell = pdb2mrc_calc_shell_with_modified_params(params,pdb2mrc_dict)
     rho_sum += shell
     return rho_sum
 
@@ -3936,7 +3936,7 @@ def pdb2mrc_calc_exvol_with_modified_params(params,pdb2mrc_dict):
     z = pdb2mrc_dict['z']
     exvol_type = pdb2mrc_dict['exvol_type']
     atom_types = pdb.modified_atom_types
-    radii_sf = params[3:]
+    radii_sf = params[2:]
     dx = x[1,0,0] - x[0,0,0]
     for i in range(len(atom_types)):
         #Consider if using implicit hydrogens, to use hydrogen radius saved to pdb 
@@ -4069,7 +4069,6 @@ def pdb2F_calc_F_with_modified_params(params,pdb2mrc_dict):
     #sf_ex is ratio of params[0] to initial rho0
     sf_ex = params[0] / pdb2mrc_dict['rho0']
     sf_sh = params[1]
-    # sf_shex = params[2]
     F_sum = F_v - sf_ex * F_ex + sf_sh * F_shell
     F = pdb2mrc_dict['F_invacuo']*0
     F[pdb2mrc_dict['qidx']] = F_sum

@@ -65,12 +65,6 @@ parser.add_argument("-rho0", "--rho0", default=0.334, type=float, help="Density 
 parser.add_argument("-exvol_type", "--exvol_type", default="gaussian", type=str, help="Type of excluded volume (gaussian (default) or flat)")
 parser.add_argument("-fit_rho0", "--fit_rho0","-fit_rho0_on", "--fit_rho0_on", dest="fit_rho0", action="store_true", help="Fit rho0, the bulk solvent density (optional, default=True)")
 parser.add_argument("-fit_rho0_off", "--fit_rho0_off", dest="fit_rho0", action="store_false", help="Do not fit rho0, the bulk solvent density (optional, default=True)")
-parser.add_argument("-fit_radii", "--fit_radii","-fit_radii_on", "--fit_radii_on", dest="fit_radii", action="store_true", help="Fit radii (optional, default=True)")
-parser.add_argument("-fit_radii_off", "--fit_radii_off", dest="fit_radii", action="store_false", help="Do not fit  radii (optional, default=True)")
-parser.add_argument("-radii_sf", "--radii_sf", dest="radii_sf", default=None, nargs='+', type=float, help="Scale factor for fitting radii of atom_types (space separated list, default=1.0 for each --atom_type). (optional)")
-parser.add_argument("-radii", "--radii", dest="radii", default=None, nargs='+', type=float, help="Radii of atom_types (space separated list, default=None as unique radius for each atom is calculated by default based on volume).")
-parser.add_argument("-atom_types", "--atom_types", default=['H', 'C', 'N', 'O'], nargs='+', type=str, help="Atom types to allow modification of radii (space separated list, default = H C N O). (optional)")
-parser.add_argument("-recalc","--recalc","--recalc_radii","--recalculate", default=False, dest="recalculate_unique_radii", action="store_true", help="Recalculate unique radii even if *_OccasRadius.pdb file given (default=False)")
 parser.add_argument("-fit_shell", "--fit_shell","-fit_shell_on", "--fit_shell_on", dest="fit_shell", action="store_true", help="Fit hydration shell parameters (optional, default=True)")
 parser.add_argument("-fit_shell_off", "--fit_shell_off", dest="fit_shell", action="store_false", help="Do not fit hydration shell parameters (optional, default=True)")
 parser.add_argument("-contrast","--contrast","-shell_contrast", "--shell_contrast", dest="shell_contrast", default=0.03, type=float, help="Initial contrast of hydration shell in e-/A^3 (default=0.03)")
@@ -92,7 +86,6 @@ parser.set_defaults(plot=True)
 parser.set_defaults(use_b=False)
 parser.set_defaults(explicitH=True)
 parser.set_defaults(fit_rho0=True)
-parser.set_defaults(fit_radii=True)
 parser.set_defaults(fit_shell=True)
 parser.set_defaults(fit_all=True)
 parser.set_defaults(Icalc_interpolation=True)
@@ -156,74 +149,20 @@ if __name__ == "__main__":
         pdb.remove_atomalt()
 
     #allow setting of specific atom type radius
-    atom_types = args.atom_types
+    atom_types = ['H', 'C', 'N', 'O']
     pdb.modified_atom_types = atom_types
 
     suffix = "_OccasRadius"
     occasradius = False
-    if args.radii is not None:
-        for i in range(len(atom_types)):
-            #Use pdb.exvolHradius for implicitH use
-            if atom_types[i]=='H' and not args.explicitH:
-                pdb.exvolHradius = args.radii[i]
-            else:    
-                pdb.radius[pdb.atomtype==atom_types[i]] = args.radii[i]
-                #if args.radii is given, make that the unique_radius
-                pdb.unique_radius[pdb.atomtype==atom_types[i]] = args.radii[i]
-                pdb.unique_volume = 4/3*np.pi*pdb.unique_radius**3
-    elif basename[-len(suffix):] == suffix:
+    if basename[-len(suffix):] == suffix:
         occasradius = True
-        if args.recalculate_unique_radii:
-            pdb.calculate_unique_volume(use_b=args.use_b)
-        else:
-            #if the file has unique radius in occupancy column, use it
-            pdb.unique_radius = pdb.occupancy
-            pdb.unique_volume = 4/3*np.pi*pdb.unique_radius**3
+        #if the file has unique radius in occupancy column, use it
+        pdb.unique_radius = pdb.occupancy
+        pdb.unique_volume = 4/3*np.pi*pdb.unique_radius**3
         pdb.radius = np.copy(pdb.unique_radius)
     else:
         pdb.calculate_unique_volume(use_b=args.use_b)
         pdb.radius = np.copy(pdb.unique_radius)
-
-    if args.radii_sf is not None:
-        radii_sf = args.radii_sf
-    else:
-        #some good guesses for initial radii scale factors
-        radii_sf_dict = {'H':1.10113e+00, 
-                         'C':1.24599e+00, 
-                         'N':1.02375e+00, 
-                         'O':1.05142e+00,
-                         }
-        radii_sf = np.ones(len(atom_types))
-        for i in range(len(atom_types)):
-            if atom_types[i] in radii_sf_dict.keys():
-                radii_sf[i] = radii_sf_dict[atom_types[i]]
-            else:
-                radii_sf[i] = 1.0
-
-
-    #adjust volumes if using implicit hydrogens
-    for i in range(len(atom_types)):
-        if not args.explicitH:
-            if atom_types[i]!='H':
-                #subtract some volume from the heavy atom for each hydrogen for overlap
-                try:
-                    pdb.unique_volume[pdb.atomtype==atom_types[i]] -= saxs.volume_of_hydrogen_overlap[atom_types[i]] * pdb.numH[pdb.atomtype==atom_types[i]]
-                except:
-                    #only currently have CNO calculated
-                    pass
-    pdb.unique_radius = saxs.sphere_radius_from_volume(pdb.unique_volume)
-    pdb.radius = pdb.unique_radius
-
-    for i in range(len(atom_types)):
-        #Consider if using implicit hydrogens, to use hydrogen radius saved to pdb 
-        if not args.explicitH:
-            if atom_types[i]=='H':
-                pdb.exvolHradius = saxs.radius['H'] * radii_sf[i]
-            else:
-                pdb.radius[pdb.atomtype==atom_types[i]] = radii_sf[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
-        else:
-            #set the radii for each atom type in the temporary pdb
-            pdb.radius[pdb.atomtype==atom_types[i]] = radii_sf[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
 
     if args.center:
         pdb.coords -= pdb.coords.mean(axis=0)
@@ -244,6 +183,43 @@ if __name__ == "__main__":
         pdbout = copy.deepcopy(pdb)
         pdbout.occupancy = pdb.unique_radius
         pdbout.write(filename=pdboutput)
+
+    #some good guesses for initial radii scale factors
+    radii_sf_dict = {'H':1.10113e+00, 
+                     'C':1.24599e+00, 
+                     'N':1.02375e+00, 
+                     'O':1.05142e+00,
+                     }
+    radii_sf = np.ones(len(atom_types))
+    for i in range(len(atom_types)):
+        if atom_types[i] in radii_sf_dict.keys():
+            radii_sf[i] = radii_sf_dict[atom_types[i]]
+        else:
+            radii_sf[i] = 1.0
+
+    #adjust volumes if using implicit hydrogens
+    for i in range(len(atom_types)):
+        if not args.explicitH:
+            if atom_types[i]!='H':
+                #subtract some volume from the heavy atom for each hydrogen for overlap
+                try:
+                    pdb.unique_volume[pdb.atomtype==atom_types[i]] -= saxs.volume_of_hydrogen_overlap[atom_types[i]] * pdb.numH[pdb.atomtype==atom_types[i]]
+                except:
+                    #only currently have CNO calculated
+                    pass
+    pdb.unique_radius = saxs.sphere_radius_from_volume(pdb.unique_volume)
+    pdb.radius = np.copy(pdb.unique_radius)
+
+    for i in range(len(atom_types)):
+        #Consider if using implicit hydrogens, to use hydrogen radius saved to pdb 
+        if not args.explicitH:
+            if atom_types[i]=='H':
+                pdb.exvolHradius = saxs.radius['H'] * radii_sf[i]
+            else:
+                pdb.radius[pdb.atomtype==atom_types[i]] = radii_sf[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
+        else:
+            #set the radii for each atom type in the temporary pdb
+            pdb.radius[pdb.atomtype==atom_types[i]] = radii_sf[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
 
     print("Initial calculated average radii:")
     logging.info("Initial calculated average radii:")
