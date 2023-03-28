@@ -2953,7 +2953,7 @@ class PDB(object):
         self.cellbeta = 90.0
         self.cellgamma = 90.0
 
-    def calculate_unique_volume(self,n=16,use_b=True):
+    def calculate_unique_volume(self,n=16,use_b=False):
         """Generate volumes and radii for each atom of a pdb by accounting for overlapping sphere volumes,
         i.e., each radius is set to the value that yields a volume of a sphere equal to the
         corrected volume of the sphere after subtracting spherical caps from bonded atoms."""
@@ -3006,6 +3006,7 @@ class PDB(object):
             idx_close = np.where((distances<=vdW_sum)&(distances>0))[0]
             #for each of those close atoms, calculate the overlapping volume
             nclose = len(idx_close)
+            # print()
             for j in range(nclose):
                 #get index of next closest atom
                 idx_j = idx_close[j]
@@ -3022,14 +3023,23 @@ class PDB(object):
                 #we can calculate the center of the circle which lies on the plane, so thats a good point to use
                 circle_center = center_of_circle_from_sphere_intersection(xa,ya,za,ra,xb,yb,zb,rb,a,b,c,d)
                 xyz_minus_cc = xyz - circle_center
+                #calculate distance matrix to neighbor
+                dist2neighbor = spatial.distance.cdist(cb[None,:], xyz)[0].reshape(n,n,n)
+                overlapping_voxels = np.zeros(n**3,dtype=bool)
+                overlapping_voxels[minigrid.ravel() & np.ravel(dist2neighbor<=rb)] = True
                 #calculate the distance to the plane for each minigrid voxel
                 #there may be a way to vectorize this if its too slow
+                noverlap = overlapping_voxels.sum()
+                # print(noverlap, overlapping_voxels.size)
                 d2plane = np.zeros(x.size)
                 for k in range(n**3):
-                    d2plane[k] = np.dot(normal,xyz_minus_cc[k,:])
+                    if overlapping_voxels[k]:
+                        d2plane[k] = np.dot(normal,xyz_minus_cc[k,:])
                 d2plane = d2plane.reshape(n,n,n)
                 #all voxels with a positive d2plane value are _beyond_ the plane
                 minigrid[d2plane>0] = False
+                #any voxels closer to the center of the neighbor atom than the center of this atom, set false 
+                # minigrid[dist2neighbor<=dist+dx/2] = False
             #add up all the remaining voxels in the minigrid to get the volume
             #also correct for limited voxel size
             self.unique_volume[i] = minigrid.sum()*dV * correction
@@ -3733,7 +3743,7 @@ def mrc2sas(rho,qbinsc,qblravel,xcount,pdb):
     """
     F = myfftn(rho)
     I3D = abs2(F)
-    I3D *= pdb.latt_correction
+    # I3D *= pdb.latt_correction
     I3D *= np.exp(-2*(-u2B(pdb.resolution))*(pdb.qr/(4*np.pi))**2)
     I_calc = mybinmean(I3D.ravel(), qblravel, xcount=xcount)
     Iq = np.vstack((qbinsc, I_calc, I_calc*.01 + I_calc[0]*0.002)).T
@@ -3778,7 +3788,7 @@ def calc_gaussian_shell(sigma,uniform_shell=None,pdb=None,x=None,y=None,z=None,t
 
 #Section of functions from pdb2mrc
 # Later, it could be good to make these more versatile to be used in other areas of denss
-def pdb2mrc_calc_score_with_modified_params(params,params_target,penalty_weight,penalty_weights,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount,Iq_exp,interpolation):
+def pdb2mrc_calc_score_with_modified_params(params,pdb2mrc_dict):
     """Calculates a final score comparing experimental vs calculated intensity profiles
     for optimization of parameters defined in pdb2mrc. Score includes the chi2 and penalty 
     due to parameter variation from target parameter.
@@ -3803,14 +3813,14 @@ def pdb2mrc_calc_score_with_modified_params(params,params_target,penalty_weight,
     Iq_exp (ndarray) - Experimental data, q, I, sigq (required)
     interpolate (bool) - whether or not to interpolate Icalc to exp q grid (required)
     """
-    Iq_calc = pdb2mrc_calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount)
-    chi2, exp_scale_factor = calc_chi2(Iq_exp, Iq_calc,interpolation=interpolation,return_sf=True)
-    penalty = penalty_weight * pdb2mrc_calc_penalty(params, params_target,penalty_weights)
+    Iq_calc = pdb2mrc_calc_Iq_with_modified_params(params,pdb2mrc_dict)
+    chi2, exp_scale_factor = calc_chi2(pdb2mrc_dict['Iq_exp'], Iq_calc,interpolation=pdb2mrc_dict['Icalc_interpolation'],return_sf=True)
+    penalty = pdb2mrc_calc_penalty(params,pdb2mrc_dict)
     score = chi2 + penalty
     print("%.5e"%exp_scale_factor, ' '.join("%.5e"%param for param in params), "%.3f"%penalty, "%.3f"%chi2)
     return score
 
-def pdb2mrc_calc_penalty(params, params_target, penalty_weights=None):
+def pdb2mrc_calc_penalty(params, pdb2mrc_dict):
     """Calculates a penalty using quadratic loss function
     for parameters dependent on a target value for each parameter
 
@@ -3824,6 +3834,9 @@ def pdb2mrc_calc_penalty(params, params_target, penalty_weights=None):
     """
     nparams = len(params)
     params_weights = np.ones(nparams)
+    params_target = pdb2mrc_dict['params_target']
+    penalty_weight = pdb2mrc_dict['penalty_weight']
+    penalty_weights = pdb2mrc_dict['penalty_weights']
     #set the individual parameter penalty weights
     #to be 1/params_target, so that each penalty 
     #is weighted as a fraction of the target rather than an
@@ -3836,9 +3849,10 @@ def pdb2mrc_calc_penalty(params, params_target, penalty_weights=None):
         params_weights *= penalty_weights
     #use quadratic loss function
     penalty = 1/nparams * np.sum((params_weights * (params - params_target))**2)
+    penalty *= penalty_weight
     return penalty
 
-def pdb2mrc_calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount):
+def pdb2mrc_calc_Iq_with_modified_params(params,pdb2mrc_dict):
     """Calculates intensity profile for optimization of parameters
     defined in pdb2mrc. 
 
@@ -3858,24 +3872,11 @@ def pdb2mrc_calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_inva
     xcount - number of voxels per qbin (required)
     Iq_exp - Experimental data, q, I, sigq (required)
     """
-    rho_sum = pdb2mrc_calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol)
-    Iq = mrc2sas(rho_sum,qbinsc,qblravel,xcount,pdb)
-    #try another approach for speed
-    #store exvol maps for each atom type as FFTs (maybe in pdb object?)
-    #to modify the radii, determine the gaussian kernel for convolution based on the radius change
-    #
-
-    #perform B-factor sharpening in rec space to correct for sampling issues
-    # u = 0 #B2u(pdb.b.mean())
-    # u += pdb.resolution
-    # B = u2B(u)
-    # B *= -1
-    # print(pdb.resolution, B, np.exp(-2*B* (Iq[:,0] / (4*np.pi))**2))
-    # exit()
-    # Iq[:,1] *= np.exp(-2*B* (Iq[:,0] / (4*np.pi))**2)
+    rho = pdb2mrc_calc_rho_with_modified_params(params,pdb2mrc_dict)
+    Iq = mrc2sas(rho,pdb2mrc_dict['qbinsc'],pdb2mrc_dict['qblravel'],pdb2mrc_dict['xcount'],pdb2mrc_dict['pdb'])
     return Iq
 
-def pdb2mrc_calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol):
+def pdb2mrc_calc_rho_with_modified_params(params,pdb2mrc_dict):
     """Calculates electron denisty map for protein in solution. Includes the excluded volume and
     hydration shell calculations
 
@@ -3891,15 +3892,15 @@ def pdb2mrc_calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_inv
     shell_invacuo - electron density of hydration shell in vacuum (required)
     shell_exvol - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
     """
-    exvol = pdb2mrc_calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type=pdb.exvol_type)
+    exvol = pdb2mrc_calc_exvol_with_modified_params(params,pdb2mrc_dict)
     #subtract excluded volume density from rho_invacuo
-    rho_sum = rho_invacuo - exvol
+    rho_sum = pdb2mrc_dict['rho_invacuo'] - exvol
     #add hydration shell to density
-    shell, _, _ = pdb2mrc_calc_shell_with_modified_params(params,shell_invacuo,shell_exvol)
+    shell, _, _ = pdb2mrc_calc_shell_with_modified_params(params,pdb2mrc_dict)
     rho_sum += shell
     return rho_sum
 
-def pdb2mrc_calc_shell_with_modified_params(params,shell_invacuo,shell_exvol):
+def pdb2mrc_calc_shell_with_modified_params(params,pdb2mrc_dict):
     """Modifies the hydration shell based on scaling parameters
 
     params - An array of parameters being optimized. (required)
@@ -3911,14 +3912,11 @@ def pdb2mrc_calc_shell_with_modified_params(params,shell_invacuo,shell_exvol):
     shell_invacuo - electron density of hydration shell in vacuum (required)
     shell_exvol - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
     """
-    shell_invacuo_density_scale_factor = params[1]
-    shell_exvol_density_scale_factor = params[2]
-    modified_shell_invacuo = shell_invacuo_density_scale_factor * shell_invacuo
-    modified_shell_exvol = shell_exvol_density_scale_factor * shell_exvol
-    shell_sum = modified_shell_invacuo - modified_shell_exvol
-    return shell_sum, modified_shell_invacuo, modified_shell_exvol
+    shell_scale_factor = params[1]
+    shell = shell_scale_factor * pdb2mrc_dict['rho_shell']
+    return shell
 
-def pdb2mrc_calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type="gaussian",ignore_waters=True):
+def pdb2mrc_calc_exvol_with_modified_params(params,pdb2mrc_dict):
     """Calculates excluded volume with altered bulk solvent density and atom radii
 
     params - An array of parameters being optimized. (required)
@@ -3932,6 +3930,11 @@ def pdb2mrc_calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type="gaussia
     exvol_type - Method of excluded volume estimation, either "gaussian" or "flat" (default="gaussian")
     """
     rho0 = params[0]
+    pdb = pdb2mrc_dict['pdb']
+    x = pdb2mrc_dict['x']
+    y = pdb2mrc_dict['y']
+    z = pdb2mrc_dict['z']
+    exvol_type = pdb2mrc_dict['exvol_type']
     atom_types = pdb.modified_atom_types
     radii_sf = params[3:]
     dx = x[1,0,0] - x[0,0,0]
@@ -3949,7 +3952,7 @@ def pdb2mrc_calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type="gaussia
     if exvol_type == "gaussian":
         #generate excluded volume assuming gaussian dummy atoms
         #this function outputs in electron count units
-        exvol, supportexvol = pdb2map_simple_gauss_by_radius(pdb,x,y,z,rho0=rho0,ignore_waters=ignore_waters)
+        exvol, supportexvol = pdb2map_simple_gauss_by_radius(pdb,x,y,z,rho0=rho0,ignore_waters=pdb2mrc_dict['ignore_waters'])
     elif exvol_type == "flat":
         #generate excluded volume assuming flat solvent
         if pdb.implicitH:
@@ -3965,14 +3968,13 @@ def pdb2mrc_calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type="gaussia
         ne = v * rho0
         #blur the exvol to have gaussian-like edges
         sigma = 1.0/dx #best exvol sigma to match water molecule exvol thing is 1 A
-        write_mrc(supportexvol*ne/supportexvol.sum(),x[-1,0,0]-x[0,0,0],'exvol.mrc')
         exvol = ndimage.gaussian_filter(supportexvol*1.0,sigma=sigma,mode='wrap')
         exvol *= ne/exvol.sum() #put in electron count units
     return exvol
 
 #Section of functions from pdb2F
 # Later, it could be good to make these more versatile to be used in other areas of denss
-def pdb2F_calc_score_with_modified_params(params,params_target,penalty_weight,penalty_weights,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount,Iq_exp,interpolation):
+def pdb2F_calc_score_with_modified_params(params,pdb2mrc_dict):
     """Calculates a final score comparing experimental vs calculated intensity profiles
     for optimization of parameters defined in pdb2mrc. Score includes the chi2 and penalty 
     due to parameter variation from target parameter.
@@ -3997,14 +3999,18 @@ def pdb2F_calc_score_with_modified_params(params,params_target,penalty_weight,pe
     Iq_exp (ndarray) - Experimental data, q, I, sigq (required)
     interpolate (bool) - whether or not to interpolate Icalc to exp q grid (required)
     """
-    Iq_calc = pdb2mrc_calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount)
+    I_calc = pdb2F_calc_I_with_modified_params(params,pdb2mrc_dict)
+    qbinsc = pdb2mrc_dict['qbinsc']
+    Iq_calc = np.vstack((qbinsc, I_calc, I_calc*.01 + I_calc[0]*0.002)).T
+    Iq_exp = pdb2mrc_dict['Iq_exp']
+    interpolation = pdb2mrc_dict['Icalc_interpolation']
     chi2, exp_scale_factor = calc_chi2(Iq_exp, Iq_calc,interpolation=interpolation,return_sf=True)
-    penalty = penalty_weight * pdb2mrc_calc_penalty(params, params_target,penalty_weights)
+    penalty = pdb2F_calc_penalty(params, pdb2mrc_dict)
     score = chi2 + penalty
     print("%.5e"%exp_scale_factor, ' '.join("%.5e"%param for param in params), "%.3f"%penalty, "%.3f"%chi2)
     return score
 
-def pdb2F_calc_penalty(params, params_target, penalty_weights=None):
+def pdb2F_calc_penalty(params, pdb2mrc_dict):
     """Calculates a penalty using quadratic loss function
     for parameters dependent on a target value for each parameter
 
@@ -4017,7 +4023,10 @@ def pdb2F_calc_penalty(params, params_target, penalty_weights=None):
     params_target - default or user defined target values for each parameter
     """
     nparams = len(params)
-    params_weights = np.ones(nparams)
+    params_weights = np.ones(nparams) #note, different than penalty_weights
+    params_target = pdb2mrc_dict['params_target']
+    penalty_weight = pdb2mrc_dict['penalty_weight']
+    penalty_weights = pdb2mrc_dict['penalty_weights']
     #set the individual parameter penalty weights
     #to be 1/params_target, so that each penalty 
     #is weighted as a fraction of the target rather than an
@@ -4030,9 +4039,10 @@ def pdb2F_calc_penalty(params, params_target, penalty_weights=None):
         params_weights *= penalty_weights
     #use quadratic loss function
     penalty = 1/nparams * np.sum((params_weights * (params - params_target))**2)
+    penalty *= penalty_weight
     return penalty
 
-def pdb2F_calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol,qbinsc,qblravel,xcount):
+def pdb2F_calc_F_with_modified_params(params,pdb2mrc_dict):
     """Calculates intensity profile for optimization of parameters
     defined in pdb2mrc. 
 
@@ -4052,22 +4062,45 @@ def pdb2F_calc_Iq_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacu
     xcount - number of voxels per qbin (required)
     Iq_exp - Experimental data, q, I, sigq (required)
     """
-    rho_sum = pdb2F_calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol)
-    Iq = mrc2sas(rho_sum,qbinsc,qblravel,xcount,pdb)
-    #try another approach for speed
-    #store exvol maps for each atom type as FFTs (maybe in pdb object?)
-    #to modify the radii, determine the gaussian kernel for convolution based on the radius change
-    #
+    qidx = pdb2mrc_dict['qidx']
+    F_v = pdb2mrc_dict['F_invacuo'][qidx]
+    F_ex = pdb2mrc_dict['F_exvol'][qidx]
+    F_shell = pdb2mrc_dict['F_shell'][qidx]
+    #sf_ex is ratio of params[0] to initial rho0
+    sf_ex = params[0] / pdb2mrc_dict['rho0']
+    sf_sh = params[1]
+    # sf_shex = params[2]
+    F_sum = F_v - sf_ex * F_ex + sf_sh * F_shell
+    F = pdb2mrc_dict['F_invacuo']*0
+    F[pdb2mrc_dict['qidx']] = F_sum
+    return F
 
-    #perform B-factor sharpening in rec space to correct for sampling issues
-    u = 0 #B2u(pdb.b.mean())
-    # u += pdb.resolution
-    B = u2B(u)
-    B *= -1
-    Iq[:,1] *= np.exp(-1*B* (Iq[:,0] / (4*np.pi))**2)
-    return Iq
+def pdb2F_calc_I_with_modified_params(params,pdb2mrc_dict):
+    """Calculates intensity profile for optimization of parameters
+    defined in pdb2mrc. 
 
-def pdb2F_calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invacuo,shell_exvol):
+    params - An array of parameters being optimized for the Iq calculation. (required)
+        Parameter list includes:
+         - rho0 - density of bulk solvent
+         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
+         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
+         - radii of atom_types to be optimized for excluded volume calculation
+    pdb - instance of PDB class (required)
+    x,y,z - meshgrids for x, y, and z (required)
+    rho_invacuo - electron density in vacuum (required)
+    shell_invacuo - electron density of hydration shell in vacuum (required)
+    shell_exvol - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
+    qbinsc - q-bin centers (required)
+    qblravel - q bin labels (required)
+    xcount - number of voxels per qbin (required)
+    Iq_exp - Experimental data, q, I, sigq (required)
+    """
+    F = pdb2F_calc_F_with_modified_params(params,pdb2mrc_dict)
+    I3D = abs2(F)
+    I_calc = mybinmean(I3D.ravel(), pdb2mrc_dict['qblravel'], xcount=pdb2mrc_dict['xcount'])
+    return I_calc
+
+def pdb2F_calc_rho_with_modified_params(params,pdb2mrc_dict):
     """Calculates electron denisty map for protein in solution. Includes the excluded volume and
     hydration shell calculations
 
@@ -4083,34 +4116,21 @@ def pdb2F_calc_rho_with_modified_params(params,pdb,x,y,z,rho_invacuo,shell_invac
     shell_invacuo - electron density of hydration shell in vacuum (required)
     shell_exvol - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
     """
-    exvol = pdb2F_calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type=pdb.exvol_type)
-    #subtract excluded volume density from rho_invacuo
-    rho_sum = rho_invacuo - exvol
+    pdb = pdb2mrc_dict['pdb']
+    x = pdb2mrc_dict['x']
+    y = pdb2mrc_dict['y']
+    z = pdb2mrc_dict['z']
+    #sf_ex is ratio of params[0] to initial rho0
+    rho0 = params[0]
+    sf_ex = rho0 / pdb2mrc_dict['rho0']
     #add hydration shell to density
-    shell, _, _ = pdb2F_calc_shell_with_modified_params(params,shell_invacuo,shell_exvol)
-    rho_sum += shell
-    return rho_sum
+    sf_sh = params[1]
+    rho = pdb2mrc_dict['rho_invacuo'] - sf_ex * pdb2mrc_dict['rho_exvol'] + sf_sh * pdb2mrc_dict['rho_shell']
+    # F = pdb2F_calc_F_with_modified_params(params,pdb2mrc_dict)
+    # rho = myifftn(F).real
+    return rho
 
-def pdb2F_calc_shell_with_modified_params(params,shell_invacuo,shell_exvol):
-    """Modifies the hydration shell based on scaling parameters
-
-    params - An array of parameters being optimized. (required)
-        Parameter list includes:
-         - rho0 - density of bulk solvent
-         - shell_invacuo_scale_factor - hydration shell in vacuo scale factor
-         - shell_exvol_scale_factor - hydration shell's exlcuded volume scale factor
-         - radii of atom_types to be optimized for excluded volume calculation
-    shell_invacuo - electron density of hydration shell in vacuum (required)
-    shell_exvol - excluded volume of hydration shell (fixed, based on radius/volume of water molecule) (required)
-    """
-    shell_invacuo_density_scale_factor = params[1]
-    shell_exvol_density_scale_factor = params[2]
-    modified_shell_invacuo = shell_invacuo_density_scale_factor * shell_invacuo
-    modified_shell_exvol = shell_exvol_density_scale_factor * shell_exvol
-    shell_sum = modified_shell_invacuo - modified_shell_exvol
-    return shell_sum, modified_shell_invacuo, modified_shell_exvol
-
-def pdb2F_calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type="gaussian",ignore_waters=True):
+def pdb2F_calc_exvol_with_modified_params(params, pdb2mrc_dict, exvol_type="gaussian"):
     """Calculates excluded volume with altered bulk solvent density and atom radii
 
     params - An array of parameters being optimized. (required)
@@ -4124,24 +4144,28 @@ def pdb2F_calc_exvol_with_modified_params(params,pdb,x,y,z,exvol_type="gaussian"
     exvol_type - Method of excluded volume estimation, either "gaussian" or "flat" (default="gaussian")
     """
     rho0 = params[0]
+    pdb = pdb2mrc_dict['pdb']
+    x = pdb2mrc_dict['x']
+    y = pdb2mrc_dict['y']
+    z = pdb2mrc_dict['z']
     atom_types = pdb.modified_atom_types
-    radii_sf = params[3:]
+    # radii_sf = params[3:]
     dx = x[1,0,0] - x[0,0,0]
-    for i in range(len(atom_types)):
-        #Consider if using implicit hydrogens, to use hydrogen radius saved to pdb 
-        if pdb.implicitH == True:
-            if atom_types[i]=='H':
-                pdb.exvolHradius = radii_sf[i] * radius['H']
-            else:
-                # pdb.radius[pdb.atomtype==atom_types[i]] = radii[i]
-                pdb.radius[pdb.atomtype==atom_types[i]] = radii_sf[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
-        else:
-            #set the radii for each atom type in the temporary pdb
-            pdb.radius[pdb.atomtype==atom_types[i]] = radii_sf[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
+    # for i in range(len(atom_types)):
+    #     #Consider if using implicit hydrogens, to use hydrogen radius saved to pdb 
+    #     if pdb.implicitH == True:
+    #         if atom_types[i]=='H':
+    #             pdb.exvolHradius = radii_sf[i] * radius['H']
+    #         else:
+    #             # pdb.radius[pdb.atomtype==atom_types[i]] = radii[i]
+    #             pdb.radius[pdb.atomtype==atom_types[i]] = radii_sf[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
+    #     else:
+    #         #set the radii for each atom type in the temporary pdb
+    #         pdb.radius[pdb.atomtype==atom_types[i]] = radii_sf[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
     if exvol_type == "gaussian":
         #generate excluded volume assuming gaussian dummy atoms
         #this function outputs in electron count units
-        exvol, supportexvol = pdb2map_simple_gauss_by_radius(pdb,x,y,z,rho0=rho0,ignore_waters=ignore_waters)
+        exvol, supportexvol = pdb2map_simple_gauss_by_radius(pdb,x,y,z,rho0=rho0,ignore_waters=pdb2mrc_dict['ignore_waters'])
     elif exvol_type == "flat":
         #generate excluded volume assuming flat solvent
         if pdb.implicitH:
@@ -4547,6 +4571,12 @@ vdW = {
      "No": 1.59 ,
      "Lr": 1.58 ,
       }
+
+volume_of_hydrogen_overlap = {
+     "C":  1.416 , #volume in A^3 to subtract from carbon when using implicit hydrogens
+     "N":  1.073 , 
+     "O":  1.012 , 
+}
 
 #form factors taken from http://lampx.tugraz.at/~hadley/ss1/crystaldiffraction/atomicformfactors/formfactors.php
 ffcoeff_old = {
