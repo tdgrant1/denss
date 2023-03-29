@@ -153,6 +153,9 @@ if __name__ == "__main__":
     atom_types = ['H', 'C', 'N', 'O']
     pdb.modified_atom_types = atom_types
 
+    print('Calculating unique atomic volumes...')
+    logging.info('Calculating unique atomic volumes...')
+
     suffix = "_OccasRadius"
     occasradius = False
     if basename[-len(suffix):] == suffix:
@@ -327,9 +330,9 @@ if __name__ == "__main__":
     print("Optimal N samples   >= %d" % optimal_nsamples)
     print("Optimal Voxel size  <= %.4f" % optimal_voxel)
 
-    logging.info('Optimal Side length (angstroms): %.2f', optimal_side)
-    logging.info('Optimal N samples: %d', optimal_nsamples)
-    logging.info('Optimal Voxel size: (angstroms): %.4f', optimal_voxel)
+    logging.info('Optimal Side length: %.2f', optimal_side)
+    logging.info('Optimal N samples:   %d', optimal_nsamples)
+    logging.info('Optimal Voxel size:  %.4f', optimal_voxel)
 
     halfside = side/2
     n = int(side/voxel)
@@ -343,7 +346,7 @@ if __name__ == "__main__":
     xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
 
     if args.resolution is None and not args.use_b:
-        resolution = 0.30 #this helps with voxel sampling issues 
+        resolution = 0.30 * dx #this helps with voxel sampling issues 
     elif args.resolution is not None:
         resolution = args.resolution
     else:
@@ -353,9 +356,9 @@ if __name__ == "__main__":
     print("Actual  N samples    = %d" % n)
     print("Actual  Voxel size   = %.4f" % dx)
 
-    logging.info('Actual  Side length (angstroms): %.2f', side)
-    logging.info('Actual  N samples: %d', n)
-    logging.info('Actual  Voxel size: (angstroms): %.4f', dx)
+    logging.info('Actual  Side length: %.2f', side)
+    logging.info('Actual  N samples:   %d', n)
+    logging.info('Actual  Voxel size:  %.4f', dx)
 
     #for now, add in resolution to pdb object to enable passing between functions easily.
     pdb.resolution = resolution
@@ -380,9 +383,16 @@ if __name__ == "__main__":
 
     latt_correction = 1. #(np.sinc(qx/2/(np.pi)) * np.sinc(qy/2/(np.pi)) * np.sinc(qz/2/(np.pi)))**2
 
+    print('Calculating in vacuo density...')
+    logging.info('Calculating in vacuo density...')
     rho_invacuo, support = saxs.pdb2map_multigauss(pdb,x=x,y=y,z=z,resolution=resolution,use_b=args.use_b,ignore_waters=args.ignore_waters)
+    print('Finished in vacuo density.')
+    logging.info('Finished in vacuo density.')
 
     rho0 = args.rho0
+
+    print('Calculating hydration shell...')
+    logging.info('Calculating hydration shell...')
 
     #calculate the volume of a shell of water diameter
     #this assumes a single layer of hexagonally packed water molecules on the surface
@@ -393,8 +403,6 @@ if __name__ == "__main__":
     N_H2O_in_shell = 2/(3**0.5) * V_shell / (2*r_water)**3
     V_H2O = 4/3*np.pi*r_water**3
     V_H2O_in_shell = N_H2O_in_shell * V_H2O
-    # print("Estimated number of H2O molecules in hydration shell: %d " % N_H2O_in_shell)
-    print()
 
     shell_contrast = args.shell_contrast
     protein_with_shell_support = saxs.pdb2support_fast(pdb,x,y,z,radius=pdb.vdW,probe=2*r_water)
@@ -412,15 +420,28 @@ if __name__ == "__main__":
         #the default is gaussian type shell
         #generate initial hydration shell
         thickness = max(1.0,dx) #in angstroms
-        shell_sigma = (resolution+dx) / dx #convert to pixel units
 
-        uniform_shell = saxs.calc_uniform_shell(pdb,x,y,z,thickness=thickness)
-        uniform_shell *= 1.0/uniform_shell.sum() #scale to one total
-        rho_shell = saxs.calc_gaussian_shell(sigma=shell_sigma,uniform_shell=uniform_shell)
+        # shell_sigma = (resolution) / dx #convert to pixel units
+        # uniform_shell = saxs.calc_uniform_shell(pdb,x,y,z,thickness=thickness)
+        # uniform_shell *= 1.0/uniform_shell.sum() #scale to one total
+        # rho_shell = saxs.calc_gaussian_shell(sigma=shell_sigma,uniform_shell=uniform_shell)
+        # #remove shell density that overlaps with protein
+        # protein = saxs.pdb2support_fast(pdb,x,y,z,radius=pdb.unique_radius,probe=0.0)
+        # rho_shell[protein] = 0.0
 
-        #remove shell density that overlaps with protein
-        protein = saxs.pdb2support_fast(pdb,x,y,z,radius=pdb.unique_radius,probe=0.0)
-        rho_shell[protein] = 0.0
+        #calculate euclidean distance transform of grid to water shell center
+        #where the water shell center is the surface of the protein plus a water radius
+        protein_idx = saxs.pdb2support_fast(pdb,x,y,z,radius=pdb.vdW,probe=0)
+        # protein_rw_idx = saxs.pdb2support_fast(pdb,x,y,z,radius=pdb.vdW,probe=r_water)
+        protein_rw_idx = saxs.calc_uniform_shell(pdb,x,y,z,thickness=r_water,distance=r_water).astype(bool)
+        print('Calculating dist transform...')
+        dist = ndimage.distance_transform_edt(~protein_rw_idx)
+        #look at only the voxels near the shell for efficiency
+        rho_shell = np.zeros(x.shape)
+        print('Calculating shell values...')
+        rho_shell[dist<2*r_water] = saxs.realspace_formfactor(element='O',r=dist[dist<2*r_water],B=saxs.u2B(0.5))
+        #zero out any voxels overlapping protein atoms
+        rho_shell[protein_idx] = 0.0
 
         #estimate initial shell scale based on contrast using mean density
         shell_mean_density = np.mean(rho_shell[water_shell_idx]) / dV
@@ -434,6 +455,9 @@ if __name__ == "__main__":
     else:
         print("Error: no valid shell_type given. Disabling hydration shell.")
         rho_shell = x*0.0
+
+    print('Finished hydration shell.')
+    logging.info('Finished hydration shell.')
 
     if args.data is not None:
         Iq_exp = np.genfromtxt(args.data, invalid_raise = False, usecols=(0,1,2))
@@ -554,11 +578,21 @@ if __name__ == "__main__":
     #in vacuo, F_v
     F_invacuo = saxs.myfftn(rho_invacuo)
     #perform B-factor sharpening to correct for B-factor sampling workaround
-    F_invacuo *= np.exp(-(-saxs.u2B(resolution))*(qr/(4*np.pi))**2)
+    if resolution > 2:
+        Bsharp = -saxs.u2B(2)
+    else:
+        Bsharp = -saxs.u2B(resolution)
+    F_invacuo *= np.exp(-(Bsharp)*(qr/(4*np.pi))**2)
+
+    print('Calculating excluded volume...')
+    logging.info('Calculating excluded volume...')
 
     #exvol F_exvol
     rho_exvol = saxs.pdb2F_calc_exvol_with_modified_params(params_guess, pdb2mrc_dict)
     F_exvol = saxs.myfftn(rho_exvol)
+
+    print('Finished excluded volume.')
+    logging.info('Finished excluded volume.')
 
     #shell invacuo F_shell
     F_shell = saxs.myfftn(rho_shell)
@@ -571,6 +605,8 @@ if __name__ == "__main__":
     pdb2mrc_dict['F_shell'] = F_shell
 
     if fit_params:
+        print('Optimizing parameters...')
+        logging.info('Optimizing parameters...')
         params_target = params_guess
         pdb2mrc_dict['params_target'] = params_target
         print(["scale_factor"], param_names, ["penalty"], ["chi2"])

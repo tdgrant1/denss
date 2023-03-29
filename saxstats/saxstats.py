@@ -3774,7 +3774,7 @@ def mrc2sas(rho,qbinsc,qblravel,xcount,pdb):
     Iq = np.vstack((qbinsc, I_calc, I_calc*.01 + I_calc[0]*0.002)).T
     return Iq
 
-def calc_uniform_shell(pdb,x,y,z,thickness):
+def calc_uniform_shell(pdb,x,y,z,thickness,distance=1.4):
     """create a one angstrom uniform layer around the particle
 
     Centered one water molecule radius away from the particle surface,
@@ -3789,8 +3789,8 @@ def calc_uniform_shell(pdb,x,y,z,thickness):
     thickness - thickness of the shell (required)
     """
     r_water = 1.4
-    inner_support = pdb2support_fast(pdb,x,y,z,radius=pdb.vdW,probe=r_water-thickness/2)
-    outer_support = pdb2support_fast(pdb,x,y,z,radius=pdb.vdW,probe=r_water+thickness/2)
+    inner_support = pdb2support_fast(pdb,x,y,z,radius=pdb.vdW,probe=distance-thickness/2)
+    outer_support = pdb2support_fast(pdb,x,y,z,radius=pdb.vdW,probe=distance+thickness/2)
     shell_idx = outer_support
     shell_idx[inner_support] = False
     shell = shell_idx * 1.0
