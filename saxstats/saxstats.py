@@ -2958,8 +2958,8 @@ class PDB(object):
         i.e., each radius is set to the value that yields a volume of a sphere equal to the
         corrected volume of the sphere after subtracting spherical caps from bonded atoms."""
         #first, for each atom, find all atoms closer than the sum of the two vdW radii
-        if self.rij is None:
-            self.rij = spatial.distance.squareform(spatial.distance.pdist(self.coords[:,:3]))
+        # if self.rij is None:
+        #     self.rij = spatial.distance.squareform(spatial.distance.pdist(self.coords[:,:3]))
         self.unique_volume = np.zeros(self.natoms)
         self.unique_radius = np.zeros(self.natoms)
         ns = np.array([8,16,32])
@@ -2995,18 +2995,31 @@ class PDB(object):
             #now, any elements of minigrid that have a dist less than ra make true
             minigrid[dist<=ra] = True
             #for convenience, grab all the distances for just this particular atom
-            distances = self.rij[i]
+            # distances = self.rij[i] #this is too memory intensive for larger molecules
             #generate a list of the sum of the vdW radius of this atom and each other atom
             #this generates a maximum distance for which the atoms can be separated to be considered close
-            vdW_sum = ra + self.vdW
-            if use_b:
-                vdW_sum += B2u(self.b)
-            vdW_sum[i] = 0 #ignore this particular atom to itself
+            # vdW_sum = ra + self.vdW
+            # if use_b:
+            #     vdW_sum += B2u(self.b)
+            # vdW_sum[i] = 0 #ignore this particular atom to itself
             #find all atoms that are closer than the corresponding vdW_sum, should be just a few
-            idx_close = np.where((distances<=vdW_sum)&(distances>0))[0]
+            # idx_close = np.where((distances<=vdW_sum)&(distances>0))[0]
             #for each of those close atoms, calculate the overlapping volume
-            nclose = len(idx_close)
+            # nclose = len(idx_close)
             # print()
+            #grab atoms nearby this atom just based on xyz coordinates
+            #first, recenter all coordinates in this frame
+            coordstmp = self.coords - p
+            #next, get all atoms whose x, y, and z coordinates are within the nearby box 
+            #of length 4 A (more than the sum of two atoms vdW radii, with the limit being about 2.5 A)
+            bl = 5.0
+            idx_close = np.where(
+                (coordstmp[:,0]>=xa-bl/2)&(coordstmp[:,0]<=xa+bl/2)&
+                (coordstmp[:,1]>=ya-bl/2)&(coordstmp[:,1]<=ya+bl/2)&
+                (coordstmp[:,2]>=za-bl/2)&(coordstmp[:,2]<=za+bl/2)
+                )[0]
+            idx_close=idx_close[idx_close!=i] #ignore this atom
+            nclose = len(idx_close)
             for j in range(nclose):
                 #get index of next closest atom
                 idx_j = idx_close[j]
@@ -3681,16 +3694,28 @@ def estimate_side_from_pdb(pdb):
     #take the maximum of the three
     #triple that value to set the default side
     #i.e. set oversampling to 3, like in denss
-    xmin = np.min(pdb.coords[:,0]) - 1.7
-    xmax = np.max(pdb.coords[:,0]) + 1.7
-    ymin = np.min(pdb.coords[:,1]) - 1.7
-    ymax = np.max(pdb.coords[:,1]) + 1.7
-    zmin = np.min(pdb.coords[:,2]) - 1.7
-    zmax = np.max(pdb.coords[:,2]) + 1.7
-    wx = xmax-xmin
-    wy = ymax-ymin
-    wz = zmax-zmin
-    side = 3*np.max([wx,wy,wz])
+    if pdb.rij is not None:
+        #if pdb.rij has already been calculated
+        #then just take the Dmax from that
+        D = np.max(pdb.rij)
+    else:
+        #if pdb.rij has not been calculated,
+        #rather than calculating the whole distance
+        #matrix, which can be slow and memory intensive
+        #for large models, just approximate the maximum
+        #length as the max of the range of x, y, or z 
+        #values of the coordinates.
+        xmin = np.min(pdb.coords[:,0]) - 1.7
+        xmax = np.max(pdb.coords[:,0]) + 1.7
+        ymin = np.min(pdb.coords[:,1]) - 1.7
+        ymax = np.max(pdb.coords[:,1]) + 1.7
+        zmin = np.min(pdb.coords[:,2]) - 1.7
+        zmax = np.max(pdb.coords[:,2]) + 1.7
+        wx = xmax-xmin
+        wy = ymax-ymin
+        wz = zmax-zmin
+        D = np.max([wx,wy,wz])
+    side = 3*D
     return side
 
 def calc_chi2(Iq_exp, Iq_calc, scale=True, interpolation=True,return_sf=False,return_fit=False):
@@ -4068,7 +4093,7 @@ def pdb2F_calc_F_with_modified_params(params,pdb2mrc_dict):
     F_shell = pdb2mrc_dict['F_shell'][qidx]
     #sf_ex is ratio of params[0] to initial rho0
     sf_ex = params[0] / pdb2mrc_dict['rho0']
-    sf_sh = params[1]
+    sf_sh = params[1] / pdb2mrc_dict['shell_contrast']
     F_sum = F_v - sf_ex * F_ex + sf_sh * F_shell
     F = pdb2mrc_dict['F_invacuo']*0
     F[pdb2mrc_dict['qidx']] = F_sum

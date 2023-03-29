@@ -67,13 +67,13 @@ parser.add_argument("-fit_rho0", "--fit_rho0","-fit_rho0_on", "--fit_rho0_on", d
 parser.add_argument("-fit_rho0_off", "--fit_rho0_off", dest="fit_rho0", action="store_false", help="Do not fit rho0, the bulk solvent density (optional, default=True)")
 parser.add_argument("-fit_shell", "--fit_shell","-fit_shell_on", "--fit_shell_on", dest="fit_shell", action="store_true", help="Fit hydration shell parameters (optional, default=True)")
 parser.add_argument("-fit_shell_off", "--fit_shell_off", dest="fit_shell", action="store_false", help="Do not fit hydration shell parameters (optional, default=True)")
-parser.add_argument("-contrast","--contrast","-shell_contrast", "--shell_contrast", dest="shell_contrast", default=0.03, type=float, help="Initial contrast of hydration shell in e-/A^3 (default=0.03)")
-parser.add_argument("-sh_sf","--sh_sf","-shell_scale_factor", "--shell_scale_factor", dest="shell_scale_factor", default=1.0, type=float, help="Target scale factor for contrast of hydration shell (default=1.0)")
+parser.add_argument("-shell_contrast", "--shell_contrast", dest="shell_contrast", default=0.03, type=float, help="Initial mean contrast of hydration shell in e-/A^3 (default=0.03)")
 parser.add_argument("-shell_type", "--shell_type", default="gaussian", type=str, help="Type of hydration shell (gaussian (default) or uniform)")
 parser.add_argument("-shell_mrcfile", "--shell_mrcfile", default=None, type=str, help="Filename of hydration shell mrc file (default=None)")
-parser.add_argument("-p", "-penalty_weight", "--penalty_weight", default=100., type=float, help="Overall penalty weight for fitting parameters (default=100)")
+parser.add_argument("-p", "-penalty_weight", "--penalty_weight", default=0., type=float, help="Overall penalty weight for fitting parameters (default=0)")
 parser.add_argument("-ps", "-penalty_weights", "--penalty_weights", default=[1.0, 0.0], type=float, nargs='+', help="Individual penalty weights for each of the seven (or more depending on atom_types) parameters (space separated listed of weight for [rho0,shell], default=1.0 0.0)")
 parser.add_argument("-min_method", "--min_method", "-minimization_method","--minimization_method", dest="method", default='Nelder-Mead', type=str, help="Minimization method (scipy.optimize method, default=Nelder-Mead).")
+parser.add_argument("-min_options", "--min_options", "-minimization_options","--minimization_options", dest="minopts", default='{"adaptive": True}', type=str, help="Minimization options (scipy.optimize options formatted as python dictionary, default=\"{'adaptive': True}\").")
 parser.add_argument("-write_extras", "--write_extras", action="store_true", default=False, help="Write out extra MRC files for invacuo, exvol, shell densities and supports (default=False).")
 parser.add_argument("-interp_on", "--interp_on", dest="Icalc_interpolation", action="store_true", help="Interpolate I_calc to experimental q grid (default).")
 parser.add_argument("-interp_off", "--interp_off", dest="Icalc_interpolation", action="store_false", help="Do not interpolate I_calc to experimental q grid .")
@@ -117,14 +117,6 @@ if __name__ == "__main__":
     else:
         output = args.output
 
-    pdb = saxs.PDB(args.file, ignore_waters=args.ignore_waters)
-
-    if args.explicitH:
-        #only use explicitH if H exists in the pdb file
-        #for atoms that are not waters
-        if 'H' not in pdb.atomtype[pdb.resname!="HOH"]:
-            args.explicitH = False
-
     logging.basicConfig(filename=output+'.log',level=logging.INFO,filemode='w',
                         format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
     logging.info('BEGIN')
@@ -134,6 +126,15 @@ if __name__ == "__main__":
     logging.info('Data filename: %s', args.data)
     logging.info('First data point: %s', args.n1)
     logging.info('Last data point: %s', args.n2)
+
+    pdb = saxs.PDB(args.file, ignore_waters=args.ignore_waters)
+
+    if args.explicitH:
+        #only use explicitH if H exists in the pdb file
+        #for atoms that are not waters
+        if 'H' not in pdb.atomtype[pdb.resname!="HOH"]:
+            args.explicitH = False
+
     logging.info('Use atomic B-factors: %s', args.use_b)
     logging.info('Use explicit Hydrogens: %s', args.explicitH)
     logging.info('Center PDB: %s', args.center)
@@ -221,112 +222,114 @@ if __name__ == "__main__":
             #set the radii for each atom type in the temporary pdb
             pdb.radius[pdb.atomtype==atom_types[i]] = radii_sf[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
 
-    print("Initial calculated average radii:")
-    logging.info("Initial calculated average radii:")
-    for i in range(len(atom_types)):
-        #try using a scale factor for radii instead
-        if atom_types[i]=='H' and not args.explicitH:
-            mean_radius = pdb.exvolHradius
-        else:
-            mean_radius = pdb.unique_radius[pdb.atomtype==atom_types[i]].mean()
-        print("%s: %.3f"%(atom_types[i],mean_radius))
-        logging.info("%s: %.3f"%(atom_types[i],mean_radius))
-
     pdb.exvol_type = args.exvol_type
 
     if not args.use_b:
         pdb.b *= 0
 
-    #several of the calculations (such as shell generation) work best when
-    #the voxel size is small, around 1 A or less, so assume that is the most 
-    #important feature by default meaning that the side should be adjusted 
-    #when giving nsamples, rather than adjusting the voxel size.
-    #by default, if no options are given, the most accurate thing to do would 
-    #be to estimate the side length as determined as above, assume the voxel 
-    #size is close to 1A, and then adjust nsamples accordingly.
-    #however, large particles might lead to prohibitively large nsamples
-    #so if nsamples would default to being larger than 256, max out nsamples 
-    #at 256, and reset the side length accordingly.
-    #beyond that, the user will simply have to set them manually.
+    #set some defaults for the grid size
+    #prioritize side length, since this has the biggest effect on the scattering
+    #profile calculation accuracy and the interpolation later.
+    optimal_side = saxs.estimate_side_from_pdb(pdb)
+    optimal_voxel = 1.0
+    optimal_nsamples = np.ceil(optimal_side/optimal_voxel).astype(int)
+    nsamples_limit = 256
 
     if args.voxel is not None and args.nsamples is not None and args.side is not None:
-        #if v, n, s are all given, voxel and nsamples dominates
-        voxel = args.voxel
+        #if v, n, s are all given, side and nsamples dominates
+        side = optimal_side
         nsamples = args.nsamples
-        side = voxel * nsamples
+        voxel = side / nsamples
     elif args.voxel is not None and args.nsamples is not None and args.side is None:
         #if v and n given, voxel and nsamples dominates
         voxel = args.voxel
         nsamples = args.nsamples
         side = voxel * nsamples
     elif args.voxel is not None and args.nsamples is None and args.side is not None:
-        #if v and s are given, adjust side to match nearest integer value of n
+        #if v and s are given, adjust voxel to match nearest integer value of n
         voxel = args.voxel
         side = args.side
         nsamples = np.ceil(side/voxel).astype(int)
-        side = voxel * nsamples
+        voxel = side / nsamples
     elif args.voxel is not None and args.nsamples is None and args.side is None:
-        #if v is given, estimate side, calculate nsamples.
+        #if v is given, voxel thus dominates, so estimate side, calculate nsamples.
         voxel = args.voxel
-        optimal_side = saxs.estimate_side_from_pdb(pdb)
         nsamples = np.ceil(optimal_side/voxel).astype(int)
         side = voxel * nsamples
         #if n > 256, adjust side length
-        if nsamples > 256:
-            nsamples = 256
+        if nsamples > nsamples_limit:
+            nsamples = nsamples_limit
             side = voxel * nsamples
-        if side < optimal_side:
-            print("side length may be too small and may result in undersampling errors.")
-        if side < 2/3*optimal_side:
-            print("Disabling interpolation of I_calc due to severe undersampling.")
-            args.Icalc_interpolation = False
     elif args.voxel is None and args.nsamples is not None and args.side is not None:
         #if n and s are given, set voxel size based on those
         nsamples = args.nsamples
         side = args.side
         voxel = side / nsamples
-        if voxel > 1.0:
-            print("Warning: voxel size is greater than 1 A. This may lead to less accurate I(q) estimates at high q.")
     elif args.voxel is None and args.nsamples is not None and args.side is None:
-        #if n is given, set voxel to 1, adjust side.
+        #if n is given, set side, adjust voxel.
         nsamples = args.nsamples
-        voxel = 1.0
-        side = voxel * nsamples
-        optimal_side = saxs.estimate_side_from_pdb(pdb)
-        if side < optimal_side:
-            print("side length may be too small and may result in undersampling errors.")
-        if side < 2/3*optimal_side:
-            print("Disabling interpolation of I_calc due to severe undersampling.")
-            args.Icalc_interpolation = False
-    elif args.voxel is None and args.nsamples is None and args.side is not None:
-        #if s is given, set voxel to 1, adjust nsamples
-        side = args.side
-        voxel = 1.0
-        nsamples = np.ceil(side/voxel).astype(int)
-        if nsamples > 256:
-            nsamples = 256
+        side = optimal_side
         voxel = side / nsamples
-        if voxel > 1.0:
-            print("Warning: voxel size is greater than 1 A. This may lead to less accurate I(q) estimates at high q.")
+    elif args.voxel is None and args.nsamples is None and args.side is not None:
+        #if s is given, set voxel, adjust nsamples, reset voxel if necessary
+        side = args.side
+        voxel = optimal_voxel
+        nsamples = np.ceil(side/voxel).astype(int)
+        if nsamples > nsamples_limit:
+            nsamples = nsamples_limit
+        voxel = side / nsamples
     elif args.voxel is None and args.nsamples is None and args.side is None:
-        #if none given, set voxel to 1, estimate side length, adjust nsamples
-        voxel = 1.0
-        optimal_side = saxs.estimate_side_from_pdb(pdb)
-        optimal_nsamples = np.ceil(optimal_side/voxel).astype(int)
-        if optimal_nsamples > 256:
-            nsamples = 256
-        else:
-            nsamples = optimal_nsamples
-        side = voxel * nsamples
-        if side < optimal_side:
-            print("This must be a large particle. To ensure the highest accuracy, manually set")
-            print("the -v option to 1 and the -s option to %.2f , " % optimal_side)
-            print("which will set -n option to %d and thus may take a long time to calculate." % (optimal_nsamples))
-            print("To avoid long computation times, the side length has been set to %.2f for now," % side)
-            print("which may be too small and may result in undersampling errors.")
-        if side < 2/3*optimal_side:
-            print("Disabling interpolation of I_calc due to severe undersampling.")
-            args.Icalc_interpolation = False
+        #if none given, set side and voxel, adjust nsamples, reset voxel if necessary
+        side = optimal_side
+        voxel = optimal_voxel
+        nsamples = np.ceil(side/voxel).astype(int)
+        if nsamples > nsamples_limit:
+            nsamples = nsamples_limit
+        voxel = side / nsamples
+
+    #make some warnings for certain cases
+    side_small_warning = """
+        Side length may be too small and may result in undersampling errors."""
+    side_way_too_small_warning = """
+        Disabling interpolation of I_calc due to severe undersampling."""
+    voxel_big_warning = """
+        Voxel size is greater than 1 A. This may lead to less accurate I(q) estimates at high q."""
+    nsamples_warning = """
+        To avoid long computation times and excessive memory requirements, the number of voxels
+        has been limited to 256 and the voxel size has been set to {v:.2f},
+        which may be too large and lead to less accurate I(q) estimates at high q.""".format(v=voxel)
+    optimal_values_warning = """
+        To ensure the highest accuracy, manually set the -s option to {os:.2f} and
+        the -v option to {ov:.2f}, which will set -n option to {on:d} and thus 
+        may take a long time to calculate and use a lot of memory.
+        If that requires too much computation, set -s first, and -n to the 
+        limit you prefer (n=512 may approach an upper limit for many computers).
+        """.format(os=optimal_side, ov=optimal_voxel, on=optimal_nsamples)
+
+    warn = False
+    if side < optimal_side:
+        print(side_small_warning)
+        warn = True
+    if side < 2/3*optimal_side:
+        print(side_way_too_small_warning)
+        args.Icalc_interpolation = False
+        warn = True
+    if voxel > optimal_voxel:
+        print(voxel_big_warning)
+        warn = True
+    if nsamples < optimal_nsamples:
+        print(nsamples_warning)
+        warn = True
+    if warn:
+        print(optimal_values_warning)
+
+    print("Optimal Side length >= %.2f" % optimal_side)
+    print("Optimal N samples   >= %d" % optimal_nsamples)
+    print("Optimal Voxel size  <= %.4f" % optimal_voxel)
+
+    logging.info('Optimal Side length (angstroms): %.2f', optimal_side)
+    logging.info('Optimal N samples: %d', optimal_nsamples)
+    logging.info('Optimal Voxel size: (angstroms): %.4f', optimal_voxel)
 
     halfside = side/2
     n = int(side/voxel)
@@ -346,13 +349,13 @@ if __name__ == "__main__":
     else:
         resolution = 0.0
 
-    print("Side length: %.2f" % side)
-    print("N samples:   %d" % n)
-    print("Voxel size:  %.4f" % dx)
+    print("Actual  Side length  = %.2f" % side)
+    print("Actual  N samples    = %d" % n)
+    print("Actual  Voxel size   = %.4f" % dx)
 
-    logging.info('Side length (angstroms): %.2f', side)
-    logging.info('N samples: %d', n)
-    logging.info('Voxel size: (angstroms): %.4f', dx)
+    logging.info('Actual  Side length (angstroms): %.2f', side)
+    logging.info('Actual  N samples: %d', n)
+    logging.info('Actual  Voxel size: (angstroms): %.4f', dx)
 
     #for now, add in resolution to pdb object to enable passing between functions easily.
     pdb.resolution = resolution
@@ -482,7 +485,7 @@ if __name__ == "__main__":
         Iq_exp = None
         fit_params = False
 
-    param_names = ['rho0', 'shell_scale_factor']
+    param_names = ['rho0', 'shell_contrast']
 
     #generate a set of bounds
     bounds = np.zeros((len(param_names),2))
@@ -499,14 +502,14 @@ if __name__ == "__main__":
         bounds[0,0] = args.rho0
         bounds[0,1] = args.rho0
     if args.fit_shell:
-        shell_scale_factor_guess = args.shell_scale_factor
+        shell_contrast_guess = args.shell_contrast
         bounds[1,0] = -np.inf
         bounds[1,1] = np.inf
         fit_params = True
     else:
-        shell_scale_factor_guess = args.shell_scale_factor
-        bounds[1,0] = shell_scale_factor_guess
-        bounds[1,1] = shell_scale_factor_guess
+        shell_contrast_guess = args.shell_contrast
+        bounds[1,0] = shell_contrast_guess
+        bounds[1,1] = shell_contrast_guess
 
     if args.data is None:
         #cannot fit parameters without data
@@ -531,6 +534,7 @@ if __name__ == "__main__":
     pdb2mrc_dict['ignore_waters'] = args.ignore_waters
     pdb2mrc_dict['rho0'] = rho0_guess
     pdb2mrc_dict['exvol_type'] = args.exvol_type
+    pdb2mrc_dict['shell_contrast'] = shell_contrast_guess
 
     #save an array of indices containing only desired q range for speed
     if args.data:
@@ -542,7 +546,7 @@ if __name__ == "__main__":
 
     params_guess = np.zeros(len(param_names))
     params_guess[0] = rho0_guess
-    params_guess[1] = shell_scale_factor_guess
+    params_guess[1] = shell_contrast_guess
 
     pdb2mrc_dict['penalty_weight'] = args.penalty_weight
     pdb2mrc_dict['penalty_weights'] = args.penalty_weights
@@ -575,7 +579,8 @@ if __name__ == "__main__":
         results = optimize.minimize(saxs.pdb2F_calc_score_with_modified_params, params_guess,
             args = (pdb2mrc_dict),
             bounds = bounds,
-            method=args.method, options={'adaptive': True}
+            method=args.method,
+            options=eval(args.minopts),
             # method='L-BFGS-B', options={'eps':0.001},
             )
         optimized_params = results.x
@@ -603,9 +608,6 @@ if __name__ == "__main__":
     qbinsc = pdb2mrc_dict['qbinsc']
     Iq_calc = np.vstack((qbinsc, I_calc, I_calc*.01 + I_calc[0]*0.002)).T
 
-    logging.info("Mean contrast of shell: %.4f e-/A^3" % (shell_mean_density/dV))
-
-    print("Mean contrast of shell: %.4f e-/A^3" % (shell_mean_density/dV))
     if args.data:
         optimized_chi2, exp_scale_factor, fit = saxs.calc_chi2(Iq_exp, Iq_calc,interpolation=args.Icalc_interpolation,return_sf=True,return_fit=True)
         print("Scale factor: %.5e " % exp_scale_factor)
@@ -613,8 +615,8 @@ if __name__ == "__main__":
         logging.info("Scale factor: %.5e " % exp_scale_factor)
         logging.info("chi2 of fit:  %.5e " % optimized_chi2)
 
-    print("Final calculated average radii:")
-    logging.info("Final calculated average radii:")
+    print("Calculated average radii:")
+    logging.info("Calculated average radii:")
     for i in range(len(atom_types)):
         #try using a scale factor for radii instead
         if atom_types[i]=='H' and not args.explicitH:
@@ -623,8 +625,9 @@ if __name__ == "__main__":
             mean_radius = pdb.radius[pdb.atomtype==atom_types[i]].mean()
         print("%s: %.3f"%(atom_types[i],mean_radius))
         logging.info("%s: %.3f"%(atom_types[i],mean_radius))
-    print("Final calculated excluded volume: %.2f"%(np.sum( 4/3*np.pi*pdb.radius**3) + 4/3*np.pi*pdb.exvolHradius**3*pdb.numH.sum()))
-    logging.info("Final calculated excluded volume: %.2f"%(np.sum( 4/3*np.pi*pdb.radius**3) + 4/3*np.pi*pdb.exvolHradius**3*pdb.numH.sum()))
+
+    print("Calculated excluded volume: %.2f"%(np.sum( 4/3*np.pi*pdb.radius**3) + 4/3*np.pi*pdb.exvolHradius**3*pdb.numH.sum()))
+    logging.info("Calculated excluded volume: %.2f"%(np.sum( 4/3*np.pi*pdb.radius**3) + 4/3*np.pi*pdb.exvolHradius**3*pdb.numH.sum()))
 
     end = time.time()
     print("Total calculation time: %.3f seconds" % (end-start))
