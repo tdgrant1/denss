@@ -67,7 +67,7 @@ parser.add_argument("-fit_rho0", "--fit_rho0","-fit_rho0_on", "--fit_rho0_on", d
 parser.add_argument("-fit_rho0_off", "--fit_rho0_off", dest="fit_rho0", action="store_false", help="Do not fit rho0, the bulk solvent density (optional, default=True)")
 parser.add_argument("-fit_shell", "--fit_shell","-fit_shell_on", "--fit_shell_on", dest="fit_shell", action="store_true", help="Fit hydration shell parameters (optional, default=True)")
 parser.add_argument("-fit_shell_off", "--fit_shell_off", dest="fit_shell", action="store_false", help="Do not fit hydration shell parameters (optional, default=True)")
-parser.add_argument("-shell_contrast", "--shell_contrast", dest="shell_contrast", default=0.03, type=float, help="Initial mean contrast of hydration shell in e-/A^3 (default=0.03)")
+parser.add_argument("-drho","--drho","-shell_contrast", "--shell_contrast", dest="shell_contrast", default=0.03, type=float, help="Initial mean contrast of hydration shell in e-/A^3 (default=0.03)")
 parser.add_argument("-shell_type", "--shell_type", default="gaussian", type=str, help="Type of hydration shell (gaussian (default) or uniform)")
 parser.add_argument("-shell_mrcfile", "--shell_mrcfile", default=None, type=str, help="Filename of hydration shell mrc file (default=None)")
 parser.add_argument("-p", "-penalty_weight", "--penalty_weight", default=0., type=float, help="Overall penalty weight for fitting parameters (default=0)")
@@ -412,12 +412,11 @@ if __name__ == "__main__":
         #the default is gaussian type shell
         #generate initial hydration shell
         thickness = max(1.0,dx) #in angstroms
-        invacuo_shell_sigma = resolution / dx #convert to pixel units
-        exvol_shell_sigma = 0.85 / dx #convert to pixel units
+        shell_sigma = (resolution+dx) / dx #convert to pixel units
 
         uniform_shell = saxs.calc_uniform_shell(pdb,x,y,z,thickness=thickness)
         uniform_shell *= 1.0/uniform_shell.sum() #scale to one total
-        rho_shell = saxs.calc_gaussian_shell(sigma=invacuo_shell_sigma,uniform_shell=uniform_shell)
+        rho_shell = saxs.calc_gaussian_shell(sigma=shell_sigma,uniform_shell=uniform_shell)
 
         #remove shell density that overlaps with protein
         protein = saxs.pdb2support_fast(pdb,x,y,z,radius=pdb.unique_radius,probe=0.0)
