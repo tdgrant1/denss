@@ -2820,6 +2820,7 @@ class PDB(object):
         elif natoms is not None:
             self.generate_pdb_from_defaults(natoms)
         self.rij = None
+        self.radius = None
 
     def read_pdb(self, filename, ignore_waters=False):
         self.natoms = 0
@@ -3279,7 +3280,8 @@ class PDB2MRC(object):
         self.center_coords = center_coords
         if self.center_coords:
             self.pdb.coords -= self.pdb.coords.mean(axis=0)
-        self.pdb.lookup_unique_volume()
+        if self.pdb.radius is None:
+            self.pdb.lookup_unique_volume()
         if radii_sf is None:
             self.radii_sf = np.ones(len(self.modifiable_atom_types))
             for i in range(len(self.modifiable_atom_types)):

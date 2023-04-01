@@ -141,9 +141,7 @@ if __name__ == "__main__":
     else:
         # pdb.calculate_unique_volume(use_b=args.use_b)
         pdb.lookup_unique_volume()
-        # print(pdb.unique_volume)
         pdb.radius = np.copy(pdb.unique_radius)
-
 
     pdb2mrc = saxs.PDB2MRC(
         pdb=pdb,
