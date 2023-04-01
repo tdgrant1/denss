@@ -3498,13 +3498,16 @@ class PDB2MRC(object):
             self.resolution = 0.30 * self.dx #this helps with voxel sampling issues 
 
     def calculate_invacuo_density(self):
+        print('Calculating in vacuo density...')
         self.rho_invacuo, self.support = pdb2map_multigauss(self.pdb,
             x=self.x,y=self.y,z=self.z,
             resolution=self.resolution,
             use_b=self.use_b,
             ignore_waters=self.ignore_waters)
+        print('Finished in vacuo density.')
 
     def calculate_excluded_volume(self):
+        print('Calculating excluded volume...')
         if self.exvol_type == "gaussian":
             #generate excluded volume assuming gaussian dummy atoms
             #this function outputs in electron count units
@@ -3527,8 +3530,10 @@ class PDB2MRC(object):
             sigma = 1.0/self.dx #best exvol sigma to match water molecule exvol thing is 1 A
             self.rho_exvol = ndimage.gaussian_filter(self.supportexvol*1.0,sigma=sigma,mode='wrap')
             self.rho_exvol *= ne/self.rho_exvol.sum() #put in electron count units
+        print('Finished excluded volume.')
 
     def calculate_hydration_shell(self):
+        print('Calculating hydration shell...')
         #calculate the volume of a shell of water diameter
         #this assumes a single layer of hexagonally packed water molecules on the surface
         self.r_water = r_water = 1.4 
@@ -3576,8 +3581,10 @@ class PDB2MRC(object):
             print("Error: no valid shell_type given. Disabling hydration shell.")
             rho_shell = self.x*0.0
         self.rho_shell = rho_shell
+        print('Finished hydration shell.')
 
     def calculate_structure_factors(self):
+        print('Calculating structure factors...')
         #F_invacuo
         self.F_invacuo = myfftn(self.rho_invacuo)
         #perform B-factor sharpening to correct for B-factor sampling workaround
@@ -3592,8 +3599,10 @@ class PDB2MRC(object):
 
         #shell invacuo F_shell
         self.F_shell = myfftn(self.rho_shell)
+        print('Finished structure factors...')
 
     def load_data(self, filename=None):
+        print('Loading data...')
         if filename is None and self.data_filename is None:
             print("ERROR: No data filename given.")
         elif filename is None:
@@ -3632,6 +3641,7 @@ class PDB2MRC(object):
             self.fit_params = False
 
     def minimize_parameters(self):
+        print('Minimizing parameters...')
         #generate a set of bounds
         self.bounds = np.zeros((len(self.param_names),2))
 
@@ -3684,6 +3694,7 @@ class PDB2MRC(object):
             optimized_chi2 = "None"
         self.params = self.optimized_params = optimized_params
         self.optimized_chi2 = optimized_chi2
+        print('Finished minimizing parameters.')
 
     def calc_score_with_modified_params(self, params):
         self.calc_I_with_modified_params(params)

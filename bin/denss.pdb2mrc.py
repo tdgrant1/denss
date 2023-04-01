@@ -220,22 +220,16 @@ if __name__ == "__main__":
     logging.info('Actual  N samples:   %d', pdb2mrc.n)
     logging.info('Actual  Voxel size:  %.4f', pdb2mrc.dx)
 
-    print('Calculating in vacuo density...')
     logging.info('Calculating in vacuo density...')
     pdb2mrc.calculate_invacuo_density()
-    print('Finished in vacuo density.')
     logging.info('Finished in vacuo density.')
 
-    print('Calculating excluded volume...')
     logging.info('Calculating excluded volume...')
     pdb2mrc.calculate_excluded_volume()
-    print('Finished excluded volume.')
     logging.info('Finished excluded volume.')
 
-    print('Calculating hydration shell...')
     logging.info('Calculating hydration shell...')
     pdb2mrc.calculate_hydration_shell()
-    print('Finished hydration shell.')
     logging.info('Finished hydration shell.')
 
     pdb2mrc.calculate_structure_factors()
@@ -319,6 +313,7 @@ if __name__ == "__main__":
             plt.show()
 
     #write output
+    print('Writing density map to %s_insolvent.mrc file.'%output)
     saxs.write_mrc(pdb2mrc.rho_insolvent/pdb2mrc.dV,pdb2mrc.side,output+"_insolvent.mrc")
     if args.write_extras:
         saxs.write_mrc(pdb2mrc.rho_invacuo/pdb2mrc.dV,pdb2mrc.side,output+"_invacuo.mrc")
