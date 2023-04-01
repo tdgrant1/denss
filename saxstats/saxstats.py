@@ -3321,7 +3321,7 @@ class PDB2MRC(object):
         self.min_method = min_method
         self.min_opts = min_opts
         self.param_names = ['rho0', 'shell_contrast']
-        self.params = [self.rho0, self.shell_contrast]
+        self.params = np.array([self.rho0, self.shell_contrast])
 
     def scale_radii(self):
         """Set all the modifiable atom type radii in the pdb"""
@@ -3492,6 +3492,10 @@ class PDB2MRC(object):
         self.qblravel = qblravel
         self.xcount = xcount
 
+        #save an array of indices containing only desired q range for speed
+        qmax4calc = self.qx_.max()*1.1
+        self.qidx = np.where((self.qr<=qmax4calc))
+
     def calculate_resolution(self):
         if self.dx is None:
             #if make_grids has not been run yet, run it
@@ -3642,8 +3646,14 @@ class PDB2MRC(object):
             self.sigq_exp = None
             self.fit_params = False
 
+        #save an array of indices containing only desired q range for speed
+        if self.data_filename:
+            qmax4calc = self.q_exp.max()*1.1
+        else:
+            qmax4calc = self.qx_.max()*1.1
+        self.qidx = np.where((self.qr<=qmax4calc))
+
     def minimize_parameters(self):
-        print('Minimizing parameters...')
         #generate a set of bounds
         self.bounds = np.zeros((len(self.param_names),2))
 
@@ -3668,19 +3678,11 @@ class PDB2MRC(object):
             #disable all fitting if requested
             self.fit_params = False
 
-        #save an array of indices containing only desired q range for speed
-        if self.data_filename:
-            qmax4calc = self.q_exp.max()*1.1
-        else:
-            qmax4calc = self.qx_.max()*1.1
-        self.qidx = np.where((self.qr<=qmax4calc))
-
         self.params_guess = self.params
+        self.params_target = self.params_guess
 
         if self.fit_params:
             print('Optimizing parameters...')
-            logging.info('Optimizing parameters...')
-            self.params_target = self.params_guess
             print(["scale_factor"], self.param_names, ["penalty"], ["chi2"])
             print("-"*100)
             results = optimize.minimize(self.calc_score_with_modified_params, self.params_guess,
@@ -3689,14 +3691,14 @@ class PDB2MRC(object):
                 options=eval(self.min_opts),
                 # method='L-BFGS-B', options={'eps':0.001},
                 )
-            optimized_params = results.x
-            optimized_chi2 = results.fun
+            self.optimized_params = results.x
+            self.optimized_chi2 = results.fun
+            print('Finished minimizing parameters.')
         else:
-            optimized_params = self.params_guess
-            optimized_chi2 = "None"
-        self.params = self.optimized_params = optimized_params
-        self.optimized_chi2 = optimized_chi2
-        print('Finished minimizing parameters.')
+            self.calc_score_with_modified_params(self.params)
+            self.optimized_params = self.params_guess
+            self.optimized_chi2 = self.chi2
+        self.params = self.optimized_params 
 
     def calc_score_with_modified_params(self, params):
         self.calc_I_with_modified_params(params)

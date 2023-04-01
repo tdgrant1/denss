@@ -232,9 +232,10 @@ if __name__ == "__main__":
 
     pdb2mrc.calculate_structure_factors()
 
-    pdb2mrc.load_data()
-
-    pdb2mrc.minimize_parameters()
+    if args.data is not None:
+        pdb2mrc.load_data()
+        logging.info('Optimizing parameters...')
+        pdb2mrc.minimize_parameters()
 
     # logging.info('Estimated number of waters in shell: %d', N_H2O_in_shell)
     logging.info('Final Parameter Values:')
@@ -254,6 +255,10 @@ if __name__ == "__main__":
         print("chi2 of fit:  %.5e " % optimized_chi2)
         logging.info("Scale factor: %.5e " % exp_scale_factor)
         logging.info("chi2 of fit:  %.5e " % optimized_chi2)
+    else:
+        pdb2mrc.calc_I_with_modified_params(pdb2mrc.params)
+        pdb2mrc.Iq_calc = np.vstack((pdb2mrc.qbinsc, pdb2mrc.I_calc, pdb2mrc.I_calc*.01 + pdb2mrc.I_calc[0]*0.002)).T
+
 
     print("Calculated average radii:")
     logging.info("Calculated average radii:")
@@ -277,7 +282,8 @@ if __name__ == "__main__":
 
     if args.data is not None:
         # fit = np.vstack((q_exp_to_q0, I_exp_to_q0, sigq_exp_to_q0, I_calc)).T
-        header_fit = header + '\n q, I, error, fit ; chi2= %.3e'%pdb2mrc.optimized_chi2
+        chi2 = pdb2mrc.optimized_chi2
+        header_fit = header + '\n q, I, error, fit ; chi2= %.3e'%(chi2 if chi2 is not None else 0)
         np.savetxt(output+'.pdb2mrc2sas.fit', fit, delimiter=' ',fmt='%.5e',header=header_fit)
 
         if args.plot:
