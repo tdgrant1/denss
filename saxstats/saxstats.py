@@ -2994,19 +2994,6 @@ class PDB(object):
             dist = spatial.distance.cdist(center[None,:], xyz)[0].reshape(n,n,n)
             #now, any elements of minigrid that have a dist less than ra make true
             minigrid[dist<=ra] = True
-            #for convenience, grab all the distances for just this particular atom
-            # distances = self.rij[i] #this is too memory intensive for larger molecules
-            #generate a list of the sum of the vdW radius of this atom and each other atom
-            #this generates a maximum distance for which the atoms can be separated to be considered close
-            # vdW_sum = ra + self.vdW
-            # if use_b:
-            #     vdW_sum += B2u(self.b)
-            # vdW_sum[i] = 0 #ignore this particular atom to itself
-            #find all atoms that are closer than the corresponding vdW_sum, should be just a few
-            # idx_close = np.where((distances<=vdW_sum)&(distances>0))[0]
-            #for each of those close atoms, calculate the overlapping volume
-            # nclose = len(idx_close)
-            # print()
             #grab atoms nearby this atom just based on xyz coordinates
             #first, recenter all coordinates in this frame
             coordstmp = self.coords - p
@@ -3056,17 +3043,30 @@ class PDB(object):
             #add up all the remaining voxels in the minigrid to get the volume
             #also correct for limited voxel size
             self.unique_volume[i] = minigrid.sum()*dV * correction
-            #create a modified radius based on that modified volume
-            self.unique_radius[i] = sphere_radius_from_volume(self.unique_volume[i])
-            self.radius[i] = self.unique_radius[i]
+        self.volume = np.copy(self.unique_volume)
+        #create a modified radius based on that modified volume
+        self.unique_radius = sphere_radius_from_volume(self.unique_volume)
+        self.radius = np.copy(self.unique_radius)
         print()
+
+    def lookup_unique_volume(self):
+        self.unique_volume = np.zeros(self.natoms)
+        print("Looking up unique atomic volumes...")
+        for i in range(self.natoms):
+            try:
+                self.unique_volume[i] = atomic_volumes[self.resname[i]][self.atomname[i]]
+            except:
+                print("%s:%s not found in volumes dictionary."%(self.resname[i],self.atomname[i]))
+                print("Setting volume to ALA:CA.")
+                self.unique_volume[i] = atomic_volumes['ALA']['CA']
+        self.volume = np.copy(self.unique_volume)
+        self.unique_radius = sphere_radius_from_volume(self.unique_volume)
+        self.radius = np.copy(self.unique_radius)
 
     def add_ImplicitH(self):
         bondlist_resNorm = protein_residues.normal
         bondlist_resCterm = protein_residues.c_terminal
         bondlist_resNterm = protein_residues.n_terminal
-        
-        self.implicitH = True
 
         if 'H' in self.atomtype:
             self.remove_by_atomtype('H')
@@ -3225,6 +3225,528 @@ def center_of_circle_from_sphere_intersection(x1,y1,z1,r1,x2,y2,z2,r2,a,b,c,d):
     zc = z1 + t*(z2-z1)
     return (xc,yc,zc)
 
+class PDB2MRC(object):
+    def __init__(self, 
+        pdb,
+        ignore_waters=True,
+        explicitH=True,
+        modifiable_atom_types=None,
+        center_coords=True,
+        radii_sf=None,
+        exvol_type='gaussian',
+        use_b=False,
+        resolution=None,
+        voxel=None,
+        side=None,
+        nsamples=None,
+        rho0=0.334,
+        shell_contrast=0.03,
+        shell_mrcfile=None,
+        shell_type='gaussian',
+        Icalc_interpolation=True,
+        data_filename=None,
+        data_units="a",
+        n1=None,
+        n2=None,
+        penalty_weight=0.0,
+        penalty_weights=[1.0,0.0],
+        fit_rho0=True,
+        fit_shell=True,
+        fit_all=True,
+        min_method='Nelder-Mead',
+        min_opts='{"adaptive": True}',
+        ):
+        self.pdb = pdb
+        self.ignore_waters = ignore_waters
+        self.explicitH = explicitH
+        if self.explicitH is None:
+            #only use explicitH if H exists in the pdb file
+            #for atoms that are not waters
+            if 'H' not in self.pdb.atomtype: #[pdb.resname!="HOH"]:
+                self.explicitH = False
+            else:
+                self.explicitH = True
+        if not self.explicitH:
+            self.pdb.add_ImplicitH()
+            print("Implicit hydrogens used")
+        #add a line here that will delete alternate conformations if they exist
+        if 'B' in self.pdb.atomalt:
+            self.pdb.remove_atomalt()
+        if modifiable_atom_types is None:
+            self.modifiable_atom_types = ['H', 'C', 'N', 'O']
+        else:
+            self.modifiable_atom_types = modifiable_atom_types
+        self.center_coords = center_coords
+        if self.center_coords:
+            self.pdb.coords -= self.pdb.coords.mean(axis=0)
+        if radii_sf is None:
+            self.radii_sf = np.ones(len(self.modifiable_atom_types))
+            for i in range(len(self.modifiable_atom_types)):
+                if self.modifiable_atom_types[i] in radii_sf_dict.keys():
+                    self.radii_sf[i] = radii_sf_dict[self.modifiable_atom_types[i]]
+                else:
+                    self.radii_sf[i] = 1.0
+        else:
+            self.radii_sf = radii_sf
+        self.exvol_type = exvol_type
+        self.use_b = use_b
+        if not self.use_b:
+            self.pdb.b *= 0
+        #calculate some optimal grid values
+        self.optimal_side = estimate_side_from_pdb(self.pdb)
+        self.optimal_voxel = 1.0
+        self.optimal_nsamples = np.ceil(self.optimal_side/self.optimal_voxel).astype(int)
+        self.nsamples_limit = 256
+        self.resolution = resolution
+        self.voxel=voxel
+        self.side=side
+        self.nsamples=nsamples
+        self.rho0 = rho0
+        self.shell_contrast = shell_contrast
+        self.shell_mrcfile = shell_mrcfile
+        self.shell_type = shell_type
+        self.Icalc_interpolation=Icalc_interpolation
+        self.data_filename = data_filename
+        self.data_units = data_units
+        self.n1 = n1
+        self.n2 = n2
+        self.penalty_weight = penalty_weight
+        self.penalty_weights = penalty_weights
+        self.fit_rho0 = fit_rho0
+        self.fit_shell = fit_shell
+        self.fit_all = fit_all
+        self.min_method = min_method
+        self.min_opts = min_opts
+        self.param_names = ['rho0', 'shell_contrast']
+        self.params = [self.rho0, self.shell_contrast]
+
+    def scale_radii(self):
+        """Set all the modifiable atom type radii in the pdb"""
+        for i in range(len(self.modifiable_atom_types)):
+            if not self.explicitH:
+                if self.modifiable_atom_types[i]=='H':
+                    self.pdb.exvolHradius = radius['H'] * self.radii_sf[i]
+                else:
+                    self.pdb.radius[self.pdb.atomtype==self.modifiable_atom_types[i]] = self.radii_sf[i] * self.pdb.unique_radius[self.pdb.atomtype==self.modifiable_atom_types[i]]
+            else:
+                self.pdb.radius[self.pdb.atomtype==self.modifiable_atom_types[i]] = self.radii_sf[i] * self.pdb.unique_radius[self.pdb.atomtype==self.modifiable_atom_types[i]]
+
+    def calculate_average_radii(self):
+        self.mean_radius = np.ones(len(self.modifiable_atom_types))
+        for i in range(len(self.modifiable_atom_types)):
+            #try using a scale factor for radii instead
+            if self.modifiable_atom_types[i]=='H' and not self.explicitH:
+                self.mean_radius[i] = self.pdb.exvolHradius
+            else:
+                self.mean_radius[i] = self.pdb.radius[self.pdb.atomtype==self.modifiable_atom_types[i]].mean()
+
+    def make_grids(self):
+        optimal_side = self.optimal_side
+        optimal_nsamples = self.optimal_nsamples
+        optimal_voxel = self.optimal_voxel
+        optimal_nsamples = self.optimal_nsamples
+        nsamples_limit = self.nsamples_limit
+        voxel = self.voxel
+        side = self.side
+        nsamples = self.nsamples
+        if voxel is not None and nsamples is not None and side is not None:
+            #if v, n, s are all given, side and nsamples dominates
+            side = optimal_side
+            nsamples = nsamples
+            voxel = side / nsamples
+        elif voxel is not None and nsamples is not None and side is None:
+            #if v and n given, voxel and nsamples dominates
+            voxel = voxel
+            nsamples = nsamples
+            side = voxel * nsamples
+        elif voxel is not None and nsamples is None and side is not None:
+            #if v and s are given, adjust voxel to match nearest integer value of n
+            voxel = voxel
+            side = side
+            nsamples = np.ceil(side/voxel).astype(int)
+            voxel = side / nsamples
+        elif voxel is not None and nsamples is None and side is None:
+            #if v is given, voxel thus dominates, so estimate side, calculate nsamples.
+            voxel = voxel
+            nsamples = np.ceil(optimal_side/voxel).astype(int)
+            side = voxel * nsamples
+            #if n > 256, adjust side length
+            if nsamples > nsamples_limit:
+                nsamples = nsamples_limit
+                side = voxel * nsamples
+        elif voxel is None and nsamples is not None and side is not None:
+            #if n and s are given, set voxel size based on those
+            nsamples = nsamples
+            side = side
+            voxel = side / nsamples
+        elif voxel is None and nsamples is not None and side is None:
+            #if n is given, set side, adjust voxel.
+            nsamples = nsamples
+            side = optimal_side
+            voxel = side / nsamples
+        elif voxel is None and nsamples is None and side is not None:
+            #if s is given, set voxel, adjust nsamples, reset voxel if necessary
+            side = side
+            voxel = optimal_voxel
+            nsamples = np.ceil(side/voxel).astype(int)
+            if nsamples > nsamples_limit:
+                nsamples = nsamples_limit
+            voxel = side / nsamples
+        elif voxel is None and nsamples is None and side is None:
+            #if none given, set side and voxel, adjust nsamples, reset voxel if necessary
+            side = optimal_side
+            voxel = optimal_voxel
+            nsamples = np.ceil(side/voxel).astype(int)
+            if nsamples > nsamples_limit:
+                nsamples = nsamples_limit
+            voxel = side / nsamples
+
+        #make some warnings for certain cases
+        side_small_warning = """
+            Side length may be too small and may result in undersampling errors."""
+        side_way_too_small_warning = """
+            Disabling interpolation of I_calc due to severe undersampling."""
+        voxel_big_warning = """
+            Voxel size is greater than 1 A. This may lead to less accurate I(q) estimates at high q."""
+        nsamples_warning = """
+            To avoid long computation times and excessive memory requirements, the number of voxels
+            has been limited to 256 and the voxel size has been set to {v:.2f},
+            which may be too large and lead to less accurate I(q) estimates at high q.""".format(v=voxel)
+        optimal_values_warning = """
+            To ensure the highest accuracy, manually set the -s option to {os:.2f} and
+            the -v option to {ov:.2f}, which will set -n option to {on:d} and thus 
+            may take a long time to calculate and use a lot of memory.
+            If that requires too much computation, set -s first, and -n to the 
+            limit you prefer (n=512 may approach an upper limit for many computers).
+            """.format(os=optimal_side, ov=optimal_voxel, on=optimal_nsamples)
+
+        warn = False
+        if side < optimal_side:
+            print(side_small_warning)
+            warn = True
+        if side < 2/3*optimal_side:
+            print(side_way_too_small_warning)
+            args.Icalc_interpolation = False
+            warn = True
+        if voxel > optimal_voxel:
+            print(voxel_big_warning)
+            warn = True
+        if nsamples < optimal_nsamples:
+            print(nsamples_warning)
+            warn = True
+        if warn:
+            print(optimal_values_warning)
+
+        #make the real space grid
+        halfside = side/2
+        n = int(side/voxel)
+        #want n to be even for speed/memory optimization with the FFT, 
+        #ideally a power of 2, but wont enforce that
+        if n%2==1: n += 1
+        dx = side/n
+        dV = dx**3
+        x_ = np.linspace(-halfside,halfside,n)
+        x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
+        xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
+
+        #make the reciprocal space grid
+        df = 1/side
+        qx_ = np.fft.fftfreq(x_.size)*n*df*2*np.pi
+        qx, qy, qz = np.meshgrid(qx_,qx_,qx_,indexing='ij')
+        qr = np.sqrt(qx**2+qy**2+qz**2)
+        qmax = np.max(qr)
+        qstep = np.min(qr[qr>0]) - 1e-8
+        nbins = int(qmax/qstep)
+        qbins = np.linspace(0,nbins*qstep,nbins+1)
+        #create an array labeling each voxel according to which qbin it belongs
+        qbin_labels = np.searchsorted(qbins,qr,"right")
+        qbin_labels -= 1
+        qblravel = qbin_labels.ravel()
+        xcount = np.bincount(qblravel)
+        #create modified qbins and put qbins in center of bin rather than at left edge of bin.
+        qbinsc = mybinmean(qr.ravel(), qblravel, xcount=xcount, DENSS_GPU=False)
+        q_calc = np.copy(qbinsc)
+
+        #make attributes for all that
+        self.halfside = halfside
+        self.side = side
+        self.n = n
+        self.dx = dx
+        self.dV = dV
+        self.x_ = x_
+        self.x, self.y, self.z = x,y,z
+        self.xyz = xyz
+        self.df = df
+        self.qx_ = qx_
+        self.qx, self.qy, self.qz = qx, qy, qz
+        self.qr = qr
+        self.qmax = qmax
+        self.qstep = qstep
+        self.nbins = nbins
+        self.qbins = qbins
+        self.qbinsc = qbinsc
+        self.q_calc = q_calc
+        self.qblravel = qblravel
+        self.xcount = xcount
+
+    def calculate_resolution(self):
+        if self.dx is None:
+            #if make_grids has not been run yet, run it
+            self.make_grids()
+        if self.resolution is None and not self.use_b:
+            self.resolution = 0.30 * self.dx #this helps with voxel sampling issues 
+
+    def calculate_invacuo_density(self):
+        self.rho_invacuo, self.support = pdb2map_multigauss(self.pdb,
+            x=self.x,y=self.y,z=self.z,
+            resolution=self.resolution,
+            use_b=self.use_b,
+            ignore_waters=self.ignore_waters)
+
+    def calculate_excluded_volume(self):
+        if self.exvol_type == "gaussian":
+            #generate excluded volume assuming gaussian dummy atoms
+            #this function outputs in electron count units
+            self.rho_exvol, self.supportexvol = pdb2map_simple_gauss_by_radius(self.pdb,
+                self.x,self.y,self.z,
+                rho0=self.rho0,
+                ignore_waters=self.ignore_waters)
+        elif self.exvol_type == "flat":
+            #generate excluded volume assuming flat solvent
+            if not self.pdb.explicitH:
+                v = 4*np.pi/3*self.pdb.vdW**3 + self.pdb.numH*4/3*np.pi*vdW['H']**3
+                radjusted = sphere_radius_from_volume(v)
+            else:
+                radjusted = self.pdb.vdW
+            self.supportexvol = pdb2support_fast(self.pdb,self.x,self.y,self.z,radius=radjusted,probe=B2u(self.pdb.b))
+            #estimate excluded volume electron count based on unique volumes of atoms
+            v = np.sum(4/3*np.pi*self.pdb.radius**3)
+            ne = v * self.rho0
+            #blur the exvol to have gaussian-like edges
+            sigma = 1.0/self.dx #best exvol sigma to match water molecule exvol thing is 1 A
+            self.rho_exvol = ndimage.gaussian_filter(self.supportexvol*1.0,sigma=sigma,mode='wrap')
+            self.rho_exvol *= ne/self.rho_exvol.sum() #put in electron count units
+
+    def calculate_hydration_shell(self):
+        #calculate the volume of a shell of water diameter
+        #this assumes a single layer of hexagonally packed water molecules on the surface
+        self.r_water = r_water = 1.4 
+        uniform_shell = calc_uniform_shell(self.pdb,self.x,self.y,self.z,thickness=self.r_water)
+        self.water_shell_idx = water_shell_idx = uniform_shell.astype(bool)
+        V_shell = water_shell_idx.sum() * self.dV
+        N_H2O_in_shell = 2/(3**0.5) * V_shell / (2*r_water)**3
+        V_H2O = 4/3*np.pi*r_water**3
+        V_H2O_in_shell = N_H2O_in_shell * V_H2O
+
+        if self.shell_mrcfile is not None:
+            #allow user to provide mrc filename to read in a custom shell
+            rho_shell, sidex = read_mrc(self.shell_mrcfile)
+            rho_shell *= self.dV #assume mrc file is in units of density, convert to electron count
+            print(sidex, self.side)
+            if (sidex != self.side) or (rho_shell.shape[0] != self.x.shape[0]):
+                print("Error: shell_mrcfile does not match grid.")
+                print("Use denss.mrcops.py to resample onto the desired grid.")
+                exit()
+        elif self.shell_type == "gaussian":
+            #the default is gaussian type shell
+            #generate initial hydration shell
+            thickness = max(1.0,self.dx) #in angstroms
+            #calculate euclidean distance transform of grid to water shell center
+            #where the water shell center is the surface of the protein plus a water radius
+            protein_idx = pdb2support_fast(self.pdb,self.x,self.y,self.z,radius=self.pdb.vdW,probe=0)
+            protein_rw_idx = calc_uniform_shell(self.pdb,self.x,self.y,self.z,thickness=self.r_water,distance=self.r_water).astype(bool)
+            print('Calculating dist transform...')
+            dist = ndimage.distance_transform_edt(~protein_rw_idx)
+            #look at only the voxels near the shell for efficiency
+            rho_shell = np.zeros(self.x.shape)
+            print('Calculating shell values...')
+            rho_shell[dist<2*r_water] = realspace_formfactor(element='O',r=dist[dist<2*r_water],B=u2B(0.5))
+            #zero out any voxels overlapping protein atoms
+            rho_shell[protein_idx] = 0.0
+            #estimate initial shell scale based on contrast using mean density
+            shell_mean_density = np.mean(rho_shell[water_shell_idx]) / self.dV
+            #scale the mean density of the invacuo shell to match the desired mean density
+            rho_shell *= self.shell_contrast / shell_mean_density
+            #shell should still be in electron count units
+        elif self.shell_type == "uniform":
+            rho_shell = water_shell_idx * (self.shell_contrast)
+            rho_shell *= self.dV #convert to electron units
+        else:
+            print("Error: no valid shell_type given. Disabling hydration shell.")
+            rho_shell = self.x*0.0
+        self.rho_shell = rho_shell
+
+    def calculate_structure_factors(self):
+        #F_invacuo
+        self.F_invacuo = myfftn(self.rho_invacuo)
+        #perform B-factor sharpening to correct for B-factor sampling workaround
+        if self.resolution > 2:
+            Bsharp = -u2B(2)
+        else:
+            Bsharp = -u2B(self.resolution)
+        self.F_invacuo *= np.exp(-(Bsharp)*(self.qr/(4*np.pi))**2)
+
+        #exvol F_exvol
+        self.F_exvol = myfftn(self.rho_exvol)
+
+        #shell invacuo F_shell
+        self.F_shell = myfftn(self.rho_shell)
+
+    def load_data(self, filename=None):
+        if filename is None and self.data_filename is None:
+            print("ERROR: No data filename given.")
+        elif filename is None:
+            fn = self.data_filename
+        else:
+            fn = filename
+            self.data_filename = filename
+        if self.data_filename is not None:
+            Iq_exp = np.genfromtxt(fn, invalid_raise = False, usecols=(0,1,2))
+            if len(Iq_exp.shape) < 2:
+                print("Invalid data format. Data file must have 3 columns: q, I, errors.")
+                exit()
+            if Iq_exp.shape[1] < 3:
+                print("Not enough columns (data must have 3 columns: q, I, errors).")
+                exit()
+            Iq_exp = Iq_exp[~np.isnan(Iq_exp).any(axis = 1)]
+            #get rid of any data points equal to zero in the intensities or errors columns
+            idx = np.where((Iq_exp[:,1]!=0)&(Iq_exp[:,2]!=0))
+            Iq_exp = Iq_exp[idx]
+            if self.data_units == "nm":
+                Iq_exp[:,0] *= 0.1
+            Iq_exp_orig = np.copy(Iq_exp)
+            if self.n1 is None:
+                self.n1 = 0
+            if self.n2 is None:
+                self.n2 = len(Iq_exp[:,0])
+            self.Iq_exp = Iq_exp[self.n1:self.n2]
+            self.q_exp = self.Iq_exp[:,0]
+            self.I_exp = self.Iq_exp[:,1]
+            self.sigq_exp = self.Iq_exp[:,2]
+        else:
+            self.Iq_exp = None
+            self.q_exp = None
+            self.I_exp = None
+            self.sigq_exp = None
+            self.fit_params = False
+
+    def minimize_parameters(self):
+        #generate a set of bounds
+        self.bounds = np.zeros((len(self.param_names),2))
+
+        #don't bother fitting if none is requested (default)
+        self.fit_params = False
+        if self.fit_rho0:
+            self.bounds[0,0] = 0
+            self.bounds[0,1] = np.inf
+            self.fit_params = True
+        else:
+            self.bounds[0,0] = self.rho0
+            self.bounds[0,1] = self.rho0
+        if self.fit_shell:
+            self.bounds[1,0] = -np.inf
+            self.bounds[1,1] = np.inf
+            self.fit_params = True
+        else:
+            self.bounds[1,0] = self.shell_contrast
+            self.bounds[1,1] = self.shell_contrast
+
+        if not self.fit_all:
+            #disable all fitting if requested
+            self.fit_params = False
+
+        #save an array of indices containing only desired q range for speed
+        if self.data_filename:
+            qmax4calc = self.q_exp.max()*1.1
+        else:
+            qmax4calc = self.qx_.max()*1.1
+        self.qidx = np.where((self.qr<=qmax4calc))
+
+        self.params_guess = self.params
+
+        if self.fit_params:
+            print('Optimizing parameters...')
+            logging.info('Optimizing parameters...')
+            self.params_target = self.params_guess
+            print(["scale_factor"], self.param_names, ["penalty"], ["chi2"])
+            print("-"*100)
+            results = optimize.minimize(self.calc_score_with_modified_params, self.params_guess,
+                bounds = self.bounds,
+                method=self.min_method,
+                options=eval(self.min_opts),
+                # method='L-BFGS-B', options={'eps':0.001},
+                )
+            optimized_params = results.x
+            optimized_chi2 = results.fun
+        else:
+            optimized_params = self.params_guess
+            optimized_chi2 = "None"
+        self.params = self.optimized_params = optimized_params
+        self.optimized_chi2 = optimized_chi2
+
+    def calc_score_with_modified_params(self, params):
+        self.calc_I_with_modified_params(params)
+        self.Iq_calc = np.vstack((self.qbinsc, self.I_calc, self.I_calc*.01 + self.I_calc[0]*0.002)).T
+        self.chi2, self.exp_scale_factor = calc_chi2(self.Iq_exp, self.Iq_calc,interpolation=self.Icalc_interpolation,return_sf=True)
+        self.calc_penalty(params)
+        self.score = self.chi2 + self.penalty
+        print("%.5e"%self.exp_scale_factor, ' '.join("%.5e"%param for param in params), "%.3f"%self.penalty, "%.3f"%self.chi2)
+        return self.score
+
+    def calc_penalty(self, params):
+        """Calculates a penalty using quadratic loss function
+        for parameters dependent on a target value for each parameter.
+        """
+        nparams = len(params)
+        params_weights = np.ones(nparams) #note, different than penalty_weights
+        params_target = self.params_target
+        penalty_weight = self.penalty_weight
+        penalty_weights = self.penalty_weights
+        #set the individual parameter penalty weights
+        #to be 1/params_target, so that each penalty 
+        #is weighted as a fraction of the target rather than an
+        #absolute number.
+        for i in range(nparams):
+            if params_target[i] != 0:
+                params_weights[i] = 1/params_target[i]
+        #multiply each weight be the desired individual penalty weight
+        if penalty_weights is not None:
+            params_weights *= penalty_weights
+        #use quadratic loss function
+        penalty = 1/nparams * np.sum((params_weights * (params - params_target))**2)
+        penalty *= penalty_weight
+        self.penalty = penalty
+
+    def calc_F_with_modified_params(self, params):
+        """Calculates structure factor sum from set of parameters"""
+        #sf_ex is ratio of params[0] to initial rho0
+        if self.rho0 != 0:
+            sf_ex = params[0] / self.rho0
+        else:
+            sf_ex = 1.0
+        #sf_sh is ratio of params[1] to initial shell_contrast
+        if self.shell_contrast != 0:
+            sf_sh = params[1] / self.shell_contrast
+        else:
+            sf_sh = 1.0
+        self.F = self.F_invacuo*0
+        self.F[self.qidx] = self.F_invacuo[self.qidx] - sf_ex * self.F_exvol[self.qidx] + sf_sh * self.F_shell[self.qidx]
+
+    def calc_I_with_modified_params(self,params):
+        """Calculates intensity profile for optimization of parameters"""
+        self.calc_F_with_modified_params(params)
+        self.I3D = abs2(self.F)
+        self.I_calc = mybinmean(self.I3D.ravel(), self.qblravel, xcount=self.xcount)
+
+    def calc_rho_with_modified_params(self,params):
+        """Calculates electron denisty map for protein in solution. Includes the excluded volume and
+        hydration shell calculations."""
+        #sf_ex is ratio of params[0] to initial rho0
+        sf_ex = params[0] / self.rho0
+        #add hydration shell to density
+        sf_sh = params[1] / self.shell_contrast
+        self.rho_insolvent = self.rho_invacuo - sf_ex * self.rho_exvol + sf_sh * self.rho_shell
+
 def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters=True):
     """Simple isotropic single gaussian sum at coordinate locations.
 
@@ -3309,23 +3831,15 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
         if np.sum(tmpvalues)>1e-8:
             ne_total = rho0*V
             tmpvalues *= ne_total / np.sum(tmpvalues)
-            # tmpvalues *= 1
-        # else:
-            # print()
-            # print("Voxel spacing too coarse. No density for atom %d."%i)
-
-        # print("    {:2s} {:6.2f} {:6.2f} {:6.2f} {:7.2f} {:6.3f}".format(element, pdb.radius[i], V, rho0*V, tmpvalues.sum(), rho0*V/tmpvalues.sum()))
-        # tmpvalues *= rho0 * V / tmpvalues.sum()
 
         values[slc] += tmpvalues.reshape(nx,ny,nz)
         support[slc] = True
-    # print()
     return values, support
 
 def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,use_b=False,ignore_waters=True):
     """5-term gaussian sum at coordinate locations using Cromer-Mann coefficients.
 
-    This fastgauss function only calculates the values at
+    This function only calculates the values at
     grid points near the atom for speed.
 
     pdb - instance of PDB class (required)
@@ -3423,19 +3937,26 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,use_b=False,ignore_wa
                     element = 'C'
                     ffcoeff[element]
 
-        tmpvalues = realspace_formfactor(element=element,r=dist,B=B[i])
+
+        if pdb.numH[i] > 0:
+            Va = V_without_impH = (4*np.pi/3)*pdb.radius[i]**3
+            Vb = V_with_impH = (4*np.pi/3)*pdb.radius[i]**3 + pdb.numH[i]*(4*np.pi/3)*pdb.exvolHradius**3
+            ra = sphere_radius_from_volume(Va)
+            rb = sphere_radius_from_volume(Vb)
+            Ba = u2B(ra*2)/8
+            Bb = u2B(rb*2)/8
+            Bdiff = Bb - Ba
+        else:
+            Bdiff = 0.0
+        tmpvalues = realspace_formfactor(element=element,r=dist,B=B[i]+Bdiff)
         #rescale total number of electrons by expected number of electrons
+        #pdb.nelectrons is already corrected with the number of electrons including hydrogens
         if np.sum(tmpvalues)>1e-8:
-            ne_total = electrons[element] + pdb.numH[i]
+            ne_total = pdb.nelectrons[i]
             tmpvalues *= ne_total / tmpvalues.sum()
-        # else:
-            # print()
-            # print("Voxel spacing too coarse. No density for atom %d."%i)
 
         values[slc] += tmpvalues.reshape(nx,ny,nz)
         support[slc] = True
-    # print()
-    # exit()
     return values, support
 
 def pdb2F_multigauss(pdb,qx,qy,qz,qr=None,radii=None,B=None):
@@ -3623,6 +4144,11 @@ def u2B(u):
 def B2u(B):
     """Calculate atomic displacement, u, from B-factor"""
     return np.sign(B)*(np.abs(B)/(8*np.pi**2))**0.5
+
+def v2B(v):
+    """Calculate B-factor from atomic volume displacement, v"""
+    u = sphere_radius_from_volume(v)
+    return np.sign(u) * 8 * np.pi**2 * u**2
 
 def sphere(R, q=np.linspace(0,0.5,501), I0=1.,amp=False):
     """Calculate the scattering of a uniform sphere."""
@@ -4092,8 +4618,14 @@ def pdb2F_calc_F_with_modified_params(params,pdb2mrc_dict):
     F_ex = pdb2mrc_dict['F_exvol'][qidx]
     F_shell = pdb2mrc_dict['F_shell'][qidx]
     #sf_ex is ratio of params[0] to initial rho0
-    sf_ex = params[0] / pdb2mrc_dict['rho0']
-    sf_sh = params[1] / pdb2mrc_dict['shell_contrast']
+    if pdb2mrc_dict['rho0'] != 0:
+        sf_ex = params[0] / pdb2mrc_dict['rho0']
+    else:
+        sf_ex = 1.0
+    if pdb2mrc_dict['shell_contrast'] != 0:
+        sf_sh = params[1] / pdb2mrc_dict['shell_contrast']
+    else:
+        sf_sh = 1.0
     F_sum = F_v - sf_ex * F_ex + sf_sh * F_shell
     F = pdb2mrc_dict['F_invacuo']*0
     F[pdb2mrc_dict['qidx']] = F_sum
@@ -4175,17 +4707,6 @@ def pdb2F_calc_exvol_with_modified_params(params, pdb2mrc_dict, exvol_type="gaus
     atom_types = pdb.modified_atom_types
     # radii_sf = params[3:]
     dx = x[1,0,0] - x[0,0,0]
-    # for i in range(len(atom_types)):
-    #     #Consider if using implicit hydrogens, to use hydrogen radius saved to pdb 
-    #     if pdb.implicitH == True:
-    #         if atom_types[i]=='H':
-    #             pdb.exvolHradius = radii_sf[i] * radius['H']
-    #         else:
-    #             # pdb.radius[pdb.atomtype==atom_types[i]] = radii[i]
-    #             pdb.radius[pdb.atomtype==atom_types[i]] = radii_sf[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
-    #     else:
-    #         #set the radii for each atom type in the temporary pdb
-    #         pdb.radius[pdb.atomtype==atom_types[i]] = radii_sf[i] * pdb.unique_radius[pdb.atomtype==atom_types[i]]
     if exvol_type == "gaussian":
         #generate excluded volume assuming gaussian dummy atoms
         #this function outputs in electron count units
@@ -4360,7 +4881,8 @@ residue_electrons = {
 radius = {
      # "H":  1.09 , #1.20 , #wiki 1.2
      # "H":  1.07 , #crysol
-     "H":  0.89 , #for implicit hydrogens, from distribution of corrected unique volumes we calculated
+     # "H":  0.89 , #for implicit hydrogens, from distribution of corrected unique volumes we calculated
+     "H":  0.826377, #updated implicit hydrogens value from reduce and many pdbs
      "D":  1.20 ,
      "He": 1.40 ,
      "Li": 1.82 ,
@@ -4596,11 +5118,540 @@ vdW = {
      "Lr": 1.58 ,
       }
 
-volume_of_hydrogen_overlap = {
-     "C":  1.416 , #volume in A^3 to subtract from carbon when using implicit hydrogens
-     "N":  1.073 , 
-     "O":  1.012 , 
-}
+radii_sf_dict = {'H':1.10113e+00, 
+                 'C':1.24599e+00, 
+                 'N':1.02375e+00, 
+                 'O':1.05142e+00,
+                 }
+
+atomic_volumes = {
+ ' CA': {'CA': 24.851127348632804},
+ ' DC': {"C1'": 9.563317626953124,
+         'C2': 10.676659082031248,
+         "C2'": 10.573889101562498,
+         "C3'": 8.712610566406248,
+         'C4': 9.611847895507811,
+         "C4'": 8.706901123046874,
+         'C5': 10.66238547363281,
+         "C5'": 11.293278964843747,
+         'C6': 11.387484780273436,
+         "H1'": 2.2721934374999995,
+         "H2'": 2.3319351562499997,
+         "H3'": 2.2330349999999997,
+         "H4'": 2.3444859374999996,
+         'H41': 2.3836443749999994,
+         'H42': 2.419790624999999,
+         'H5': 2.1286124999999996,
+         "H5'": 2.3520164062499997,
+         'H6': 2.0141493749999997,
+         'HO3': 3.0162037499999994,
+         'N1': 4.236671497802735,
+         'N3': 6.709866350708008,
+         'N4': 8.427903720092775,
+         'O2': 9.153918515,
+         "O3'": 7.1970286675,
+         "O4'": 7.14193375,
+         "O5'": 6.21960402,
+         'OP1': 9.227378405,
+         'OP2': 8.8151868,
+         'P': 17.38455079101562},
+ ' DG': {"C1'": 9.526206245117185,
+         'C2': 10.348366088867186,
+         "C2'": 10.476828564453124,
+         "C3'": 8.635533081054687,
+         'C4': 9.471966533203123,
+         "C4'": 8.655516132812497,
+         'C5': 8.698336958007811,
+         "C5'": 11.301843129882812,
+         'C6': 9.80596896972656,
+         'C8': 12.392346811523437,
+         'H1': 2.2982990624999995,
+         "H1'": 2.3083396874999993,
+         "H2'": 2.2601446874999995,
+         'H21': 2.9077649999999995,
+         'H22': 2.2561284374999993,
+         "H3'": 2.2671731249999993,
+         "H4'": 2.3444859375,
+         "H5'": 2.3269148437499996,
+         'H8': 2.0613403124999996,
+         'HO5': 2.9921062499999995,
+         'N1': 6.108336893920899,
+         'N2': 8.42141239501953,
+         'N3': 7.363326408081056,
+         'N7': 7.486661584472657,
+         'N9': 4.191232222290039,
+         "O3'": 6.464470320000001,
+         "O4'": 7.154177065,
+         "O5'": 6.8542158475,
+         'O6': 9.180445697500002,
+         'OP1': 9.250504666666666,
+         'OP2': 8.951223633333333,
+         'P': 17.42971927083333},
+ ' MG': {'MG': 13.562483594160154},
+ ' MN': {'MN': 4.942847818398437},
+ 'ACE': {'C': 9.843080351562499,
+         'CH3': 13.097463066406247,
+         'H1': 2.3414737499999996,
+         'H2': 2.3414737499999996,
+         'H3': 2.3495062499999997,
+         'O': 9.557947910000001},
+ 'ALA': {'C': 9.782161344866072,
+         'CA': 8.845305432477677,
+         'CB': 13.007407041515814,
+         'H': 2.530625075392038,
+         'H1': 2.9057568749999994,
+         'H2': 3.04833375,
+         'H3': 2.9860818749999996,
+         'HA': 2.3171754374999995,
+         'HB1': 2.3470475213414628,
+         'HB2': 2.343202696646341,
+         'HB3': 2.336130178353658,
+         'N': 6.15379694998605,
+         'O': 9.449752084285715},
+ 'ARG': {'C': 9.75829353465082,
+         'CA': 8.66752601551669,
+         'CB': 10.305345485727438,
+         'CD': 11.104742764311078,
+         'CG': 10.31731838592752,
+         'CZ': 10.483496527500568,
+         'H': 2.5147292814232896,
+         'HA': 2.29716137245841,
+         'HB2': 2.297236368613138,
+         'HB3': 2.290867534215328,
+         'HD2': 2.2518506557377047,
+         'HD3': 2.2826931147540983,
+         'HE': 2.6838004311131383,
+         'HG2': 2.2662822477272724,
+         'HG3': 2.2938337227272725,
+         'HH1': 2.663250130018248,
+         'HH2': 2.6736975102645983,
+         'N': 6.125203140275713,
+         'NE': 6.126187052546712,
+         'NH1': 8.335556329087307,
+         'NH2': 8.294365633732037,
+         'O': 9.42438035892791},
+ 'ASN': {'C': 9.765317095081178,
+         'CA': 8.762942977697275,
+         'CB': 10.457775336328123,
+         'CG': 9.962584907394934,
+         'H': 2.6003176588983044,
+         'HA': 2.2827102749999995,
+         'HB2': 2.3314331249999998,
+         'HB3': 2.3226389224137924,
+         'HD2': 2.69267057650862,
+         'N': 6.182690973111797,
+         'ND2': 8.28526866532249,
+         'O': 9.405647455251396,
+         'OD1': 9.59240275623563},
+ 'ASP': {'C': 9.77802319280879,
+         'CA': 8.751966759058556,
+         'CB': 10.466455551743147,
+         'CG': 10.047980162790008,
+         'H': 2.5747201502225514,
+         'HA': 2.3005574493243235,
+         'HB2': 2.2972767443181814,
+         'HB3': 2.3168285795454544,
+         'N': 6.0875017308519865,
+         'O': 9.411064460311573,
+         'OD1': 9.427129606479514,
+         'OD2': 9.5444845985129,
+         'OXT': 9.4681636},
+ 'CYS': {'C': 9.716675931140985,
+         'CA': 8.735182784338662,
+         'CB': 10.754024252513322,
+         'H': 2.592442674418604,
+         'HA': 2.319462209302325,
+         'HB2': 2.3084097383720925,
+         'HB3': 2.3299542732558134,
+         'HG': 2.6972509090909087,
+         'N': 6.1020468502452765,
+         'O': 9.429377284263566,
+         'SG': 18.884944556686047},
+ 'DOM': {'C1': 10.859361269531247,
+         "C1'": 10.825104609374998,
+         'C2': 9.785985917968748,
+         "C2'": 12.298140996093748,
+         'C3': 9.64895927734375,
+         "C3'": 9.900174785156247,
+         'C4': 10.014363652343748,
+         "C4'": 10.060039199218748,
+         'C5': 10.014363652343748,
+         "C5'": 9.917303115234372,
+         'C6': 13.451448554687497,
+         "C6'": 13.177395273437497,
+         'O1': 7.419448890000001,
+         "O1'": 10.42314217,
+         'O2': 9.753840949999999,
+         'O3': 10.34968228,
+         "O3'": 10.39865554,
+         'O4': 10.60271079,
+         'O5': 7.403124470000001,
+         "O5'": 6.7644315375,
+         'O6': 10.545575320000001,
+         "O6'": 9.94157178},
+ 'DTT': {'C1': 12.800572011718748,
+         'C2': 10.322673593749998,
+         'C3': 10.276998046874999,
+         'C4': 13.051787519531247,
+         'O2': 10.51292648,
+         'O3': 10.292546810000001,
+         'S1': 18.21771,
+         'S4': 18.2990390625},
+ 'GLN': {'C': 9.713547355346678,
+         'CA': 8.663978343505859,
+         'CB': 10.337915768432614,
+         'CD': 10.038073880047401,
+         'CG': 10.457647400807584,
+         'H': 2.585380253906249,
+         'HA': 2.289872109374999,
+         'HB2': 2.317628957865168,
+         'HB3': 2.31688888483146,
+         'HE2': 2.795350613764044,
+         'HG2': 2.308630752808988,
+         'HG3': 2.296239042134831,
+         'N': 6.023543960151672,
+         'NE2': 8.414896757867364,
+         'O': 9.396908235468752,
+         'OE1': 9.607232984764046},
+ 'GLU': {'C': 9.74631094754227,
+         'CA': 8.701385768413596,
+         'CB': 10.31779577799479,
+         'CD': 10.008751529041634,
+         'CG': 10.410992553738522,
+         'H': 2.566093624291784,
+         'HA': 2.316665157577903,
+         'HB2': 2.2829374735169488,
+         'HB3': 2.266191753177966,
+         'HG2': 2.2862217879971585,
+         'HG3': 2.288703419744318,
+         'N': 6.094342847516545,
+         'O': 9.403582714645893,
+         'OE1': 9.459224588764204,
+         'OE2': 9.499444342301137,
+         'OXT': 9.794652},
+ 'GLY': {'C': 9.874891312199962,
+         'CA': 11.243842100777785,
+         'H': 2.5695134499999996,
+         'H1': 3.0523499999999992,
+         'H2': 2.9720249999999995,
+         'H3': 2.2571324999999995,
+         'HA2': 2.327485097858198,
+         'HA3': 2.3228756056129978,
+         'N': 6.150554477816743,
+         'O': 9.452755469453471,
+         'OXT': 9.675483734000002},
+ 'HEM': {'C1A': 8.746867226562498,
+         'C1B': 8.632678359374998,
+         'C1C': 8.689772792968748,
+         'C1D': 8.697385384114583,
+         'C2A': 8.099796979166666,
+         'C2B': 8.1987606640625,
+         'C2C': 8.236823619791666,
+         'C2D': 8.1987606640625,
+         'C3A': 8.194954368489583,
+         'C3B': 8.046508841145831,
+         'C3C': 8.271080279947915,
+         'C3D': 8.115022161458333,
+         'C4A': 8.682160201822915,
+         'C4B': 8.697385384114583,
+         'C4C': 8.73544833984375,
+         'C4D': 8.701191679687499,
+         'CAA': 10.764203880208333,
+         'CAB': 10.676659082031248,
+         'CAC': 10.623370944010416,
+         'CAD': 10.825104609374998,
+         'CBA': 10.802266835937496,
+         'CBB': 14.151806940104164,
+         'CBC': 14.064262141927081,
+         'CBD': 10.292223229166664,
+         'CGA': 10.181840657552081,
+         'CGD': 9.900174785156247,
+         'CHA': 10.50156948567708,
+         'CHB': 10.410218391927081,
+         'CHC': 10.49395689453125,
+         'CHD': 10.51298837239583,
+         'CMA': 13.200233046874997,
+         'CMB': 13.325840800781249,
+         'CMC': 13.165976386718746,
+         'CMD': 13.196426751302079,
+         'FE': 4.29441396890625,
+         'HAA': 2.3126906249999997,
+         'HAB': 1.6895024999999997,
+         'HAC': 2.04159375,
+         'HAD': 2.340804375,
+         'HBA': 2.3461593749999996,
+         'HBB': 2.3562,
+         'HBC': 2.2417368749999995,
+         'HBD': 2.3394656249999994,
+         'HHA': 2.0737237499999996,
+         'HHB': 2.0764012499999995,
+         'HHC': 2.1446775,
+         'HHD': 2.1245962499999993,
+         'HMA': 2.3191612499999996,
+         'HMB': 2.3535224999999995,
+         'HMC': 2.2928325,
+         'HMD': 2.3566462499999994,
+         'NA': 7.076986846516927,
+         'NB': 7.137572547200521,
+         'NC': 7.033711346028646,
+         'ND': 7.120262347005209,
+         'O1A': 9.699426216666666,
+         'O1D': 9.620524853333333,
+         'O2A': 9.538902753333334,
+         'O2D': 9.555227173333334},
+ 'HIS': {'C': 9.760781320738635,
+         'CA': 8.713607123792611,
+         'CB': 9.436239548168372,
+         'CD2': 11.464407956345015,
+         'CE1': 12.458969843156144,
+         'CG': 8.54661235846442,
+         'H': 2.5903493293795616,
+         'HA': 2.280090845454545,
+         'HB2': 2.207472111486486,
+         'HB3': 2.197282233952702,
+         'HD2': 2.0512725506756753,
+         'HE1': 2.1083955658783777,
+         'N': 6.175712914044745,
+         'ND1': 7.011859167628933,
+         'NE2': 7.151159494876348,
+         'O': 9.353388087018182},
+ 'HOH': {'O': 13.86359336490238,
+         'H01': 3.60257625,
+         'H02': 3.60257625,
+         'H': 3.60257625},
+ 'ILE': {'C': 9.679370401766537,
+         'CA': 8.722930728629722,
+         'CB': 8.09065921732088,
+         'CD1': 13.068716218722681,
+         'CG1': 10.360244126625325,
+         'CG2': 12.922985671437935,
+         'H': 2.527421984536082,
+         'HA': 2.296987134146341,
+         'HB': 2.3209290865384613,
+         'HD1': 2.3105186669580413,
+         'HG1': 2.2957292242132863,
+         'HG2': 2.3004733610139856,
+         'N': 6.104522403929407,
+         'O': 9.336446286735395},
+ 'LEU': {'C': 9.752386096429063,
+         'CA': 8.699696108683627,
+         'CB': 10.227351152672151,
+         'CD1': 12.93372801547556,
+         'CD2': 12.901198411139761,
+         'CG': 8.076515589430187,
+         'H': 2.5252473982300883,
+         'HA': 2.284674023230088,
+         'HB2': 2.3268951912811384,
+         'HB3': 2.32640209297153,
+         'HD1': 2.336796462411032,
+         'HD2': 2.324889448398576,
+         'HG': 2.319030630560498,
+         'N': 6.150566888954906,
+         'O': 9.365984287911505,
+         'OXT': 9.582434540000001},
+ 'LYS': {'C': 9.753291175774029,
+         'CA': 8.700537362703614,
+         'CB': 10.474490010162013,
+         'CD': 10.54907117435874,
+         'CE': 11.34303749282447,
+         'CG': 10.461770452386986,
+         'H': 2.464449983766233,
+         'H1': 2.9539518749999996,
+         'H2': 2.7390824999999994,
+         'H3': 2.8575618749999996,
+         'HA': 2.3074174375,
+         'HB2': 2.3236765505725185,
+         'HB3': 2.3102864957061064,
+         'HD2': 2.2991966036345772,
+         'HD3': 2.327113091846758,
+         'HE2': 2.3038292504882807,
+         'HE3': 2.300879816894531,
+         'HG2': 2.303454797687861,
+         'HG3': 2.308755628612716,
+         'HZ1': 2.759061774902343,
+         'HZ2': 2.884020490722656,
+         'HZ3': 2.826514379882812,
+         'N': 6.154192126185054,
+         'NZ': 7.565267474031449,
+         'O': 9.398882882218114,
+         'OXT': 9.810976420000001},
+ 'MET': {'C': 9.731806944813828,
+         'CA': 8.672887417927193,
+         'CB': 10.311983572140955,
+         'CE': 13.113639822591145,
+         'CG': 10.454466577962236,
+         'H': 2.4827512499999993,
+         'H1': 2.6788387499999993,
+         'H2': 1.4458499999999999,
+         'H3': 1.8956699999999995,
+         'HA': 2.3146417819148932,
+         'HB2': 2.2784060742187493,
+         'HB3': 2.2820876367187495,
+         'HE1': 2.3104733203124996,
+         'HE2': 2.1906551953124995,
+         'HE3': 2.2993867968749995,
+         'HG2': 2.2588896093749997,
+         'HG3': 2.2646629687499993,
+         'N': 6.102858399710148,
+         'O': 9.418061523723404,
+         'SD': 17.462380451660156},
+ 'MPD': {'C1': 15.678131464843748,
+         'C2': 6.999777558593748,
+         'C3': 11.613007792968748,
+         'C4': 9.83166146484375,
+         'C5': 15.837995878906247,
+         'CM': 15.278470429687497,
+         'O2': 9.90892294,
+         'O4': 10.35784449},
+ 'MQD': {'C1': 16.020698066406247,
+         'C2': 6.674339287109373,
+         'C3': 12.115438808593748,
+         'C4': 10.031491982421873,
+         'C5': 16.03782639648437,
+         'CM': 13.188814160156248,
+         'O2': 10.14562703,
+         'O4': 10.288465705,
+         'O6': 10.206843605},
+ 'MRD': {'C1': 15.940765859374997,
+         'C2': 6.691467617187499,
+         'C3': 12.086891591796874,
+         'C4': 10.002944765625,
+         'C5': 16.032116953124998,
+         'CM': 15.935056416015623,
+         'O2': 10.492520955,
+         'O4': 10.239492445},
+ 'PHE': {'C': 9.738857058238635,
+         'CA': 8.725716334117541,
+         'CB': 10.374215724627293,
+         'CD1': 10.597460198000286,
+         'CD2': 10.605107709288989,
+         'CE1': 10.626321696082998,
+         'CE2': 10.621083674652377,
+         'CG': 7.852501257391412,
+         'CZ': 10.626007414797161,
+         'H': 2.5909650255681815,
+         'HA': 2.2906902952981647,
+         'HB2': 2.34100395928899,
+         'HB3': 2.339963050458715,
+         'HD1': 2.119741745986238,
+         'HD2': 2.1249278669724765,
+         'HE1': 2.125406869266055,
+         'HE2': 2.124633096330275,
+         'HZ': 2.128676981077981,
+         'N': 6.101943922257857,
+         'O': 9.382701551204546},
+ 'PRO': {'C': 9.759032896395594,
+         'CA': 8.84240771706321,
+         'CB': 10.488171325260415,
+         'CD': 11.277406712304685,
+         'CG': 10.54595089205729,
+         'HA': 2.3008694624999992,
+         'HB2': 2.3357037375,
+         'HB3': 2.3274704249999996,
+         'HD2': 2.3180188499999996,
+         'HD3': 2.3023287,
+         'HG2': 2.3293446749999998,
+         'HG3': 2.3323300874999995,
+         'N': 4.365092950550427,
+         'O': 9.4183158175},
+ 'SER': {'C': 9.752820395876734,
+         'CA': 8.772293280989581,
+         'CB': 11.38593580572975,
+         'H': 2.5641346499999997,
+         'H1': 3.0393373499999994,
+         'H2': 2.9415014999999993,
+         'H3': 3.013794,
+         'HA': 2.331361084641255,
+         'HB2': 2.3288756922645737,
+         'HB3': 2.325849997197309,
+         'HG': 2.8465795086206893,
+         'N': 6.156391933018664,
+         'O': 9.500721748777778,
+         'OG': 9.092427426210762},
+ 'SO4': {'O1': 9.41919034,
+         'O2': 9.90892294,
+         'O3': 9.65589443,
+         'O4': 10.21908692,
+         'S': 13.419295312500001},
+ 'THR': {'C': 9.721674747968747,
+         'CA': 8.694309897291665,
+         'CB': 8.921713219999997,
+         'CG2': 12.991922102760418,
+         'H': 2.5172141399999997,
+         'HA': 2.2985909099999997,
+         'HB': 2.3228597699999995,
+         'HG1': 2.711580644044321,
+         'HG2': 2.2964417699999995,
+         'N': 6.084535368652345,
+         'O': 9.32868775552,
+         'OG1': 9.097076884560002},
+ 'TRP': {'C': 9.770334168069773,
+         'CA': 8.749525070884966,
+         'CB': 10.435878074151402,
+         'CD1': 11.6671490662042,
+         'CD2': 7.896258604694234,
+         'CE2': 8.622834491514006,
+         'CE3': 10.692310831930227,
+         'CG': 8.051791716897897,
+         'CH2': 10.583339214709053,
+         'CZ2': 10.631869483263737,
+         'CZ3': 10.68443573764143,
+         'H': 2.6258657974137933,
+         'HA': 2.3053274999999998,
+         'HB2': 2.3131522629310344,
+         'HB3': 2.3281093318965516,
+         'HD1': 2.122830484913793,
+         'HE1': 2.684655387931034,
+         'HE3': 2.123799924568965,
+         'HH2': 2.114105528017241,
+         'HZ2': 2.1201299030172414,
+         'HZ3': 2.102853103448275,
+         'N': 6.10363627921269,
+         'NE1': 6.20533370536015,
+         'O': 9.496872062758621},
+ 'TRS': {'C': 6.6115354101562485,
+         'C1': 13.405773007812497,
+         'C2': 13.165976386718748,
+         'C3': 13.234489707031248,
+         'N': 11.606489230957033,
+         'O1': 10.63535963,
+         'O2': 10.333357860000001,
+         'O3': 9.97422062},
+ 'TYR': {'C': 9.739037565249301,
+         'CA': 8.738648537395502,
+         'CB': 10.412206393436502,
+         'CD1': 10.577162030876789,
+         'CD2': 10.621310210738454,
+         'CE1': 10.600436194889529,
+         'CE2': 10.617637256730195,
+         'CG': 7.8861959145476686,
+         'CZ': 8.773523417533339,
+         'H': 2.6038218511146494,
+         'HA': 2.2851822969745217,
+         'HB2': 2.3412307285031844,
+         'HB3': 2.330333132961783,
+         'HD1': 2.095523204617834,
+         'HD2': 2.129635748407643,
+         'HE1': 2.1243916003184706,
+         'HE2': 2.117778857484076,
+         'HH': 2.5823969274193543,
+         'N': 6.1496966955022145,
+         'O': 9.324441118821657,
+         'OH': 8.96967092111465},
+ 'VAL': {'C': 9.652430618906248,
+         'CA': 8.720261220507812,
+         'CB': 8.006159038479712,
+         'CG1': 12.868325607713267,
+         'CG2': 12.83558839619298,
+         'H': 2.504135883233532,
+         'HA': 2.3135232621951216,
+         'HB': 2.2977160584677416,
+         'HG1': 2.3037701234879027,
+         'HG2': 2.319316897681451,
+         'N': 6.104580580478516,
+         'O': 9.377367175959998,
+         'OXT': 9.73751653},
+ 'ZN ': {'ZN': 7.871119170332029}}
 
 #form factors taken from http://lampx.tugraz.at/~hadley/ss1/crystaldiffraction/atomicformfactors/formfactors.php
 ffcoeff_old = {
