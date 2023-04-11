@@ -55,6 +55,7 @@ parser.add_argument("-n", "--nsamples", default=None, type=int, help="Desired nu
 parser.add_argument("-b", "--b", "--use_b", dest="use_b", action="store_true", help="Include B-factors in atomic model (optional, default=False)")
 parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (additional B-factor-like atomic displacement.)")
 parser.add_argument("-exH","-explicitH","--explicitH", dest="explicitH", action="store_true", help="Use hydrogens in pdb file (optional, default=True if H exists)")
+parser.add_argument("-recalc","--recalc","--recalculate_volumes", dest="recalculate_atomic_volumes", action="store_true", help="Calculate atomic volumes directly from coordinates rather than using lookup table (default=False)")
 parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB (default).")
 parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB.")
 parser.add_argument("-iw", "--iw", "-iw_on", "--iw_on", "--ignore_waters", "--ignore_waters_on", dest="ignore_waters", action="store_true", help="Ignore waters (default=False.")
@@ -85,6 +86,7 @@ parser.set_defaults(center = True)
 parser.set_defaults(plot=True)
 parser.set_defaults(use_b=False)
 parser.set_defaults(explicitH=None)
+parser.set_defaults(recalculate_atomic_volumes=False)
 parser.set_defaults(fit_rho0=True)
 parser.set_defaults(fit_shell=True)
 parser.set_defaults(fit_all=True)
@@ -150,6 +152,7 @@ if __name__ == "__main__":
         modifiable_atom_types=None,
         center_coords=args.center,
         radii_sf=None,
+        recalculate_atomic_volumes=args.recalculate_atomic_volumes,
         exvol_type=args.exvol_type,
         use_b=args.use_b,
         resolution=args.resolution,
@@ -237,9 +240,7 @@ if __name__ == "__main__":
         logging.info('Optimizing parameters...')
         pdb2mrc.minimize_parameters()
 
-    # logging.info('Estimated number of waters in shell: %d', N_H2O_in_shell)
     logging.info('Final Parameter Values:')
-
     print()
     print("Final parameter values:")
     for i in range(len(pdb2mrc.params)):
@@ -249,16 +250,15 @@ if __name__ == "__main__":
     pdb2mrc.calc_rho_with_modified_params(pdb2mrc.params)
     pdb2mrc.shell_mean_density = np.mean(pdb2mrc.rho_shell[pdb2mrc.water_shell_idx])
 
+    qmax = pdb2mrc.qx_.max()-1e-8
+    pdb2mrc.qidx = np.where((pdb2mrc.qr<qmax))
+    pdb2mrc.calc_I_with_modified_params(pdb2mrc.params)
     if args.data:
         optimized_chi2, exp_scale_factor, fit = saxs.calc_chi2(pdb2mrc.Iq_exp, pdb2mrc.Iq_calc,interpolation=pdb2mrc.Icalc_interpolation,return_sf=True,return_fit=True)
         print("Scale factor: %.5e " % exp_scale_factor)
         print("chi2 of fit:  %.5e " % optimized_chi2)
         logging.info("Scale factor: %.5e " % exp_scale_factor)
         logging.info("chi2 of fit:  %.5e " % optimized_chi2)
-    else:
-        pdb2mrc.calc_I_with_modified_params(pdb2mrc.params)
-        pdb2mrc.Iq_calc = np.vstack((pdb2mrc.qbinsc, pdb2mrc.I_calc, pdb2mrc.I_calc*.01 + pdb2mrc.I_calc[0]*0.002)).T
-
 
     print("Calculated average radii:")
     logging.info("Calculated average radii:")
@@ -274,11 +274,10 @@ if __name__ == "__main__":
     print("Total calculation time: %.3f seconds" % (end-start))
     logging.info("Total calculation time: %.3f seconds" % (end-start))
 
-    # header_dat = "Scale factor: "
     header = ' '.join('%s: %.5e ; '%(pdb2mrc.param_names[i],pdb2mrc.params[i]) for i in range(len(pdb2mrc.params)))
     header_dat = header + "\n q_calc I_calc err_calc"
 
-    np.savetxt(output+'.pdb2mrc2sas.dat',pdb2mrc.Iq_calc,delimiter=' ',fmt='%.8e',header=header_dat)
+    np.savetxt(output+'.pdb2mrc2sas.dat',pdb2mrc.Iq_calc[pdb2mrc.q_calc<=qmax],delimiter=' ',fmt='%.8e',header=header_dat)
 
     if args.data is not None:
         # fit = np.vstack((q_exp_to_q0, I_exp_to_q0, sigq_exp_to_q0, I_calc)).T

@@ -2411,7 +2411,6 @@ class Sasrec(object):
             sys.stdout.write("\rScanning alphas... {:.0%} complete".format(i*1./nalphas))
             sys.stdout.flush()
             try:
-                #sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=10.**alpha, ne=nes, extrapolate=args.extrapolate)
                 self.alpha = 10.**alpha
                 self.update()
             except:
@@ -3234,6 +3233,7 @@ class PDB2MRC(object):
         modifiable_atom_types=None,
         center_coords=True,
         radii_sf=None,
+        recalculate_atomic_volumes=False,
         exvol_type='gaussian',
         use_b=False,
         resolution=None,
@@ -3282,6 +3282,8 @@ class PDB2MRC(object):
             self.pdb.coords -= self.pdb.coords.mean(axis=0)
         if self.pdb.radius is None:
             self.pdb.lookup_unique_volume()
+        if recalculate_atomic_volumes:
+            self.pdb.calculate_unique_volume()
         if radii_sf is None:
             self.radii_sf = np.ones(len(self.modifiable_atom_types))
             for i in range(len(self.modifiable_atom_types)):
@@ -3323,16 +3325,18 @@ class PDB2MRC(object):
         self.param_names = ['rho0', 'shell_contrast']
         self.params = np.array([self.rho0, self.shell_contrast])
 
-    def scale_radii(self):
+    def scale_radii(self, radii_sf=None):
         """Set all the modifiable atom type radii in the pdb"""
+        if radii_sf is None:
+            radii_sf = self.radii_sf
         for i in range(len(self.modifiable_atom_types)):
             if not self.explicitH:
                 if self.modifiable_atom_types[i]=='H':
-                    self.pdb.exvolHradius = radius['H'] * self.radii_sf[i]
+                    self.pdb.exvolHradius = radius['H'] * radii_sf[i]
                 else:
-                    self.pdb.radius[self.pdb.atomtype==self.modifiable_atom_types[i]] = self.radii_sf[i] * self.pdb.unique_radius[self.pdb.atomtype==self.modifiable_atom_types[i]]
+                    self.pdb.radius[self.pdb.atomtype==self.modifiable_atom_types[i]] = radii_sf[i] * self.pdb.unique_radius[self.pdb.atomtype==self.modifiable_atom_types[i]]
             else:
-                self.pdb.radius[self.pdb.atomtype==self.modifiable_atom_types[i]] = self.radii_sf[i] * self.pdb.unique_radius[self.pdb.atomtype==self.modifiable_atom_types[i]]
+                self.pdb.radius[self.pdb.atomtype==self.modifiable_atom_types[i]] = radii_sf[i] * self.pdb.unique_radius[self.pdb.atomtype==self.modifiable_atom_types[i]]
 
     def calculate_average_radii(self):
         self.mean_radius = np.ones(len(self.modifiable_atom_types))
@@ -3429,7 +3433,7 @@ class PDB2MRC(object):
             warn = True
         if side < 2/3*optimal_side:
             print(side_way_too_small_warning)
-            args.Icalc_interpolation = False
+            self.Icalc_interpolation = False
             warn = True
         if voxel > optimal_voxel:
             print(voxel_big_warning)
@@ -3512,8 +3516,8 @@ class PDB2MRC(object):
             ignore_waters=self.ignore_waters)
         print('Finished in vacuo density.')
 
-    def calculate_excluded_volume(self):
-        print('Calculating excluded volume...')
+    def calculate_excluded_volume(self, quiet=False):
+        if not quiet: print('Calculating excluded volume...')
         if self.exvol_type == "gaussian":
             #generate excluded volume assuming gaussian dummy atoms
             #this function outputs in electron count units
@@ -3536,7 +3540,7 @@ class PDB2MRC(object):
             sigma = 1.0/self.dx #best exvol sigma to match water molecule exvol thing is 1 A
             self.rho_exvol = ndimage.gaussian_filter(self.supportexvol*1.0,sigma=sigma,mode='wrap')
             self.rho_exvol *= ne/self.rho_exvol.sum() #put in electron count units
-        print('Finished excluded volume.')
+        if not quiet: print('Finished excluded volume.')
 
     def calculate_hydration_shell(self):
         print('Calculating hydration shell...')
@@ -3653,7 +3657,11 @@ class PDB2MRC(object):
             qmax4calc = self.qx_.max()*1.1
         self.qidx = np.where((self.qr<=qmax4calc))
 
-    def minimize_parameters(self):
+    def minimize_parameters(self, fit_radii=False):
+
+        if fit_radii:
+            self.param_names += self.modifiable_atom_types
+
         #generate a set of bounds
         self.bounds = np.zeros((len(self.param_names),2))
 
@@ -3673,6 +3681,13 @@ class PDB2MRC(object):
         else:
             self.bounds[1,0] = self.shell_contrast
             self.bounds[1,1] = self.shell_contrast
+
+        if fit_radii:
+            #radii_sf, i.e. radii scale factors
+            self.bounds[2:,0] = 0
+            self.bounds[2:,1] = np.inf
+            self.params = np.append(self.params, self.radii_sf)
+            self.penalty_weights = np.append(self.penalty_weights, np.ones(len(self.param_names[2:])))
 
         if not self.fit_all:
             #disable all fitting if requested
@@ -3702,7 +3717,6 @@ class PDB2MRC(object):
 
     def calc_score_with_modified_params(self, params):
         self.calc_I_with_modified_params(params)
-        self.Iq_calc = np.vstack((self.qbinsc, self.I_calc, self.I_calc*.01 + self.I_calc[0]*0.002)).T
         self.chi2, self.exp_scale_factor = calc_chi2(self.Iq_exp, self.Iq_calc,interpolation=self.Icalc_interpolation,return_sf=True)
         self.calc_penalty(params)
         self.score = self.chi2 + self.penalty
@@ -3750,9 +3764,18 @@ class PDB2MRC(object):
 
     def calc_I_with_modified_params(self,params):
         """Calculates intensity profile for optimization of parameters"""
+        if len(params)>2:
+            #more params means we want to scale radii also
+            #which means we must first recalculate the excluded volume density
+            #in real space
+            self.scale_radii(radii_sf = params[2:])
+            self.calculate_excluded_volume(quiet=True)
+            #and recalculate the F_exvol
+            self.F_exvol = myfftn(self.rho_exvol)
         self.calc_F_with_modified_params(params)
         self.I3D = abs2(self.F)
         self.I_calc = mybinmean(self.I3D.ravel(), self.qblravel, xcount=self.xcount)
+        self.Iq_calc = np.vstack((self.qbinsc, self.I_calc, self.I_calc*.01 + self.I_calc[0]*0.002)).T
 
     def calc_rho_with_modified_params(self,params):
         """Calculates electron denisty map for protein in solution. Includes the excluded volume and
