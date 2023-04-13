@@ -2820,6 +2820,8 @@ class PDB(object):
             self.generate_pdb_from_defaults(natoms)
         self.rij = None
         self.radius = None
+        self.unique_volume = None
+        self.unique_radius = None
 
     def read_pdb(self, filename, ignore_waters=False):
         self.natoms = 0
@@ -2953,22 +2955,26 @@ class PDB(object):
         self.cellbeta = 90.0
         self.cellgamma = 90.0
 
-    def calculate_unique_volume(self,n=16,use_b=False):
+    def calculate_unique_volume(self,n=16,use_b=False,atomidx=None):
         """Generate volumes and radii for each atom of a pdb by accounting for overlapping sphere volumes,
         i.e., each radius is set to the value that yields a volume of a sphere equal to the
         corrected volume of the sphere after subtracting spherical caps from bonded atoms."""
         #first, for each atom, find all atoms closer than the sum of the two vdW radii
-        # if self.rij is None:
-        #     self.rij = spatial.distance.squareform(spatial.distance.pdist(self.coords[:,:3]))
-        self.unique_volume = np.zeros(self.natoms)
-        self.unique_radius = np.zeros(self.natoms)
+        if self.unique_volume is None:
+            self.unique_volume = np.zeros(self.natoms)
+        if self.unique_radius is None:
+            self.unique_radius = np.zeros(self.natoms)
+        if self.radius is None:
+            self.radius = np.zeros(self.natoms)
         ns = np.array([8,16,32])
         corrections = np.array([1.53,1.19,1.06]) #correction for n=8 voxels (1.19 for n=16, 1.06 for n=32)
         correction = np.interp(n,ns,corrections) #a rough approximation.
-        print("Calculating unique atomic volumes...")
-        for i in range(self.natoms):
-            sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,self.natoms))
-            sys.stdout.flush()
+        # print("Calculating unique atomic volumes...")
+        if atomidx is None:
+            atomidx = range(self.natoms)
+        for i in atomidx:
+            # sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,self.natoms))
+            # sys.stdout.flush()
             #for each atom, make a box of voxels around it
             ra = self.vdW[i] #ra is the radius of the main atom
             if use_b:
@@ -2981,7 +2987,6 @@ class PDB(object):
             x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
             minigrid = np.zeros(x.shape,dtype=np.bool_)
             shift = np.ones(3)*dx/2.
-
             #create a column stack of coordinates for the minigrid
             xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
             #for simplicity assume the atom is at the center of the minigrid, (0,0,0),
@@ -3038,28 +3043,27 @@ class PDB(object):
                 d2plane = d2plane.reshape(n,n,n)
                 #all voxels with a positive d2plane value are _beyond_ the plane
                 minigrid[d2plane>0] = False
-                #any voxels closer to the center of the neighbor atom than the center of this atom, set false 
-                # minigrid[dist2neighbor<=dist+dx/2] = False
             #add up all the remaining voxels in the minigrid to get the volume
             #also correct for limited voxel size
             self.unique_volume[i] = minigrid.sum()*dV * correction
-        self.volume = np.copy(self.unique_volume)
-        #create a modified radius based on that modified volume
-        self.unique_radius = sphere_radius_from_volume(self.unique_volume)
-        self.radius = np.copy(self.unique_radius)
-        print()
 
     def lookup_unique_volume(self):
         self.unique_volume = np.zeros(self.natoms)
         print("Looking up unique atomic volumes...")
         for i in range(self.natoms):
-            try:
-                self.unique_volume[i] = atomic_volumes[self.resname[i]][self.atomname[i]]
-            except:
-                print("%s:%s not found in volumes dictionary."%(self.resname[i],self.atomname[i]))
-                print("Setting volume to ALA:CA.")
-                self.unique_volume[i] = atomic_volumes['ALA']['CA']
-        self.volume = np.copy(self.unique_volume)
+            notfound = False
+            if (self.resname[i] in atomic_volumes.keys()):
+                if (self.atomname[i] in atomic_volumes[self.resname[i]].keys()):
+                    self.unique_volume[i] = atomic_volumes[self.resname[i]][self.atomname[i]]
+                else:
+                    notfound = True
+            else:
+                notfound = True
+            if notfound:
+                print("%s:%s not found in volumes dictionary. Calculating unique volume."%(self.resname[i],self.atomname[i]))
+                # print("Setting volume to ALA:CA.")
+                # self.unique_volume[i] = atomic_volumes['ALA']['CA']
+                self.calculate_unique_volume(atomidx=[i])
         self.unique_radius = sphere_radius_from_volume(self.unique_volume)
         self.radius = np.copy(self.unique_radius)
 
