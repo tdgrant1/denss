@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-from distutils.core import setup
+# from distutils.core import setup
+from setuptools import setup, find_packages
 
 exec(compile(open('saxstats/_version.py').read(), 'saxstats/_version.py', 'exec'))
 
@@ -8,7 +9,8 @@ setup(name='denss',
       version=__version__,
       author='Thomas Grant',
       author_email='tdgrant@buffalo.edu',
-      packages=['saxstats'],
+      # packages=['saxstats','resources'],
+      packages=find_packages(),
       scripts=[
       'bin/denss.py',
       'bin/denss.align.py',
@@ -36,4 +38,8 @@ setup(name='denss',
       description='Calculate electron density from solution scattering data.',
       long_description=open('README.md').read(),
       requires=['numpy', 'scipy'],
+      package_data={
+        'saxstats': ['resources/*.json'], '': ['resources/*.json']
+      },
+      include_package_data=True,
      )

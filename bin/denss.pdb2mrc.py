@@ -235,10 +235,12 @@ if __name__ == "__main__":
 
     pdb2mrc.calculate_structure_factors()
 
+    fit_radii = False
+
     if args.data is not None:
         pdb2mrc.load_data()
         logging.info('Optimizing parameters...')
-        pdb2mrc.minimize_parameters()
+        pdb2mrc.minimize_parameters(fit_radii=fit_radii)
 
     logging.info('Final Parameter Values:')
     print()
@@ -267,8 +269,8 @@ if __name__ == "__main__":
         print("%s: %.3f"%(pdb2mrc.modifiable_atom_types[i],pdb2mrc.mean_radius[i]))
         logging.info("%s: %.3f"%(pdb2mrc.modifiable_atom_types[i],pdb2mrc.mean_radius[i]))
 
-    print("Calculated excluded volume: %.2f"%(np.sum( 4/3*np.pi*pdb2mrc.pdb.radius**3) + 4/3*np.pi*pdb2mrc.pdb.exvolHradius**3*pdb2mrc.pdb.numH.sum()))
-    logging.info("Calculated excluded volume: %.2f"%(np.sum( 4/3*np.pi*pdb2mrc.pdb.radius**3) + 4/3*np.pi*pdb2mrc.pdb.exvolHradius**3*pdb2mrc.pdb.numH.sum()))
+    print("Calculated excluded volume: %.2f"%(np.sum(saxs.sphere_volume_from_radius(pdb2mrc.pdb.radius)) + np.sum(saxs.sphere_volume_from_radius(pdb2mrc.pdb.exvolHradius)*pdb2mrc.pdb.numH)))
+    logging.info("Calculated excluded volume: %.2f"%(np.sum(saxs.sphere_volume_from_radius(pdb2mrc.pdb.radius)) + np.sum(saxs.sphere_volume_from_radius(pdb2mrc.pdb.exvolHradius)*pdb2mrc.pdb.numH)))
 
     end = time.time()
     print("Total calculation time: %.3f seconds" % (end-start))
