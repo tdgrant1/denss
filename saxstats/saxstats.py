@@ -2984,6 +2984,8 @@ class PDB(object):
         corrections = np.array([1.53,1.19,1.06]) #correction for n=8 voxels (1.19 for n=16, 1.06 for n=32)
         correction = np.interp(n,ns,corrections) #a rough approximation.
         # print("Calculating unique atomic volumes...")
+        if self.unique_volume is None:
+            self.unique_volume = np.zeros(self.natoms)
         if atomidx is None:
             atomidx = range(self.natoms)
         for i in atomidx:
