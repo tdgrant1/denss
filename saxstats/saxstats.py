@@ -2986,8 +2986,6 @@ class PDB(object):
         # print("Calculating unique atomic volumes...")
         if atomidx is None:
             atomidx = range(self.natoms)
-        tmp = np.zeros(self.natoms)
-        tmp2 = np.zeros(self.natoms)
         for i in atomidx:
             # sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,self.natoms))
             # sys.stdout.flush()
@@ -3062,13 +3060,6 @@ class PDB(object):
             #add up all the remaining voxels in the minigrid to get the volume
             #also correct for limited voxel size
             self.unique_volume[i] = minigrid.sum()*dV * correction
-        #     tmp[i] = atomic_volumes[self.resname[i]][self.atomname[i]]
-        #     tmp2[i] = self.unique_volume[i] / tmp[i]
-        #     print("%i: % 2.2f % 2.2f % 2.2f "%(i, self.unique_volume[i], tmp[i], tmp2[i]))
-        # import matplotlib.pyplot as plt
-        # plt.hist(tmp2,bins=100)
-        # plt.show()
-        # exit()
 
     def lookup_unique_volume(self):
         self.unique_volume = np.zeros(self.natoms)
@@ -3340,9 +3331,6 @@ class PDB2MRC(object):
         elif self.pdb.unique_volume is None:
             print("Looking up unique atomic volumes...")
             self.pdb.lookup_unique_volume()
-        print(self.pdb.unique_volume)
-        print(atomic_volumes['LYS']['N'])
-        exit()
         self.pdb.unique_radius = sphere_radius_from_volume(self.pdb.unique_volume)
         if radii_sf is None:
             self.radii_sf = np.ones(len(self.modifiable_atom_types))
