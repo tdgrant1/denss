@@ -54,7 +54,7 @@ parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired vox
 parser.add_argument("-n", "--nsamples", default=None, type=int, help="Desired number of samples (i.e. voxels) per axis (default=variable)")
 parser.add_argument("-b", "--b", "--use_b", dest="use_b", action="store_true", help="Include B-factors in atomic model (optional, default=False)")
 parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (additional B-factor-like atomic displacement.)")
-parser.add_argument("-exH","-explicitH","--explicitH", dest="explicitH", action="store_true", help="Use hydrogens in pdb file (optional, default=True if H exists)")
+# parser.add_argument("-exH","-explicitH","--explicitH", dest="explicitH", action="store_true", help="Use hydrogens in pdb file (optional, default=True if H exists)")
 parser.add_argument("-recalc","--recalc","--recalculate_volumes", dest="recalculate_atomic_volumes", action="store_true", help="Calculate atomic volumes directly from coordinates rather than using lookup table (default=False)")
 parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB (default).")
 parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB.")
@@ -71,8 +71,9 @@ parser.add_argument("-fit_shell_off", "--fit_shell_off", dest="fit_shell", actio
 parser.add_argument("-drho","--drho","-shell_contrast", "--shell_contrast", dest="shell_contrast", default=0.03, type=float, help="Initial mean contrast of hydration shell in e-/A^3 (default=0.03)")
 parser.add_argument("-shell_type", "--shell_type", default="gaussian", type=str, help="Type of hydration shell (gaussian (default) or uniform)")
 parser.add_argument("-shell_mrcfile", "--shell_mrcfile", default=None, type=str, help="Filename of hydration shell mrc file (default=None)")
-parser.add_argument("-p", "-penalty_weight", "--penalty_weight", default=0., type=float, help="Overall penalty weight for fitting parameters (default=0)")
-parser.add_argument("-ps", "-penalty_weights", "--penalty_weights", default=[1.0, 0.0], type=float, nargs='+', help="Individual penalty weights for each of the seven (or more depending on atom_types) parameters (space separated listed of weight for [rho0,shell], default=1.0 0.0)")
+parser.add_argument("-fit_radii", "--fit_radii", dest="fit_radii", action="store_true", help="Fit atomic radii for excluded volume calculation (optional, default=False)")
+parser.add_argument("-p", "-penalty_weight", "--penalty_weight", default=None, type=float, help="Overall penalty weight for fitting parameters (default=0)")
+parser.add_argument("-ps", "-penalty_weights", "--penalty_weights", default=[1.0, 0.0], type=float, nargs='+', help="Individual penalty weights for each parameter (space separated listed of weights for [rho0,shell], default=1.0 0.0)")
 parser.add_argument("-min_method", "--min_method", "-minimization_method","--minimization_method", dest="method", default='Nelder-Mead', type=str, help="Minimization method (scipy.optimize method, default=Nelder-Mead).")
 parser.add_argument("-min_options", "--min_options", "-minimization_options","--minimization_options", dest="minopts", default='{"adaptive": True}', type=str, help="Minimization options (scipy.optimize options formatted as python dictionary, default=\"{'adaptive': True}\").")
 parser.add_argument("-write_extras", "--write_extras", action="store_true", default=False, help="Write out extra MRC files for invacuo, exvol, shell densities and supports (default=False).")
@@ -85,11 +86,12 @@ parser.set_defaults(ignore_waters = True)
 parser.set_defaults(center = True)
 parser.set_defaults(plot=True)
 parser.set_defaults(use_b=False)
-parser.set_defaults(explicitH=None)
+parser.set_defaults(explicitH=True)
 parser.set_defaults(recalculate_atomic_volumes=False)
 parser.set_defaults(fit_rho0=True)
 parser.set_defaults(fit_shell=True)
 parser.set_defaults(fit_all=True)
+parser.set_defaults(fit_radii=False)
 parser.set_defaults(Icalc_interpolation=True)
 args = parser.parse_args()
 
@@ -139,11 +141,13 @@ if __name__ == "__main__":
         #if the file has unique radius in occupancy column, use it
         pdb.unique_radius = pdb.occupancy
         pdb.unique_volume = 4/3*np.pi*pdb.unique_radius**3
-        pdb.radius = np.copy(pdb.unique_radius)
-    else:
-        # pdb.calculate_unique_volume(use_b=args.use_b)
-        pdb.lookup_unique_volume()
-        pdb.radius = np.copy(pdb.unique_radius)
+    #     pdb.radius = np.copy(pdb.unique_radius)
+    # else:
+    # #     pdb.calculate_unique_volume(use_b=args.use_b)
+    #     pdb.lookup_unique_volume()
+    #     pdb.unique_radius = saxs.sphere_radius_from_volume(pdb.unique_volume)
+    #     pdb.radius = np.copy(pdb.unique_radius)
+
 
     pdb2mrc = saxs.PDB2MRC(
         pdb=pdb,
@@ -235,11 +239,23 @@ if __name__ == "__main__":
 
     pdb2mrc.calculate_structure_factors()
 
-    fit_radii = False
+    if args.fit_radii:
+        fit_radii = True
+        if args.penalty_weight is None:
+            pdb2mrc.penalty_weight = 10.0
+        else:
+            pdb2mrc.penalty_weight = args.penalty_weight
+    else:
+        fit_radii = False
+        if args.penalty_weight is None:
+            pdb2mrc.penalty_weight = 0.0
+        else:
+            pdb2mrc.penalty_weight = args.penalty_weight
 
     if args.data is not None:
         pdb2mrc.load_data()
-        logging.info('Optimizing parameters...')
+        if pdb2mrc.fit_params:
+            logging.info('Optimizing parameters...')
         pdb2mrc.minimize_parameters(fit_radii=fit_radii)
 
     logging.info('Final Parameter Values:')
@@ -252,14 +268,16 @@ if __name__ == "__main__":
     pdb2mrc.calc_rho_with_modified_params(pdb2mrc.params)
     pdb2mrc.shell_mean_density = np.mean(pdb2mrc.rho_shell[pdb2mrc.water_shell_idx])
 
-    qmax = pdb2mrc.qx_.max()-1e-8
+    qmax = pdb2mrc.qr.max()-1e-8
     pdb2mrc.qidx = np.where((pdb2mrc.qr<qmax))
     pdb2mrc.calc_I_with_modified_params(pdb2mrc.params)
     if args.data:
-        optimized_chi2, exp_scale_factor, fit = saxs.calc_chi2(pdb2mrc.Iq_exp, pdb2mrc.Iq_calc,interpolation=pdb2mrc.Icalc_interpolation,return_sf=True,return_fit=True)
+        optimized_chi2, exp_scale_factor, offset, fit = saxs.calc_chi2(pdb2mrc.Iq_exp, pdb2mrc.Iq_calc,interpolation=pdb2mrc.Icalc_interpolation,return_sf=True,return_fit=True)
         print("Scale factor: %.5e " % exp_scale_factor)
+        print("Offset: %.5e " % offset)
         print("chi2 of fit:  %.5e " % optimized_chi2)
         logging.info("Scale factor: %.5e " % exp_scale_factor)
+        logging.info("Offset: %.5e " % offset)
         logging.info("chi2 of fit:  %.5e " % optimized_chi2)
 
     print("Calculated average radii:")

@@ -73,8 +73,15 @@ ffcoeff = resources.ffcoeff
 #for implicit hydrogens, from distribution of corrected unique volumes
 implicit_H_radius = 0.826377
 
-
-# import numba
+try: 
+    import numba as nb
+    numba = True
+    #suppress some unnecessary deprecation warnings
+    from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
+    warnings.simplefilter('ignore', category=NumbaDeprecationWarning)
+    warnings.simplefilter('ignore', category=NumbaPendingDeprecationWarning)
+except:
+    numba = False
 
 try:
     import cupy as cp
@@ -2834,14 +2841,15 @@ class PDB(object):
             self.generate_pdb_from_defaults(natoms)
         self.rij = None
         self.radius = None
-        self.unique_volume = None
         self.unique_radius = None
-        # self.unique_exvolHradius = None
+        self.unique_volume = None
 
     def read_pdb(self, filename, ignore_waters=False):
         self.natoms = 0
         with open(filename) as f:
             for line in f:
+                if line[0:6] == "ENDMDL":
+                    break
                 if line[0:4] != "ATOM" and line[0:4] != "HETA":
                     continue # skip other lines
                 if ignore_waters and ((line[17:20]=="HOH") or (line[17:20]=="TIP")):
@@ -2859,19 +2867,14 @@ class PDB(object):
         self.atomtype = np.zeros((self.natoms),dtype=np.dtype((np.str,2)))
         self.charge = np.zeros((self.natoms),dtype=np.dtype((np.str,2)))
         self.nelectrons = np.zeros((self.natoms),dtype=int)
-        self.radius = np.zeros(self.natoms)
         self.vdW = np.zeros(self.natoms)
-        self.unique_volume = np.zeros(self.natoms)
-        self.unique_radius = np.zeros(self.natoms)
-        #set a variable with H radius to be used for exvol radii optimization
-        #set a variable for number of hydrogens bonded to atoms
-        # self.exvolHradius = implicit_H_radius
-        self.unique_exvolHradius = np.zeros(self.natoms)
-        self.implicitH = False
-        self.numH = np.zeros((self.natoms), dtype=int)
+        self.numH = np.zeros(self.natoms, dtype=int)
+        self.exvolHradius = np.zeros(self.natoms)
         with open(filename) as f:
             atom = 0
             for line in f:
+                if line[0:6] == "ENDMDL":
+                    break
                 if line[0:6] == "CRYST1":
                     cryst = line.split()
                     self.cella = float(cryst[1])
@@ -2977,18 +2980,14 @@ class PDB(object):
         i.e., each radius is set to the value that yields a volume of a sphere equal to the
         corrected volume of the sphere after subtracting spherical caps from bonded atoms."""
         #first, for each atom, find all atoms closer than the sum of the two vdW radii
-        if self.unique_volume is None:
-            self.unique_volume = np.zeros(self.natoms)
-        if self.unique_radius is None:
-            self.unique_radius = np.zeros(self.natoms)
-        if self.radius is None:
-            self.radius = np.zeros(self.natoms)
         ns = np.array([8,16,32])
         corrections = np.array([1.53,1.19,1.06]) #correction for n=8 voxels (1.19 for n=16, 1.06 for n=32)
         correction = np.interp(n,ns,corrections) #a rough approximation.
         # print("Calculating unique atomic volumes...")
         if atomidx is None:
             atomidx = range(self.natoms)
+        tmp = np.zeros(self.natoms)
+        tmp2 = np.zeros(self.natoms)
         for i in atomidx:
             # sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,self.natoms))
             # sys.stdout.flush()
@@ -3063,10 +3062,16 @@ class PDB(object):
             #add up all the remaining voxels in the minigrid to get the volume
             #also correct for limited voxel size
             self.unique_volume[i] = minigrid.sum()*dV * correction
+        #     tmp[i] = atomic_volumes[self.resname[i]][self.atomname[i]]
+        #     tmp2[i] = self.unique_volume[i] / tmp[i]
+        #     print("%i: % 2.2f % 2.2f % 2.2f "%(i, self.unique_volume[i], tmp[i], tmp2[i]))
+        # import matplotlib.pyplot as plt
+        # plt.hist(tmp2,bins=100)
+        # plt.show()
+        # exit()
 
     def lookup_unique_volume(self):
         self.unique_volume = np.zeros(self.natoms)
-        print("Looking up unique atomic volumes...")
         for i in range(self.natoms):
             notfound = False
             if (self.resname[i] in atomic_volumes.keys()):
@@ -3081,8 +3086,6 @@ class PDB(object):
                 # print("Setting volume to ALA:CA.")
                 # self.unique_volume[i] = atomic_volumes['ALA']['CA']
                 self.calculate_unique_volume(atomidx=[i])
-        self.unique_radius = sphere_radius_from_volume(self.unique_volume)
-        self.radius = np.copy(self.unique_radius)
 
     def add_ImplicitH_old(self):
         bondlist_resNorm = protein_residues.normal
@@ -3330,10 +3333,17 @@ class PDB2MRC(object):
         self.center_coords = center_coords
         if self.center_coords:
             self.pdb.coords -= self.pdb.coords.mean(axis=0)
-        if self.pdb.radius is None:
-            self.pdb.lookup_unique_volume()
         if recalculate_atomic_volumes:
+            print("Calculating unique atomic volumes...")
+            self.pdb.unique_volume = np.zeros(self.pdb.natoms)
             self.pdb.calculate_unique_volume()
+        elif self.pdb.unique_volume is None:
+            print("Looking up unique atomic volumes...")
+            self.pdb.lookup_unique_volume()
+        print(self.pdb.unique_volume)
+        print(atomic_volumes['LYS']['N'])
+        exit()
+        self.pdb.unique_radius = sphere_radius_from_volume(self.pdb.unique_volume)
         if radii_sf is None:
             self.radii_sf = np.ones(len(self.modifiable_atom_types))
             for i in range(len(self.modifiable_atom_types)):
@@ -3370,6 +3380,7 @@ class PDB2MRC(object):
         self.fit_rho0 = fit_rho0
         self.fit_shell = fit_shell
         self.fit_all = fit_all
+        self.fit_params = False #start with no fitting
         self.min_method = min_method
         self.min_opts = min_opts
         self.param_names = ['rho0', 'shell_contrast']
@@ -3377,6 +3388,8 @@ class PDB2MRC(object):
 
     def scale_radii(self, radii_sf=None):
         """Set all the modifiable atom type radii in the pdb"""
+        if self.pdb.radius is None:
+            self.pdb.radius = np.copy(self.pdb.unique_radius)
         if radii_sf is None:
             radii_sf = self.radii_sf
         for i in range(len(self.modifiable_atom_types)):
@@ -3556,7 +3569,9 @@ class PDB2MRC(object):
             #if make_grids has not been run yet, run it
             self.make_grids()
         if self.resolution is None and not self.use_b:
-            self.resolution = 0.30 * self.dx #this helps with voxel sampling issues 
+            self.resolution = 0.30 * self.dx #this helps with voxel sampling issues
+        else:
+            self.resolution = 0.0
 
     def calculate_invacuo_density(self):
         print('Calculating in vacuo density...')
@@ -3707,6 +3722,7 @@ class PDB2MRC(object):
         else:
             qmax4calc = self.qx_.max()*1.1
         self.qidx = np.where((self.qr<=qmax4calc))
+        print('Data loaded.')
 
     def minimize_parameters(self, fit_radii=False):
 
@@ -3717,7 +3733,6 @@ class PDB2MRC(object):
         self.bounds = np.zeros((len(self.param_names),2))
 
         #don't bother fitting if none is requested (default)
-        self.fit_params = False
         if self.fit_rho0:
             self.bounds[0,0] = 0
             self.bounds[0,1] = np.inf
@@ -3771,7 +3786,8 @@ class PDB2MRC(object):
         self.chi2, self.exp_scale_factor = calc_chi2(self.Iq_exp, self.Iq_calc,interpolation=self.Icalc_interpolation,return_sf=True)
         self.calc_penalty(params)
         self.score = self.chi2 + self.penalty
-        print("%.5e"%self.exp_scale_factor, ' '.join("%.5e"%param for param in params), "%.3f"%self.penalty, "%.3f"%self.chi2)
+        if self.fit_params:
+            print("%.5e"%self.exp_scale_factor, ' '.join("%.5e"%param for param in params), "%.3f"%self.penalty, "%.3f"%self.chi2)
         return self.score
 
     def calc_penalty(self, params):
@@ -3829,13 +3845,118 @@ class PDB2MRC(object):
         self.Iq_calc = np.vstack((self.qbinsc, self.I_calc, self.I_calc*.01 + self.I_calc[0]*0.002)).T
 
     def calc_rho_with_modified_params(self,params):
-        """Calculates electron denisty map for protein in solution. Includes the excluded volume and
+        """Calculates electron density map for protein in solution. Includes the excluded volume and
         hydration shell calculations."""
         #sf_ex is ratio of params[0] to initial rho0
         sf_ex = params[0] / self.rho0
         #add hydration shell to density
         sf_sh = params[1] / self.shell_contrast
         self.rho_insolvent = self.rho_invacuo - sf_ex * self.rho_exvol + sf_sh * self.rho_shell
+
+class PDB2SAS(object):
+    """Calculate the scattering of an object from a set of 3D coordinates using the Debye formula.
+
+    pdb - a saxstats PDB file object.
+    q - q values to use for calculations (optional).
+    """
+    def __init__(self, pdb, q=None, numba=True):
+        self.pdb = pdb
+        if q is None:
+            q = np.linspace(0,0.5,101)
+        self.q = q
+        self.calc_I()
+
+    def calc_form_factors(self, B=0.0):
+        """Calculate the scattering of an object from a set of 3D coordinates using the Debye formula.
+
+        B - B-factors (i.e. Debye-Waller/temperature factors) of atoms (default=0.0)
+        """
+        B = np.atleast_1d(B)
+        if B.shape[0] == 1:
+            B = np.ones(self.pdb.natoms) * B
+        self.ff = np.zeros((self.pdb.natoms,len(self.q)))
+        for i in range(self.pdb.natoms):
+            try:
+                self.ff[i,:] = formfactor(self.pdb.atomtype[i],q=self.q,B=B[i])
+            except Exception as e:
+                print("pdb.atomtype unknown for atom %d"%i)
+                print("attempting to use pdb.atomname instead")
+                print(e)
+                try:
+                    self.ff[i,:] = formfactor(self.pdb.atomname[i][0],q=self.q,B=B[i])
+                except Exception as e:
+                    print("pdb.atomname unknown for atom %d"%i)
+                    print("Defaulting to Carbon form factor.")
+                    print(e)
+                    self.ff[i,:] = formfactor("C",q=self.q,B=B[i])
+
+    def calc_debye(self, natoms_limit=1000):
+        """Calculate the scattering of an object from a set of 3D coordinates using the Debye formula.
+        """
+        if self.pdb.natoms > natoms_limit:
+            print("Error: Too many atoms. This function is not suitable for large macromolecules over %i atoms"%natoms_limit)
+            #if natoms is too large, sinc lookup table has huge memory requirements
+        else:
+            if self.pdb.rij is None:
+                self.pdb.rij = spatial.distance.squareform(spatial.distance.pdist(self.pdb.coords[:,:3]))
+            s = np.sinc(self.q * self.pdb.rij[...,None]/np.pi)
+            self.I = np.einsum('iq,jq,ijq->q',self.ff,self.ff,s)
+
+    def calc_I(self, numba=True):
+        self.calc_form_factors()
+        if numba:
+            try:
+                #try numba function first
+                self.I = calc_debye_numba(self.pdb.coords, self.q, self.ff)
+            except:
+                print("numba failed. Calculating debye slowly.")
+                self.calc_debye()
+        else:
+            self.calc_debye()
+
+if numba:
+    @nb.njit(fastmath=True,parallel=True,error_model="numpy",cache=True)
+    def numba_cdist(A,B):
+        assert A.shape[1]==B.shape[1]
+        C=np.empty((A.shape[0],B.shape[0]),A.dtype)
+        
+        #workaround to get the right datatype for acc
+        init_val_arr=np.zeros(1,A.dtype)
+        init_val=init_val_arr[0]
+        
+        for i in nb.prange(A.shape[0]):
+            for j in range(B.shape[0]):
+                acc=init_val
+                for k in range(A.shape[1]):
+                    acc+=(A[i,k]-B[j,k])**2
+                C[i,j]=np.sqrt(acc)
+        return C
+
+    @nb.njit(fastmath=True,parallel=True,error_model="numpy",cache=True)
+    def calc_debye_numba(coords, q, ff):
+        """Calculate the scattering of an object from a set of 3D coordinates using the Debye formula.
+        This function is intended to be used with the numba njit decorator for speed.
+        coords - Nx3 array of coordinates of atoms (like pdb.coords)
+        q - q values to use for calculations.
+        ff - an array of form factors calculated for each atom in a pdb object. q's much match q array.
+        """
+        nr = coords.shape[0]
+        nq = q.shape[0]
+        I = np.empty(nq, np.float64)
+        ff_T = np.ascontiguousarray(ff.T)
+        for qi in nb.prange(nq):
+            acc=0
+            for ri in nb.prange(nr):
+                for rj in nb.prange(nr):
+                    #loop through all atoms, and add the debye formulism for the pair
+                    qri_j = q[qi] * np.linalg.norm(coords[ri]-coords[rj])
+                    if qri_j != 0:
+                        s = np.sin(qri_j)/(qri_j)
+                    else:
+                        s = 1.0
+                    acc += ff_T[qi,ri]*ff_T[qi,rj]*s
+            I[qi]=acc
+        return I
 
 def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters=True):
     """Simple isotropic single gaussian sum at coordinate locations.
@@ -3913,10 +4034,7 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
         xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
         dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
 
-        # V = (4*np.pi/3)*pdb.radius[i]**3
-        # V = (4*np.pi/3)*pdb.radius[i]**3 + pdb.numH[i]*(4*np.pi/3)*pdb.exvolHradius**3
         V = (4*np.pi/3)*pdb.radius[i]**3 + pdb.numH[i]*(4*np.pi/3)*pdb.exvolHradius[i]**3
-        # V = (4*np.pi/3)*pdb.radius[i]**3 + pdb.numH[i]*pdb.volH[i]
         tmpvalues = realspace_gaussian_formfactor(r=dist, rho0=rho0, V=V, radius=None)
 
         #rescale total number of electrons by expected number of electrons
@@ -3928,7 +4046,7 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
         support[slc] = True
     return values, support
 
-def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,use_b=False,ignore_waters=True):
+def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=None,use_b=False,ignore_waters=True):
     """5-term gaussian sum at coordinate locations using Cromer-Mann coefficients.
 
     This function only calculates the values at
@@ -3952,6 +4070,8 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=0.0,use_b=False,ignore_wa
     # print("\n Calculate density map from PDB... ")
     values = np.zeros(x.shape)
     support = np.zeros(x.shape,dtype=bool)
+    if resolution is None:
+        resolution = 0.0
     cutoff = max(cutoff,2*resolution)
     #convert resolution to B-factor for form factor calculation
     #set resolution equal to atomic displacement
@@ -4176,7 +4296,7 @@ def pdb2support_fast(pdb,x,y,z,radius=None,probe=0.0):
     shift = np.ones(3)*dx/2.
 
     if radius is None:
-        radius = pdb.radius
+        radius = pdb.vdW
 
     radius = np.atleast_1d(radius)
     if len(radius) != pdb.natoms:
@@ -4336,7 +4456,7 @@ def estimate_side_from_pdb(pdb):
     side = 3*D
     return side
 
-def calc_chi2(Iq_exp, Iq_calc, scale=True, interpolation=True,return_sf=False,return_fit=False):
+def calc_chi2(Iq_exp, Iq_calc, scale=True, offset=True, interpolation=True,return_sf=False,return_fit=False):
     """Calculates a final score comparing experimental vs calculated intensity profiles
     for optimization of parameters defined in pdb2mrc. Score includes the chi2 and penalty 
     due to parameter variation from target parameter.
@@ -4360,15 +4480,23 @@ def calc_chi2(Iq_exp, Iq_calc, scale=True, interpolation=True,return_sf=False,re
         I_exp = np.interp(q_calc, q_exp, I_exp)
         sigq_exp = np.interp(q_calc, q_exp, sigq_exp)
         q_exp = np.copy(q_calc)
-    if scale:
+
+    if scale and offset:
+        calc = np.vstack((I_calc/sigq_exp, np.ones(len(sigq_exp))*1/sigq_exp))
+        exp = I_exp/sigq_exp
+        exp_scale_factor, offset = _fit_by_least_squares(exp, calc)
+    elif scale:
         exp_scale_factor = _fit_by_least_squares(I_calc/sigq_exp,I_exp/sigq_exp)
+        offset = 0.0
     else:
         exp_scale_factor = 1.0
-    I_calc /= exp_scale_factor
+        offset = 0.0
+    I_calc *= exp_scale_factor
+    I_calc += offset
     chi2 = 1/len(q_exp) * np.sum(((I_exp-I_calc)/sigq_exp)**2)
     fit = np.vstack((q_exp,I_exp,sigq_exp,I_calc)).T
     if return_sf and return_fit:
-        return chi2, exp_scale_factor, fit
+        return chi2, exp_scale_factor, offset, fit
     elif return_sf and not return_fit:
         return chi2, exp_scale_factor
     elif not return_sf and return_fit:
