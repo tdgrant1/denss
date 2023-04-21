@@ -140,4 +140,9 @@ venv.bak/
 *.log
 *.pdb
 *.zip
-
+*.sav
+*.int
+*.flm
+*.alm
+*.abs
+*.bak

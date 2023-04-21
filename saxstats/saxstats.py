@@ -2869,6 +2869,7 @@ class PDB(object):
         self.nelectrons = np.zeros((self.natoms),dtype=int)
         self.vdW = np.zeros(self.natoms)
         self.numH = np.zeros(self.natoms, dtype=int)
+        self.unique_exvolHradius = np.zeros(self.natoms)
         self.exvolHradius = np.zeros(self.natoms)
         with open(filename) as f:
             atom = 0
@@ -3291,6 +3292,7 @@ class PDB2MRC(object):
         shell_mrcfile=None,
         shell_type='gaussian',
         Icalc_interpolation=True,
+        fit_offset=False,
         data_filename=None,
         data_units="a",
         n1=None,
@@ -3361,6 +3363,7 @@ class PDB2MRC(object):
         self.shell_mrcfile = shell_mrcfile
         self.shell_type = shell_type
         self.Icalc_interpolation=Icalc_interpolation
+        self.fit_offset=fit_offset
         self.data_filename = data_filename
         self.data_units = data_units
         self.n1 = n1
@@ -3773,7 +3776,7 @@ class PDB2MRC(object):
 
     def calc_score_with_modified_params(self, params):
         self.calc_I_with_modified_params(params)
-        self.chi2, self.exp_scale_factor = calc_chi2(self.Iq_exp, self.Iq_calc,interpolation=self.Icalc_interpolation,return_sf=True)
+        self.chi2, self.exp_scale_factor = calc_chi2(self.Iq_exp, self.Iq_calc,offset=self.fit_offset,interpolation=self.Icalc_interpolation,return_sf=True)
         self.calc_penalty(params)
         self.score = self.chi2 + self.penalty
         if self.fit_params:
@@ -4476,7 +4479,7 @@ def calc_chi2(Iq_exp, Iq_calc, scale=True, offset=True, interpolation=True,retur
         exp = I_exp/sigq_exp
         exp_scale_factor, offset = _fit_by_least_squares(exp, calc)
     elif scale:
-        exp_scale_factor = _fit_by_least_squares(I_calc/sigq_exp,I_exp/sigq_exp)
+        exp_scale_factor = _fit_by_least_squares(I_exp/sigq_exp,I_calc/sigq_exp)
         offset = 0.0
     else:
         exp_scale_factor = 1.0

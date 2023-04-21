@@ -72,6 +72,8 @@ parser.add_argument("-drho","--drho","-shell_contrast", "--shell_contrast", dest
 parser.add_argument("-shell_type", "--shell_type", default="gaussian", type=str, help="Type of hydration shell (gaussian (default) or uniform)")
 parser.add_argument("-shell_mrcfile", "--shell_mrcfile", default=None, type=str, help="Filename of hydration shell mrc file (default=None)")
 parser.add_argument("-fit_radii", "--fit_radii", dest="fit_radii", action="store_true", help="Fit atomic radii for excluded volume calculation (optional, default=False)")
+parser.add_argument("-fit_offset", "--fit_offset", "-fit_offset_on", "--fit_offset_on", dest="fit_offset", action="store_true", help="Include offset in least squares fit to data (optional, default=False)")
+parser.add_argument("-fit_offset_off", "--fit_offset_off", dest="fit_offset", action="store_false", help="Do not include offset in least squares fit to data.")
 parser.add_argument("-p", "-penalty_weight", "--penalty_weight", default=None, type=float, help="Overall penalty weight for fitting parameters (default=0)")
 parser.add_argument("-ps", "-penalty_weights", "--penalty_weights", default=[1.0, 0.0], type=float, nargs='+', help="Individual penalty weights for each parameter (space separated listed of weights for [rho0,shell], default=1.0 0.0)")
 parser.add_argument("-min_method", "--min_method", "-minimization_method","--minimization_method", dest="method", default='Nelder-Mead', type=str, help="Minimization method (scipy.optimize method, default=Nelder-Mead).")
@@ -92,6 +94,7 @@ parser.set_defaults(fit_rho0=True)
 parser.set_defaults(fit_shell=True)
 parser.set_defaults(fit_all=True)
 parser.set_defaults(fit_radii=False)
+parser.set_defaults(fit_offset=False)
 parser.set_defaults(Icalc_interpolation=True)
 args = parser.parse_args()
 
@@ -168,6 +171,7 @@ if __name__ == "__main__":
         shell_mrcfile=args.shell_mrcfile,
         shell_type=args.shell_type,
         Icalc_interpolation=args.Icalc_interpolation,
+        fit_offset=args.fit_offset,
         data_filename=args.data,
         data_units=args.units,
         n1=args.n1,
@@ -208,6 +212,11 @@ if __name__ == "__main__":
         pdbout.write(filename=pdboutput)
 
     pdb2mrc.scale_radii()
+
+    print("Calculated average radii:")
+    logging.info("Calculated average radii:")
+    pdb2mrc.calculate_average_radii()
+
     pdb2mrc.make_grids()
     pdb2mrc.calculate_resolution()
 
@@ -272,7 +281,7 @@ if __name__ == "__main__":
     pdb2mrc.qidx = np.where((pdb2mrc.qr<qmax))
     pdb2mrc.calc_I_with_modified_params(pdb2mrc.params)
     if args.data:
-        optimized_chi2, exp_scale_factor, offset, fit = saxs.calc_chi2(pdb2mrc.Iq_exp, pdb2mrc.Iq_calc,interpolation=pdb2mrc.Icalc_interpolation,return_sf=True,return_fit=True)
+        optimized_chi2, exp_scale_factor, offset, fit = saxs.calc_chi2(pdb2mrc.Iq_exp, pdb2mrc.Iq_calc,interpolation=pdb2mrc.Icalc_interpolation,offset=args.fit_offset,return_sf=True,return_fit=True)
         print("Scale factor: %.5e " % exp_scale_factor)
         print("Offset: %.5e " % offset)
         print("chi2 of fit:  %.5e " % optimized_chi2)
