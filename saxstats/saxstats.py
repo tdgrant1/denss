@@ -1312,7 +1312,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
             write_mrc(rhoprime/dV, side, fprefix+"_current.mrc")
 
         # enforce positivity by making all negative density points zero.
-        if positivity and j in positivity_steps:
+        if positivity: # and j in positivity_steps:
             newrho[newrho<0] = 0.0
 
         #apply non-crystallographic symmetry averaging
@@ -4373,11 +4373,9 @@ def formfactor(element, q=(np.arange(500)+1)/1000.,B=None):
     q = np.atleast_1d(q)
     ff = np.zeros(q.shape)
     for i in range(4):
-        # print(ffcoeff[element]['a'][i])
         ff += ffcoeff[element]['a'][i] * np.exp(-ffcoeff[element]['b'][i]*(q/(4*np.pi))**2)
     # ff += ffcoeff[element]['c']
     ff *= np.exp(-B* (q / (4*np.pi))**2)
-    # print(ff[q==0])
     return ff
 
 def realspace_formfactor(element, r=(np.arange(501))/1000., B=None):
@@ -4458,11 +4456,11 @@ def calc_chi2(Iq_exp, Iq_calc, scale=True, offset=True, interpolation=True,retur
     Iq_calc - calculated scattering profile's q, I, and sigq (required)
     scale (boolean) - Scale I_calc to I_exp
     """
-    q_exp = Iq_exp[:,0]
-    I_exp = Iq_exp[:,1]
-    sigq_exp = Iq_exp[:,2]
-    q_calc = Iq_calc[:,0]
-    I_calc = Iq_calc[:,1]
+    q_exp = np.copy(Iq_exp[:,0])
+    I_exp = np.copy(Iq_exp[:,1])
+    sigq_exp = np.copy(Iq_exp[:,2])
+    q_calc = np.copy(Iq_calc[:,0])
+    I_calc = np.copy(Iq_calc[:,1])
     if interpolation:
         I_calc_interpolator = interpolate.interp1d(q_calc,I_calc,kind='cubic',fill_value='extrapolate')
         I_calc = I_calc_interpolator(q_exp)
@@ -4475,17 +4473,18 @@ def calc_chi2(Iq_exp, Iq_calc, scale=True, offset=True, interpolation=True,retur
         q_exp = np.copy(q_calc)
 
     if scale and offset:
-        calc = np.vstack((I_calc/sigq_exp, np.ones(len(sigq_exp))*1/sigq_exp))
-        exp = I_exp/sigq_exp
-        exp_scale_factor, offset = _fit_by_least_squares(exp, calc)
+        exp = np.vstack((I_exp/sigq_exp, np.ones(len(sigq_exp))*1/sigq_exp))
+        calc = I_calc/sigq_exp
+        exp_scale_factor, offset = _fit_by_least_squares(calc, exp)
     elif scale:
-        exp_scale_factor = _fit_by_least_squares(I_exp/sigq_exp,I_calc/sigq_exp)
+        exp_scale_factor = _fit_by_least_squares(I_calc/sigq_exp,I_exp/sigq_exp)
         offset = 0.0
     else:
         exp_scale_factor = 1.0
         offset = 0.0
-    I_calc *= exp_scale_factor
-    I_calc += offset
+    I_exp *= exp_scale_factor
+    I_exp += offset
+    sigq_exp *= exp_scale_factor
     chi2 = 1/len(q_exp) * np.sum(((I_exp-I_calc)/sigq_exp)**2)
     fit = np.vstack((q_exp,I_exp,sigq_exp,I_calc)).T
     if return_sf and return_fit:

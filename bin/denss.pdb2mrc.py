@@ -212,11 +212,6 @@ if __name__ == "__main__":
         pdbout.write(filename=pdboutput)
 
     pdb2mrc.scale_radii()
-
-    print("Calculated average radii:")
-    logging.info("Calculated average radii:")
-    pdb2mrc.calculate_average_radii()
-
     pdb2mrc.make_grids()
     pdb2mrc.calculate_resolution()
 
