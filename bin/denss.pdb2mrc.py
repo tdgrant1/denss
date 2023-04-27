@@ -54,7 +54,8 @@ parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired vox
 parser.add_argument("-n", "--nsamples", default=None, type=int, help="Desired number of samples (i.e. voxels) per axis (default=variable)")
 parser.add_argument("-b", "--b", "--use_b", dest="use_b", action="store_true", help="Include B-factors in atomic model (optional, default=False)")
 parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (additional B-factor-like atomic displacement.)")
-# parser.add_argument("-exH","-explicitH","--explicitH", dest="explicitH", action="store_true", help="Use hydrogens in pdb file (optional, default=True if H exists)")
+parser.add_argument("-exH","-explicitH","--explicitH", dest="explicitH", action="store_true", help="Use hydrogens in pdb file (optional, default=True if H exists)")
+parser.add_argument("-imH","-implicitH","--implicitH", dest="explicitH", action="store_false", help="Use implicit hydrogens approximation (optional)")
 parser.add_argument("-recalc","--recalc","--recalculate_volumes", dest="recalculate_atomic_volumes", action="store_true", help="Calculate atomic volumes directly from coordinates rather than using lookup table (default=False)")
 parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB (default).")
 parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB.")
@@ -88,7 +89,7 @@ parser.set_defaults(ignore_waters = True)
 parser.set_defaults(center = True)
 parser.set_defaults(plot=True)
 parser.set_defaults(use_b=False)
-parser.set_defaults(explicitH=True)
+parser.set_defaults(explicitH=None)
 parser.set_defaults(recalculate_atomic_volumes=False)
 parser.set_defaults(fit_rho0=True)
 parser.set_defaults(fit_shell=True)
@@ -151,6 +152,13 @@ if __name__ == "__main__":
     #     pdb.unique_radius = saxs.sphere_radius_from_volume(pdb.unique_volume)
     #     pdb.radius = np.copy(pdb.unique_radius)
 
+    #if pdb contains an H atomtype, set explicit hydrogens to True
+    if args.explicitH is None and (np.core.defchararray.find(pdb.atomtype,"H")!=-1):
+        #if explicitH not set, and there are hydrogens, set explicitH to true
+        args.explicitH = True
+    elif args.explicitH is None:
+        #if explicitH not set, and there are no hydrogens, set explicitH to false, to use implicit hydrogens
+        args.explicitH = False
 
     pdb2mrc = saxs.PDB2MRC(
         pdb=pdb,

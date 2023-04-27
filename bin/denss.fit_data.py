@@ -76,14 +76,20 @@ if __name__ == "__main__":
     else:
         output = args.output
 
-    Iq = np.genfromtxt(args.file, invalid_raise = False, usecols=(0,1,2))
+    Iq = np.genfromtxt(args.file, invalid_raise = False) #, usecols=(0,1,2))
+    Iq = Iq[~np.isnan(Iq).any(axis = 1)]
     if len(Iq.shape) < 2:
         print("Invalid data format. Data file must have 3 columns: q, I, errors.")
         exit()
     if Iq.shape[1] < 3:
         print("Not enough columns (data must have 3 columns: q, I, errors).")
-        exit()
-    Iq = Iq[~np.isnan(Iq).any(axis = 1)]
+        #attempt to make a simulated errors column
+        Iq2 = np.zeros((Iq.shape[0],3))
+        Iq2[:,:2] = Iq
+        err = Iq[:,1]*.003 #percentage of intensity for each point
+        err += np.mean(Iq[:10,1])*.01 #minimum error for all points
+        Iq2[:,2] = err
+        Iq = Iq2
     #get rid of any data points equal to zero in the intensities or errors columns
     idx = np.where((Iq[:,1]!=0)&(Iq[:,2]!=0))
     Iq = Iq[idx]

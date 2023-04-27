@@ -2868,7 +2868,7 @@ class PDB(object):
         self.charge = np.zeros((self.natoms),dtype=np.dtype((np.str,2)))
         self.nelectrons = np.zeros((self.natoms),dtype=int)
         self.vdW = np.zeros(self.natoms)
-        self.numH = np.zeros(self.natoms, dtype=int)
+        self.numH = np.zeros(self.natoms)
         self.unique_exvolHradius = np.zeros(self.natoms)
         self.exvolHradius = np.zeros(self.natoms)
         with open(filename) as f:
@@ -2967,7 +2967,7 @@ class PDB(object):
         # self.exvolHradius = implicit_H_radius
         self.unique_exvolHradius = np.zeros(self.natoms)
         self.implicitH = False
-        self.numH = np.zeros((self.natoms), dtype=int)
+        self.numH = np.zeros((self.natoms))
         #for CRYST1 card, use default defined by PDB, but 100 A side
         self.cella = 100.0
         self.cellb = 100.0
@@ -3131,7 +3131,10 @@ class PDB(object):
             #For each atom, atom should be a key in "numH", so now just look up value 
             # associated with atom
             try:
-                H_count = numH[res][atom] #the number of H attached
+                H_count = np.rint(numH[res][atom]) #the number of H attached
+                # print(res, atom, numH[res][atom])
+                # Hbond_count = protein_residues.normal[res]['numH']
+                # H_count = Hbond_count[atom]
                 H_mean_volume = volH[res][atom] #the average volume of each H attached
             except:
                 print("atom ", atom, " not in ", res, " list. setting numH to 0.")
@@ -4027,7 +4030,11 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
         xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
         dist = spatial.distance.cdist(pdb.coords[None,i]-shift, xyz)
 
-        V = (4*np.pi/3)*pdb.radius[i]**3 + pdb.numH[i]*(4*np.pi/3)*pdb.exvolHradius[i]**3
+        V = sphere_volume_from_radius(pdb.radius[i])
+        VoneH = sphere_volume_from_radius(pdb.exvolHradius[i])
+        VallH = pdb.numH[i]*VoneH
+        Vtot = V + VallH
+        V = Vtot
         tmpvalues = realspace_gaussian_formfactor(r=dist, rho0=rho0, V=V, radius=None)
 
         #rescale total number of electrons by expected number of electrons
@@ -4148,8 +4155,8 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=None,use_b=False,ignore_w
             Vb = V_with_impH = V_without_impH + pdb.numH[i]*sphere_volume_from_radius(pdb.exvolHradius[i])
             ra = sphere_radius_from_volume(Va)
             rb = sphere_radius_from_volume(Vb)
-            Ba = u2B(ra*2)
-            Bb = u2B(rb*2)
+            Ba = u2B(ra)/8
+            Bb = u2B(rb)/8
             Bdiff = Bb - Ba
         else:
             Bdiff = 0.0
