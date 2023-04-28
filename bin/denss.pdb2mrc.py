@@ -153,7 +153,7 @@ if __name__ == "__main__":
     #     pdb.radius = np.copy(pdb.unique_radius)
 
     #if pdb contains an H atomtype, set explicit hydrogens to True
-    if args.explicitH is None and (np.core.defchararray.find(pdb.atomtype,"H")!=-1):
+    if args.explicitH is None and np.any(np.core.defchararray.find(pdb.atomtype,"H")!=-1):
         #if explicitH not set, and there are hydrogens, set explicitH to true
         args.explicitH = True
     elif args.explicitH is None:

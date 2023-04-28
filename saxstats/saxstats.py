@@ -3081,45 +3081,6 @@ class PDB(object):
                 # self.unique_volume[i] = atomic_volumes['ALA']['CA']
                 self.calculate_unique_volume(atomidx=[i])
 
-    def add_ImplicitH_old(self):
-        bondlist_resNorm = protein_residues.normal
-        bondlist_resCterm = protein_residues.c_terminal
-        bondlist_resNterm = protein_residues.n_terminal
-
-        if 'H' in self.atomtype:
-            self.remove_by_atomtype('H')
-
-        for i in range(len(self.atomname)):
-            H_count = 0
-            res = self.resname[i]
-            atom = self.atomname[i]
-            resnum = self.resnum[i]
-
-            #If first residue, read bonds from resNterm
-            #If not first residue and not last residue, read from resNorm
-            try:
-                if resnum == 1:
-                    Hbond_count = bondlist_resNterm[res]['numH']
-                else:
-                    Hbond_count = bondlist_resNorm[res]['numH']
-            except:
-                Hbond_count = 0
-
-            #For each atom, atom should be a key in "numH", so now just look up value 
-            # associated with atom
-            try:
-                H_count = Hbond_count[atom]
-            except:
-                #This except could be more complex and use bond lengths to count potential number 
-                #of hydrogens based on atom type and number of bonds
-                print("atom ", atom, " not in ", res, " list. setting numH to 0.")
-                H_count = 0
-
-            #Add number of hydrogens for the atom to a pdb object so it can
-            #be carried with pdb class
-            self.numH[i] = H_count
-            self.nelectrons[i]+=H_count
-
     def add_ImplicitH(self):
         if 'H' in self.atomtype:
             self.remove_by_atomtype('H')
