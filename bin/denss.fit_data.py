@@ -76,7 +76,8 @@ if __name__ == "__main__":
     else:
         output = args.output
 
-    Iq = np.genfromtxt(args.file, invalid_raise = False) #, usecols=(0,1,2))
+
+    Iq = np.genfromtxt(args.file, invalid_raise = False, usecols=(0,1,2))
     Iq = Iq[~np.isnan(Iq).any(axis = 1)]
     if len(Iq.shape) < 2:
         print("Invalid data format. Data file must have 3 columns: q, I, errors.")

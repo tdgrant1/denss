@@ -79,6 +79,7 @@ parser.add_argument("-p", "-penalty_weight", "--penalty_weight", default=None, t
 parser.add_argument("-ps", "-penalty_weights", "--penalty_weights", default=[1.0, 0.0], type=float, nargs='+', help="Individual penalty weights for each parameter (space separated listed of weights for [rho0,shell], default=1.0 0.0)")
 parser.add_argument("-min_method", "--min_method", "-minimization_method","--minimization_method", dest="method", default='Nelder-Mead', type=str, help="Minimization method (scipy.optimize method, default=Nelder-Mead).")
 parser.add_argument("-min_options", "--min_options", "-minimization_options","--minimization_options", dest="minopts", default='{"adaptive": True}', type=str, help="Minimization options (scipy.optimize options formatted as python dictionary, default=\"{'adaptive': True}\").")
+parser.add_argument("-write_off", "--write_off", action="store_false", dest="write_mrc_file", help="Do not write MRC file (default=False).")
 parser.add_argument("-write_extras", "--write_extras", action="store_true", default=False, help="Write out extra MRC files for invacuo, exvol, shell densities and supports (default=False).")
 parser.add_argument("-interp_on", "--interp_on", dest="Icalc_interpolation", action="store_true", help="Interpolate I_calc to experimental q grid (default).")
 parser.add_argument("-interp_off", "--interp_off", dest="Icalc_interpolation", action="store_false", help="Do not interpolate I_calc to experimental q grid .")
@@ -97,6 +98,7 @@ parser.set_defaults(fit_all=True)
 parser.set_defaults(fit_radii=False)
 parser.set_defaults(fit_offset=False)
 parser.set_defaults(Icalc_interpolation=True)
+parser.set_defaults(write_mrc_file=True)
 args = parser.parse_args()
 
 np.set_printoptions(linewidth=150,precision=10)
@@ -135,9 +137,6 @@ if __name__ == "__main__":
 
     pdb = saxs.PDB(args.file, ignore_waters=args.ignore_waters)
 
-    print('Getting unique atomic volumes...')
-    logging.info('Getting unique atomic volumes...')
-
     suffix = "_OccasRadius"
     occasradius = False
     if basename[-len(suffix):] == suffix:
@@ -145,12 +144,6 @@ if __name__ == "__main__":
         #if the file has unique radius in occupancy column, use it
         pdb.unique_radius = pdb.occupancy
         pdb.unique_volume = 4/3*np.pi*pdb.unique_radius**3
-    #     pdb.radius = np.copy(pdb.unique_radius)
-    # else:
-    # #     pdb.calculate_unique_volume(use_b=args.use_b)
-    #     pdb.lookup_unique_volume()
-    #     pdb.unique_radius = saxs.sphere_radius_from_volume(pdb.unique_volume)
-    #     pdb.radius = np.copy(pdb.unique_radius)
 
     #if pdb contains an H atomtype, set explicit hydrogens to True
     if args.explicitH is None and np.any(np.core.defchararray.find(pdb.atomtype,"H")!=-1):
@@ -347,9 +340,10 @@ if __name__ == "__main__":
             plt.savefig(output+'_fits.png',dpi=300)
             plt.show()
 
-    #write output
-    print('Writing density map to %s_insolvent.mrc file.'%output)
-    saxs.write_mrc(pdb2mrc.rho_insolvent/pdb2mrc.dV,pdb2mrc.side,output+"_insolvent.mrc")
+    if args.write_mrc_file:
+        #write output
+        print('Writing density map to %s_insolvent.mrc file.'%output)
+        saxs.write_mrc(pdb2mrc.rho_insolvent/pdb2mrc.dV,pdb2mrc.side,output+"_insolvent.mrc")
     if args.write_extras:
         saxs.write_mrc(pdb2mrc.rho_invacuo/pdb2mrc.dV,pdb2mrc.side,output+"_invacuo.mrc")
         saxs.write_mrc(pdb2mrc.rho_exvol/pdb2mrc.dV,pdb2mrc.side,output+"_exvol.mrc")
