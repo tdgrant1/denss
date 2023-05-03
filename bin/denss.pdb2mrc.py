@@ -128,7 +128,7 @@ if __name__ == "__main__":
         output = args.output
 
     logging.basicConfig(filename=output+'.log',level=logging.INFO,filemode='w',
-                        format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
+                        format='%(asctime)s %(message)s') #, datefmt='%Y-%m-%d %I:%M:%S %p')
     logging.info('BEGIN')
     logging.info('Command: %s', ' '.join(sys.argv))
     logging.info('DENSS Version: %s', __version__)
@@ -194,6 +194,11 @@ if __name__ == "__main__":
     logging.info('Center PDB: %s', pdb2mrc.center_coords)
     logging.info('Ignore waters: %s', pdb2mrc.ignore_waters)
     logging.info('Excluded volume type: %s', pdb2mrc.exvol_type)
+    logging.info('Number of atoms: %s' % (pdb2mrc.pdb.natoms))
+    types, n_per_type = np.unique(pdb2mrc.pdb.atomtype,return_counts=True)
+    for i in range(len(types)):
+        print('Number of %s atoms: %s' % (types[i], n_per_type[i]))
+        logging.info('Number of %s atoms: %s' % (types[i], n_per_type[i]))
 
     #write the modified pdb file, and store the 
     #new unique volume/radius value in the occupancy
