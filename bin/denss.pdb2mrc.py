@@ -195,6 +195,7 @@ if __name__ == "__main__":
     logging.info('Ignore waters: %s', pdb2mrc.ignore_waters)
     logging.info('Excluded volume type: %s', pdb2mrc.exvol_type)
     logging.info('Number of atoms: %s' % (pdb2mrc.pdb.natoms))
+    print('Number of atoms: %s' % (pdb2mrc.pdb.natoms))
     types, n_per_type = np.unique(pdb2mrc.pdb.atomtype,return_counts=True)
     for i in range(len(types)):
         print('Number of %s atoms: %s' % (types[i], n_per_type[i]))
