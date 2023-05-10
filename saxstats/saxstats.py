@@ -3599,9 +3599,9 @@ class PDB2MRC(object):
             #look at only the voxels near the shell for efficiency
             rho_shell = np.zeros(self.x.shape)
             print('Calculating shell values...')
-            rho_shell[dist<2*r_water] = realspace_formfactor(element='O',r=dist[dist<2*r_water],B=u2B(0.5))
+            rho_shell[dist<2*r_water] = realspace_formfactor(element='HOH',r=dist[dist<2*r_water],B=u2B(0.5))
             #zero out any voxels overlapping protein atoms
-            rho_shell[protein_idx] = 0.0
+            # rho_shell[protein_idx] = 0.0
             #estimate initial shell scale based on contrast using mean density
             shell_mean_density = np.mean(rho_shell[water_shell_idx]) / self.dV
             #scale the mean density of the invacuo shell to match the desired mean density
@@ -3808,7 +3808,11 @@ class PDB2MRC(object):
         sf_ex = params[0] / self.rho0
         #add hydration shell to density
         sf_sh = params[1] / self.shell_contrast
-        self.rho_insolvent = self.rho_invacuo - sf_ex * self.rho_exvol + sf_sh * self.rho_shell
+        self.sf_ex = sf_ex
+        self.sf_sh = sf_sh
+        self.rho_exvol *= sf_ex
+        self.rho_shell *= sf_sh
+        self.rho_insolvent = self.rho_invacuo - self.rho_exvol + self.rho_shell
 
 class PDB2SAS(object):
     """Calculate the scattering of an object from a set of 3D coordinates using the Debye formula.

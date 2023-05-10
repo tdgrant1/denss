@@ -69,7 +69,7 @@ parser.add_argument("-fit_rho0", "--fit_rho0","-fit_rho0_on", "--fit_rho0_on", d
 parser.add_argument("-fit_rho0_off", "--fit_rho0_off", dest="fit_rho0", action="store_false", help="Do not fit rho0, the bulk solvent density (optional, default=True)")
 parser.add_argument("-fit_shell", "--fit_shell","-fit_shell_on", "--fit_shell_on", dest="fit_shell", action="store_true", help="Fit hydration shell parameters (optional, default=True)")
 parser.add_argument("-fit_shell_off", "--fit_shell_off", dest="fit_shell", action="store_false", help="Do not fit hydration shell parameters (optional, default=True)")
-parser.add_argument("-drho","--drho","-shell_contrast", "--shell_contrast", dest="shell_contrast", default=0.03, type=float, help="Initial mean contrast of hydration shell in e-/A^3 (default=0.03)")
+parser.add_argument("-drho","--drho","-shell","-shell_contrast", "--shell_contrast", dest="shell_contrast", default=0.03, type=float, help="Initial mean contrast of hydration shell in e-/A^3 (default=0.03)")
 parser.add_argument("-shell_type", "--shell_type", default="gaussian", type=str, help="Type of hydration shell (gaussian (default) or uniform)")
 parser.add_argument("-shell_mrcfile", "--shell_mrcfile", default=None, type=str, help="Filename of hydration shell mrc file (default=None)")
 parser.add_argument("-fit_radii", "--fit_radii", dest="fit_radii", action="store_true", help="Fit atomic radii for excluded volume calculation (optional, default=False)")
@@ -354,8 +354,6 @@ if __name__ == "__main__":
         saxs.write_mrc(pdb2mrc.rho_invacuo/pdb2mrc.dV,pdb2mrc.side,output+"_invacuo.mrc")
         saxs.write_mrc(pdb2mrc.rho_exvol/pdb2mrc.dV,pdb2mrc.side,output+"_exvol.mrc")
         saxs.write_mrc(pdb2mrc.rho_shell/pdb2mrc.dV,pdb2mrc.side,output+"_shell.mrc")
-        # saxs.write_mrc((protein)*1.0,side,output+"_proteinsupport.mrc")
-        # saxs.write_mrc((protein_with_shell_support)*1.0,side,output+"_supportwithshell.mrc")
 
 
 
