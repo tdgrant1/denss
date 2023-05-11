@@ -3783,7 +3783,7 @@ class PDB2MRC(object):
             sf_sh = params[1] / self.shell_contrast
         else:
             sf_sh = 1.0
-        self.F = self.F_invacuo*0
+        self.F = np.zeros_like(self.F_invacuo)
         self.F[self.qidx] = self.F_invacuo[self.qidx] - sf_ex * self.F_exvol[self.qidx] + sf_sh * self.F_shell[self.qidx]
 
     def calc_I_with_modified_params(self,params):
