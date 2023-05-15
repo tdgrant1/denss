@@ -447,7 +447,7 @@ def loadOutFile(filename):
     q_i0=None         #Reciprocal space I0
 
 
-    with open(filename) as f:
+    with open(filename, errors='ignore') as f:
         for line in f:
             twocol_match = two_col_fit.match(line)
             threecol_match = three_col_fit.match(line)
@@ -581,7 +581,7 @@ def loadDatFile(filename):
     q = []
     err = []
 
-    with open(filename) as f:
+    with open(filename, errors='ignore') as f:
         lines = f.readlines()
 
     comment = ''
@@ -665,7 +665,7 @@ def loadFitFile(filename):
     q = []
     err = []
 
-    with open(filename) as f:
+    with open(filename, errors='ignore') as f:
         lines = f.readlines()
 
     comment = ''
@@ -740,7 +740,7 @@ def loadOldFitFile(filename):
     q = []
     err = []
 
-    with open(filename) as f:
+    with open(filename, errors='ignore') as f:
         lines = f.readlines()
 
     comment = ''
