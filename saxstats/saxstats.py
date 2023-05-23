@@ -147,14 +147,8 @@ def myabs(x, out=None,DENSS_GPU=False):
 # @numba.vectorize([numba.float64(numba.complex128),numba.float32(numba.complex64)])
 def abs2(x):
     #a faster way to calculate abs(x)**2, for calculating intensities
-    # print(x.real.min(),x.real.max())
-    # print(x.imag.min(),x.imag.max())
     re2 = (x.real)**2 
     im2 = (x.imag)**2
-    # print("got here")
-    # exit()
-    # print(re2.max())
-    # print(im2.max())
     _abs2 = re2 + im2
     return _abs2
 
@@ -3550,7 +3544,7 @@ class PDB2MRC(object):
                 ignore_waters=self.ignore_waters)
         elif self.exvol_type == "flat":
             #generate excluded volume assuming flat solvent
-            if not self.pdb.explicitH:
+            if not self.explicitH:
                 v = 4*np.pi/3*self.pdb.vdW**3 + self.pdb.numH*4/3*np.pi*vdW['H']**3
                 radjusted = sphere_radius_from_volume(v)
             else:
@@ -3561,7 +3555,8 @@ class PDB2MRC(object):
             ne = v * self.rho0
             #blur the exvol to have gaussian-like edges
             sigma = 1.0/self.dx #best exvol sigma to match water molecule exvol thing is 1 A
-            self.rho_exvol = ndimage.gaussian_filter(self.supportexvol*1.0,sigma=sigma,mode='wrap')
+            # self.rho_exvol = ndimage.gaussian_filter(self.supportexvol*1.0,sigma=sigma,mode='wrap')
+            self.rho_exvol = 1.0 * self.supportexvol
             self.rho_exvol *= ne/self.rho_exvol.sum() #put in electron count units
         if not quiet: print('Finished excluded volume.')
 
