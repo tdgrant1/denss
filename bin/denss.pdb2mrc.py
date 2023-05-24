@@ -209,11 +209,8 @@ if __name__ == "__main__":
     pdboutput = basename
     if not occasradius:
         #write new file if it does not have the suffix
-        if not args.explicitH:
-            pdboutput += '_noH' + suffix + '.pdb'
-        else:
-            pdboutput += suffix + '.pdb'
-
+        # pdboutput += suffix + '.pdb'
+        pdboutput += '_centered.pdb'
         pdbout = copy.deepcopy(pdb2mrc.pdb)
         pdbout.occupancy = pdb2mrc.pdb.unique_radius
         pdbout.write(filename=pdboutput)
