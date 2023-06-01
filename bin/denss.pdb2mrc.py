@@ -52,16 +52,16 @@ parser.add_argument("-u", "--units", default="a", type=str, help="Angular units 
 parser.add_argument("-s", "--side", default=None, type=float, help="Desired side length of real space box (default=3*Dmax).")
 parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired voxel size (default=1.0)")
 parser.add_argument("-n", "--nsamples", default=None, type=int, help="Desired number of samples (i.e. voxels) per axis (default=variable)")
-parser.add_argument("-b", "--b", "--use_b", dest="use_b", action="store_true", help="Include B-factors in atomic model (optional, default=False)")
+parser.add_argument("-b", "--b", dest="use_b", action="store_true", help="Include B-factors in atomic model (optional, default=False)")
 parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (additional B-factor-like atomic displacement.)")
 parser.add_argument("-exH","-explicitH","--explicitH", dest="explicitH", action="store_true", help="Use hydrogens in pdb file (optional, default=True if H exists)")
-parser.add_argument("-imH","-implicitH","--implicitH", dest="explicitH", action="store_false", help="Use implicit hydrogens approximation (optional)")
+parser.add_argument("-imH","-implicitH","--implicitH", dest="explicitH", action="store_false", help="Use implicit hydrogens approximation (optional, EXPERIMENTAL)")
 parser.add_argument("-recalc","--recalc","--recalculate_volumes", dest="recalculate_atomic_volumes", action="store_true", help="Calculate atomic volumes directly from coordinates rather than using lookup table (default=False)")
+parser.add_argument("--read_radii", default=False, action="store_true", help="Read adjusted per atom radii (for volume calculation) from Occupancy column of PDB file (default=False)")
 parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB (default).")
 parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB.")
-parser.add_argument("-iw", "--iw", "-iw_on", "--iw_on", "--ignore_waters", "--ignore_waters_on", dest="ignore_waters", action="store_true", help="Ignore waters (default=False.")
+parser.add_argument("-iw", "--iw", "-iw_on", "--iw_on", "--ignore_waters", "--ignore_waters_on", dest="ignore_waters", action="store_true", help="Ignore waters (default=True).")
 parser.add_argument("-iw_off", "--iw_off", "--ignore_waters_off", dest="ignore_waters", action="store_false", help="Turn Ignore waters off (i.e., read the waters).")
-parser.add_argument("-fit", "--fit","-fit_on", "--fit_on", "-fit_all", "--fit_all", dest="fit_all", action="store_true", help="Fit everything (optional, default=True)")
 parser.add_argument("-fit_off", "--fit_off", dest="fit_all", action="store_false", help="Do not fit anything (optional, default=True)")
 parser.add_argument("-rho0", "--rho0", default=0.334, type=float, help="Density of bulk solvent in e-/A^3 (default=0.334)")
 parser.add_argument("-exvol_type", "--exvol_type", default="gaussian", type=str, help="Type of excluded volume (gaussian (default) or flat)")
@@ -69,18 +69,20 @@ parser.add_argument("-fit_rho0", "--fit_rho0","-fit_rho0_on", "--fit_rho0_on", d
 parser.add_argument("-fit_rho0_off", "--fit_rho0_off", dest="fit_rho0", action="store_false", help="Do not fit rho0, the bulk solvent density (optional, default=True)")
 parser.add_argument("-fit_shell", "--fit_shell","-fit_shell_on", "--fit_shell_on", dest="fit_shell", action="store_true", help="Fit hydration shell parameters (optional, default=True)")
 parser.add_argument("-fit_shell_off", "--fit_shell_off", dest="fit_shell", action="store_false", help="Do not fit hydration shell parameters (optional, default=True)")
-parser.add_argument("-drho","--drho","-shell","-shell_contrast", "--shell_contrast", dest="shell_contrast", default=0.03, type=float, help="Initial mean contrast of hydration shell in e-/A^3 (default=0.03)")
-parser.add_argument("-shell_type", "--shell_type", default="gaussian", type=str, help="Type of hydration shell (gaussian (default) or uniform)")
-parser.add_argument("-shell_mrcfile", "--shell_mrcfile", default=None, type=str, help="Filename of hydration shell mrc file (default=None)")
-parser.add_argument("-fit_radii", "--fit_radii", dest="fit_radii", action="store_true", help="Fit atomic radii for excluded volume calculation (optional, default=False)")
+parser.add_argument("-drho","--drho","-shell","-shell_contrast", "--shell_contrast", dest="shell_contrast", default=0.019, type=float, help="Initial mean contrast of hydration shell in e-/A^3 (default=0.019)")
+parser.add_argument("-shell_type", "--shell_type", default="water", type=str, help="Type of hydration shell (water (default) or uniform)")
+parser.add_argument("-shell_mrcfile", "--shell_mrcfile", default=None, type=str, help=argparse.SUPPRESS) #help="Filename of hydration shell mrc file (default=None)")
+parser.add_argument("-fit_radii", "--fit_radii", dest="fit_radii", action="store_true", help=argparse.SUPPRESS) #help="Fit atomic radii for excluded volume calculation (optional, default=False)")
+parser.add_argument("-fit_scale", "--fit_scale", "-fit_scale_on", "--fit_scale_on", dest="fit_scale", action="store_true", help="Include scale factor in least squares fit to data (optional, default=True)")
+parser.add_argument("-fit_scale_off", "--fit_scale_off", dest="fit_scale", action="store_false", help="Do not include offset in least squares fit to data.")
 parser.add_argument("-fit_offset", "--fit_offset", "-fit_offset_on", "--fit_offset_on", dest="fit_offset", action="store_true", help="Include offset in least squares fit to data (optional, default=False)")
 parser.add_argument("-fit_offset_off", "--fit_offset_off", dest="fit_offset", action="store_false", help="Do not include offset in least squares fit to data.")
-parser.add_argument("-p", "-penalty_weight", "--penalty_weight", default=None, type=float, help="Overall penalty weight for fitting parameters (default=0)")
-parser.add_argument("-ps", "-penalty_weights", "--penalty_weights", default=[1.0, 0.0], type=float, nargs='+', help="Individual penalty weights for each parameter (space separated listed of weights for [rho0,shell], default=1.0 0.0)")
+parser.add_argument("-p", "-penalty_weight", "--penalty_weight", default=None, type=float, help=argparse.SUPPRESS) #help="Overall penalty weight for fitting parameters (default=0)")
+parser.add_argument("-ps", "-penalty_weights", "--penalty_weights", default=[1.0, 1.0], type=float, nargs='+', help=argparse.SUPPRESS) #help="Individual penalty weights for each parameter (space separated listed of weights for [rho0,shell], default=1.0 1.0)")
 parser.add_argument("-min_method", "--min_method", "-minimization_method","--minimization_method", dest="method", default='Nelder-Mead', type=str, help="Minimization method (scipy.optimize method, default=Nelder-Mead).")
 parser.add_argument("-min_options", "--min_options", "-minimization_options","--minimization_options", dest="minopts", default='{"adaptive": True}', type=str, help="Minimization options (scipy.optimize options formatted as python dictionary, default=\"{'adaptive': True}\").")
 parser.add_argument("-write_off", "--write_off", action="store_false", dest="write_mrc_file", help="Do not write MRC file (default=False).")
-parser.add_argument("-write_extras", "--write_extras", action="store_true", default=False, help="Write out extra MRC files for invacuo, exvol, shell densities and supports (default=False).")
+parser.add_argument("-write_extras", "--write_extras", action="store_true", default=False, help="Write out extra MRC files for invacuo, exvol, shell densities (default=False).")
 parser.add_argument("-interp_on", "--interp_on", dest="Icalc_interpolation", action="store_true", help="Interpolate I_calc to experimental q grid (default).")
 parser.add_argument("-interp_off", "--interp_off", dest="Icalc_interpolation", action="store_false", help="Do not interpolate I_calc to experimental q grid .")
 parser.add_argument("--plot_on", dest="plot", action="store_true", help="Create simple plots of results (requires Matplotlib, default if module exists).")
@@ -96,6 +98,7 @@ parser.set_defaults(fit_rho0=True)
 parser.set_defaults(fit_shell=True)
 parser.set_defaults(fit_all=True)
 parser.set_defaults(fit_radii=False)
+parser.set_defaults(fit_scale=True)
 parser.set_defaults(fit_offset=False)
 parser.set_defaults(Icalc_interpolation=True)
 parser.set_defaults(write_mrc_file=True)
@@ -137,10 +140,7 @@ if __name__ == "__main__":
 
     pdb = saxs.PDB(args.file, ignore_waters=args.ignore_waters)
 
-    suffix = "_OccasRadius"
-    occasradius = False
-    if basename[-len(suffix):] == suffix:
-        occasradius = True
+    if args.read_radii:
         #if the file has unique radius in occupancy column, use it
         pdb.unique_radius = pdb.occupancy
         pdb.unique_volume = 4/3*np.pi*pdb.unique_radius**3
@@ -152,6 +152,10 @@ if __name__ == "__main__":
     elif args.explicitH is None:
         #if explicitH not set, and there are no hydrogens, set explicitH to false, to use implicit hydrogens
         args.explicitH = False
+        print("#"*90)
+        print("#  WARNING: use of implicit hydrogens is an experimental feature.                        #")
+        print("#  Recommend adding explicit hydrogens using a tool such as Reduce, CHARMM, PyMOL, etc.  #")
+        print("#"*90)
 
     pdb2mrc = saxs.PDB2MRC(
         pdb=pdb,
@@ -172,6 +176,7 @@ if __name__ == "__main__":
         shell_mrcfile=args.shell_mrcfile,
         shell_type=args.shell_type,
         Icalc_interpolation=args.Icalc_interpolation,
+        fit_scale=args.fit_scale,
         fit_offset=args.fit_offset,
         data_filename=args.data,
         data_units=args.units,
@@ -205,15 +210,14 @@ if __name__ == "__main__":
     #new unique volume/radius value in the occupancy
     #column, to prevent needing to recalculate if wanting
     #to run the fitting again.
-    #only write if not already an occasradius pdb file
     pdboutput = basename
-    if not occasradius:
-        #write new file if it does not have the suffix
-        # pdboutput += suffix + '.pdb'
+    if args.center:
         pdboutput += '_centered.pdb'
-        pdbout = copy.deepcopy(pdb2mrc.pdb)
-        pdbout.occupancy = pdb2mrc.pdb.unique_radius
-        pdbout.write(filename=pdboutput)
+    else:
+        pdboutput += '_out.pdb'
+    pdbout = copy.deepcopy(pdb2mrc.pdb)
+    pdbout.occupancy = pdb2mrc.pdb.unique_radius
+    pdbout.write(filename=pdboutput)
 
     pdb2mrc.scale_radii()
     pdb2mrc.make_grids()
@@ -280,7 +284,7 @@ if __name__ == "__main__":
     pdb2mrc.qidx = np.where((pdb2mrc.qr<qmax))
     pdb2mrc.calc_I_with_modified_params(pdb2mrc.params)
     if args.data:
-        optimized_chi2, exp_scale_factor, offset, fit = saxs.calc_chi2(pdb2mrc.Iq_exp, pdb2mrc.Iq_calc,interpolation=pdb2mrc.Icalc_interpolation,offset=args.fit_offset,return_sf=True,return_fit=True)
+        optimized_chi2, exp_scale_factor, offset, fit = saxs.calc_chi2(pdb2mrc.Iq_exp, pdb2mrc.Iq_calc,interpolation=pdb2mrc.Icalc_interpolation,scale=args.fit_scale,offset=args.fit_offset,return_sf=True,return_fit=True)
         print("Scale factor: %.5e " % exp_scale_factor)
         print("Offset: %.5e " % offset)
         print("chi2 of fit:  %.5e " % optimized_chi2)
@@ -341,7 +345,8 @@ if __name__ == "__main__":
             ax0.legend()
             plt.tight_layout()
             plt.savefig(output+'_fits.png',dpi=300)
-            plt.show()
+            # plt.show()
+            plt.close()
 
     if args.write_mrc_file:
         #write output
