@@ -1040,7 +1040,7 @@ def filter_P(r,P,sigr=None,qmax=0.5,cutoff=0.75,qmin=0.0,cutoffmin=1.25):
         else:
             return r, Pfilt
 
-def denss(q, I, sigq, dmax, q_orig=None, I_orig=None, sigq_orig=None,
+def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
     ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
     recenter_mode="com", positivity=True, positivity_steps=None, extrapolate=True, output="map",
     steps=None, seed=None, rho_start=None, support_start=None, add_noise=None,
@@ -1638,13 +1638,13 @@ def denss(q, I, sigq, dmax, q_orig=None, I_orig=None, sigq_orig=None,
     sigq /= scale_factor
 
     #Write some more output files
-    if q_orig is None:
-        q_orig = q
-    if I_orig is None:
-        I_orig = I
-    if sigq_orig is None:
-        sigq_orig = sigq
-    Iq_exp = np.vstack((q_orig,I_orig,sigq_orig)).T
+    if qraw is None:
+        qraw = q
+    if Iraw is None:
+        Iraw = I
+    if sigqraw is None:
+        sigqraw = sigq
+    Iq_exp = np.vstack((qraw,Iraw,sigqraw)).T
     Iq_calc = np.vstack((qbinsc, Imean, Imean*0.01)).T
     qmax = np.min([Iq_exp[:,0].max(),Iq_calc[:,0].max()])
     Iq_exp = Iq_exp[Iq_exp[:,0]<=qmax]

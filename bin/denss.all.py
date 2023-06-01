@@ -75,12 +75,10 @@ del args.shrinkwrap_sigma_start_in_A
 del args.shrinkwrap_sigma_end_in_A
 del args.shrinkwrap_sigma_start_in_vox
 del args.shrinkwrap_sigma_end_in_vox
-del args.qraw
-del args.Iraw
 
 def multi_denss(niter, **kwargs):
     try:
-        time.sleep(1)
+        # time.sleep(1)
 
         # Processing keyword args for compatibility with RAW GUI
         kwargs['path'] = '.'
@@ -155,7 +153,6 @@ if __name__ == "__main__":
 
     superlogger.info('BEGIN')
     superlogger.info('Command: %s', ' '.join(sys.argv))
-    #superlogger.info('Script name: %s', sys.argv[0])
     superlogger.info('DENSS Version: %s', __version__)
     superlogger.info('Data filename: %s', superargs.file)
     superlogger.info('Enantiomer selection: %r', superargs.enan)
