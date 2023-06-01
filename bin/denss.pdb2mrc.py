@@ -54,7 +54,7 @@ parser.add_argument("-n", "--nsamples", default=None, type=int, help="Desired nu
 parser.add_argument("-b", "--b", dest="use_b", action="store_true", help="Include B-factors in atomic model (optional, default=False)")
 parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (additional B-factor-like atomic displacement.)")
 parser.add_argument("-exH","-explicitH","--explicitH", dest="explicitH", action="store_true", help="Use hydrogens in pdb file (optional, default=True if H exists)")
-parser.add_argument("-imH","-implicitH","--implicitH", dest="explicitH", action="store_false", help="Use implicit hydrogens approximation (optional, EXPERIMENTAL)")
+parser.add_argument("-imH","-implicitH","--implicitH", dest="explicitH", action="store_false", help=argparse.SUPPRESS) #help="Use implicit hydrogens approximation (optional, EXPERIMENTAL)")
 parser.add_argument("-recalc","--recalc","--recalculate_volumes", dest="recalculate_atomic_volumes", action="store_true", help="Calculate atomic volumes directly from coordinates rather than using lookup table (default=False)")
 parser.add_argument("--read_radii", default=False, action="store_true", help="Read adjusted per atom radii (for volume calculation) from Occupancy column of PDB file (default=False)")
 parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB (default).")

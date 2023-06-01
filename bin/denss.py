@@ -60,11 +60,14 @@ if __name__ == "__main__":
     my_logger.info('Output prefix: %s', args.output)
     my_logger.info('Mode: %s', args.mode)
 
-    qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV, rho, side = saxs.denss(
+    qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV, rho, side, fit, final_chi2 = saxs.denss(
         q=args.q,
         I=args.I,
         sigq=args.sigq,
         dmax=args.dmax,
+        q_orig=args.qraw,
+        I_orig=args.Iraw,
+        sigq_orig=args.sigqraw,
         ne=args.ne,
         voxel=args.voxel,
         oversampling=args.oversampling,
@@ -118,82 +121,37 @@ if __name__ == "__main__":
         gs = gridspec.GridSpec(2, 1, height_ratios=[3,1])
 
         ax0 = plt.subplot(gs[0])
-        #handle sigq values whose error bounds would go negative and be missing on the log scale
-        #sigq2 = np.copy(sigq)
-        #sigq2[sigq>I] = I[sigq>I]*.999
-        sigq2 = np.interp(qraw, q, sigq)
-        sigq2[sigq2>Iraw] = Iraw[sigq2>Iraw]*.999
-        #ax0.errorbar(q, I, fmt='k-', yerr=[sigq2[q<=q[-1]],sigq[q<=q[-1]]], capsize=0, elinewidth=0.1, ecolor=cc.to_rgba('0',alpha=0.5),label='Supplied Data')
-        #ax0.plot(q, I, 'k.',alpha=0.1,mec='none',label='Raw Data')
-        ax0.errorbar(qraw, Iraw, fmt='k.', yerr=sigq2, mec='none', mew=0, ms=3, alpha=0.3, capsize=0, elinewidth=0.1, ecolor=cc.to_rgba('0',alpha=0.5),label='Supplied Data')
-        ax0.plot(q, I, 'k--',alpha=0.7,lw=1,label='Supplied Fit')
-        ax0.plot(qdata[qdata<=q[-1]], Idata[qdata<=q[-1]], 'bo',alpha=0.5,label='Interpolated')
-        ax0.plot(qbinsc[qdata<=q[-1]],Imean[qdata<=q[-1]],'r.',label='DENSS Map')
+        ax0.errorbar(fit[:,0], fit[:,1], fmt='k.', yerr=fit[:,2], mec='none', mew=0, ms=5, alpha=0.3, capsize=0, elinewidth=0.1, ecolor=cc.to_rgba('0',alpha=0.5),label='Supplied Data',zorder=-1)
+        ax0.plot(fit[:,0],fit[:,3],'r-',label=r'DENSS Map $\chi^2 = %.2f$'%final_chi2)
+
         handles,labels = ax0.get_legend_handles_labels()
-        handles = [handles[3], handles[0], handles[1],handles[2]]
-        labels = [labels[3], labels[0], labels[1], labels[2]]
-        xmax = np.min([qraw.max(),q.max(),qdata.max()])*1.1
-        ymin = np.min([np.min(I[q<=xmax]),np.min(Idata[qdata<=xmax]),np.min(Imean[qdata<=xmax])])
-        ymax = np.max([np.max(I[q<=xmax]),np.max(Idata[qdata<=xmax]),np.max(Imean[qdata<=xmax])])
-        ax0.set_xlim([-xmax*.05,xmax])
-        ax0.set_ylim([0.5*ymin,1.5*ymax])
+        handles = [handles[1], handles[0] ]
+        labels = [labels[1], labels[0] ]
         ax0.legend(handles,labels)
         ax0.semilogy()
         ax0.set_ylabel('I(q)')
 
         ax1 = plt.subplot(gs[1])
-        ax1.plot(qdata[qdata<=q[-1]], qdata[qdata<=q[-1]]*0, 'k--')
-        residuals = np.log10(Imean[np.in1d(qbinsc,qdata)])-np.log10(Idata)
-        ax1.plot(qdata[qdata<=q[-1]], residuals[qdata<=q[-1]], 'ro-')
+        ax1.plot(fit[:,0], fit[:,0]*0, 'k--')
+        residuals = (fit[:,1]-fit[:,3])/fit[:,2]
+        ax1.plot(fit[:,0], residuals, 'r.')
         ylim = ax1.get_ylim()
         ymax = np.max(np.abs(ylim))
-        n = int(.9*len(residuals[qdata<=q[-1]]))
-        ymax = np.max(np.abs(residuals[qdata<=q[-1]][:-n]))
+        ymax = np.max(np.abs(residuals))
         ax1.set_ylim([-ymax,ymax])
         ax1.yaxis.major.locator.set_params(nbins=5)
         xlim = ax0.get_xlim()
         ax1.set_xlim(xlim)
-        ax1.set_ylabel('Residuals')
+        ax1.set_ylabel(r'$\Delta{I}/\sigma$')
         ax1.set_xlabel(r'q ($\mathrm{\AA^{-1}}$)')
-        #plt.setp(ax0.get_xticklabels(), visible=False)
         plt.tight_layout()
         plt.savefig(args.output+'_fit.png',dpi=150)
         plt.close()
-
-        """
-        plt.plot(chis[chis>0])
-        plt.xlabel('Step')
-        plt.ylabel('$\chi^2$')
-        plt.semilogy()
-        plt.tight_layout()
-        plt.savefig(args.output+'_chis.png',dpi=150)
-        plt.close()
-
-        plt.plot(rg[rg!=0])
-        plt.xlabel('Step')
-        plt.ylabel('Rg')
-        plt.tight_layout()
-        plt.savefig(args.output+'_rgs.png',dpi=150)
-        plt.close()
-
-        plt.plot(supportV[supportV>0])
-        plt.xlabel('Step')
-        plt.ylabel('Support Volume ($\mathrm{\AA^{3}}$)')
-        plt.semilogy()
-        plt.tight_layout()
-        plt.savefig(args.output+'_supportV.png',dpi=150)
-        plt.close()
-        """
 
         fig, host = plt.subplots(nrows=1, ncols=1)
 
         par1 = host.twinx()
         par2 = host.twinx()
-
-        #host.set_xlim(0, 2)
-        #host.set_ylim(0, 1.05*chis.max())
-        #par1.set_ylim(0, 4)
-        #par2.set_ylim(1, 65)
 
         host.set_xlabel('Step')
         host.set_ylabel('$\chi^2$')
@@ -215,11 +173,7 @@ if __name__ == "__main__":
         host.legend(handles=lns, loc='best')
 
         # right, left, top, bottom
-        par2.spines['right'].set_position(('outward', 60))      
-        # no x-ticks                 
-        #par2.xaxis.set_ticks([])
-        # Sometimes handy, same for xaxis
-        #par2.yaxis.set_ticks_position('right')
+        par2.spines['right'].set_position(('outward', 60))
 
         host.yaxis.label.set_color(p1.get_color())
         par1.yaxis.label.set_color(p2.get_color())

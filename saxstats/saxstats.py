@@ -1040,7 +1040,8 @@ def filter_P(r,P,sigr=None,qmax=0.5,cutoff=0.75,qmin=0.0,cutoffmin=1.25):
         else:
             return r, Pfilt
 
-def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
+def denss(q, I, sigq, dmax, q_orig=None, I_orig=None, sigq_orig=None,
+    ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
     recenter_mode="com", positivity=True, positivity_steps=None, extrapolate=True, output="map",
     steps=None, seed=None, rho_start=None, support_start=None, add_noise=None,
     shrinkwrap=True, shrinkwrap_old_method=False,shrinkwrap_sigma_start=3,
@@ -1629,31 +1630,6 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     write_mrc(rho,side,fprefix+".mrc")
     write_mrc(np.ones_like(rho)*support,side, fprefix+"_support.mrc")
 
-    #Write some more output files
-    fit = np.zeros(( len(qbinsc),4 ))
-    fit[:len(qdata),0] = qdata
-    fit[:len(Idata),1] = Idata
-    fit[:len(sigqdata),2] = sigqdata
-    fit[:len(Imean),3] = Imean
-    np.savetxt(fprefix+'_map.fit', fit, delimiter=' ', fmt='%.5e'.encode('ascii'),
-        header='q(data),I(data),error(data),I(density)')
-
-    np.savetxt(fprefix+'_stats_by_step.dat',np.vstack((chi, rg, supportV)).T,
-        delimiter=" ", fmt="%.5e".encode('ascii'), header='Chi2 Rg SupportVolume')
-
-    my_logger.info('Number of steps: %i', j)
-    my_logger.info('Final Chi2: %.3e', chi[j])
-    my_logger.info('Final Rg: %3.3f', rg[j+1])
-    my_logger.info('Final Support Volume: %3.3f', supportV[j+1])
-    my_logger.info('Mean Density (all voxels): %3.5f', np.mean(rho))
-    my_logger.info('Std. Dev. of Density (all voxels): %3.5f', np.std(rho))
-    my_logger.info('RMSD of Density (all voxels): %3.5f', np.sqrt(np.mean(np.square(rho))))
-    idx = np.where(np.abs(rho)>0.01*rho.max())
-    my_logger.info('Modified Mean Density (voxels >0.01*max): %3.5f', np.mean(rho[idx]))
-    my_logger.info('Modified Std. Dev. of Density (voxels >0.01*max): %3.5f', np.std(rho[idx]))
-    my_logger.info('Modified RMSD of Density (voxels >0.01*max): %3.5f', np.sqrt(np.mean(np.square(rho[idx]))))
-    # my_logger.info('END')
-
     #return original unscaled values of Idata (and therefore Imean) for comparison with real data
     Idata /= scale_factor
     sigqdata /= scale_factor
@@ -1661,7 +1637,41 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     I /= scale_factor
     sigq /= scale_factor
 
-    return qdata, Idata, sigqdata, qbinsc, Imean, chi, rg, supportV, rho, side
+    #Write some more output files
+    if q_orig is None:
+        q_orig = q
+    if I_orig is None:
+        I_orig = I
+    if sigq_orig is None:
+        sigq_orig = sigq
+    Iq_exp = np.vstack((q_orig,I_orig,sigq_orig)).T
+    Iq_calc = np.vstack((qbinsc, Imean, Imean*0.01)).T
+    qmax = np.min([Iq_exp[:,0].max(),Iq_calc[:,0].max()])
+    Iq_exp = Iq_exp[Iq_exp[:,0]<=qmax]
+    Iq_calc = Iq_calc[Iq_calc[:,0]<=qmax]
+    final_chi2, exp_scale_factor, offset, fit = calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True,return_sf=True,return_fit=True)
+
+    np.savetxt(fprefix+'_map.fit', fit, delimiter=' ', fmt='%.5e'.encode('ascii'),
+        header='q(data),I(data),error(data),I(density); chi2=%.3f'%final_chi2)
+    np.savetxt(fprefix+'_stats_by_step.dat',np.vstack((chi, rg, supportV)).T,
+        delimiter=" ", fmt="%.5e".encode('ascii'), header='Chi2 Rg SupportVolume')
+
+    chi[j+1] = final_chi2
+
+    my_logger.info('Number of steps: %i', j)
+    my_logger.info('Final Chi2: %.3e', chi[j+1])
+    my_logger.info('Final Rg: %3.3f', rg[j+1])
+    my_logger.info('Final Support Volume: %3.3f', supportV[j+1])
+    my_logger.info('Mean Density (all voxels): %3.5f', np.mean(rho))
+    my_logger.info('Std. Dev. of Density (all voxels): %3.5f', np.std(rho))
+    my_logger.info('RMSD of Density (all voxels): %3.5f', np.sqrt(np.mean(np.square(rho))))
+    # idx = np.where(np.abs(rho)>0.01*rho.max())
+    # my_logger.info('Modified Mean Density (voxels >0.01*max): %3.5f', np.mean(rho[idx]))
+    # my_logger.info('Modified Std. Dev. of Density (voxels >0.01*max): %3.5f', np.std(rho[idx]))
+    # my_logger.info('Modified RMSD of Density (voxels >0.01*max): %3.5f', np.sqrt(np.mean(np.square(rho[idx]))))
+    # my_logger.info('END')
+
+    return qdata, Idata, sigqdata, qbinsc, Imean, chi, rg, supportV, rho, side, fit, final_chi2
 
 def shrinkwrap_by_density_value(rho,absv=True,sigma=3.0,threshold=0.2,recenter=True,recenter_mode="com"):
     """Create support using shrinkwrap method based on threshold as fraction of maximum density

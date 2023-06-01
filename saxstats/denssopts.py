@@ -122,8 +122,16 @@ def parse_arguments(parser):
     Iq[:,0] = q
     Iq[:,1] = Ifit
     Iq[:,2] = sigq
+
+    idx = np.where(I>0)
     qraw = np.copy(q)
     Iraw = np.copy(I)
+    sigqraw = np.copy(sigq)
+    idx = np.where(I>0)
+    qraw = qraw[idx]
+    Iraw = Iraw[idx]
+    sigqraw = sigqraw[idx]
+
     if Iq.shape[0] < 3:
         print("Not enough data points (check that data has 3 columns: q, I, errors).")
         exit()
@@ -190,7 +198,7 @@ def parse_arguments(parser):
         #quick, interpolate the raw data, sasrec.I, to the new qc values, but be sure to 
         #put zeros in for the q values not measured behind the beamstop
         Iinterp = np.interp(sasrec.qc, sasrec.q, sasrec.I, left=0.0, right=0.0)
-        np.savetxt(args.output+'.fit', np.vstack((sasrec.qc, Iinterp, sasrec.Icerr, sasrec.Ic)).T,delimiter=' ',fmt='%.5e',header=param_str)
+        np.savetxt(args.output+'_fitdata.fit', np.vstack((sasrec.qc, Iinterp, sasrec.Icerr, sasrec.Ic)).T,delimiter=' ',fmt='%.5e',header=param_str)
 
     #denss cannot deal with negative intensity values which sometimes happens with real data
     #if the fit goes negative, denss will fail
@@ -458,5 +466,6 @@ def parse_arguments(parser):
     args.sigq = sigq
     args.qraw = qraw
     args.Iraw = Iraw
+    args.sigqraw = sigqraw
 
     return args
