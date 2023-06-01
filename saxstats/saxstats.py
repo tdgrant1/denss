@@ -1209,7 +1209,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     my_logger.info('NCS Steps: %s', ncs_steps)
     my_logger.info('NCS Axis: %s', ncs_axis)
     my_logger.info('Positivity: %s', positivity)
-    my_logger.info('Positivity Steps: %s', positivity_steps)
+    # my_logger.info('Positivity Steps: %s', positivity_steps)
     my_logger.info('Extrapolate high q: %s', extrapolate)
     my_logger.info('Shrinkwrap: %s', shrinkwrap)
     my_logger.info('Shrinkwrap Old Method: %s', shrinkwrap_old_method)
