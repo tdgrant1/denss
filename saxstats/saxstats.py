@@ -122,6 +122,20 @@ def myfftn(x, DENSS_GPU=False):
                 #fall back to numpy
                 return np.fft.fftn(x)
 
+def myrfftn(x, DENSS_GPU=False):
+    if DENSS_GPU:
+        return cp.fft.rfftn(x)
+    else:
+        if PYFFTW:
+            return pyfftw.interfaces.numpy_fft.rfftn(x)
+        else:
+            try:
+                #try running the parallelized version of scipy fft
+                return fft.rfftn(x,workers=-1)
+            except:
+                #fall back to numpy
+                return np.fft.rfftn(x)
+
 def myifftn(x, DENSS_GPU=False):
     if DENSS_GPU:
         return cp.fft.ifftn(x)
@@ -135,6 +149,20 @@ def myifftn(x, DENSS_GPU=False):
             except:
                 #fall back to numpy
                 return np.fft.ifftn(x)
+
+def myirfftn(x, DENSS_GPU=False):
+    if DENSS_GPU:
+        return cp.fft.irfftn(x)
+    else:
+        if PYFFTW:
+            return pyfftw.interfaces.numpy_fft.irfftn(x)
+        else:
+            try:
+                #try running the parallelized version of scipy fft
+                return fft.irfftn(x,workers=-1)
+            except:
+                #fall back to numpy
+                return np.fft.irfftn(x)
 
 def myabs(x, out=None,DENSS_GPU=False):
     if DENSS_GPU:
@@ -1062,7 +1090,9 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
 
     df = 1/side
     qx_ = np.fft.fftfreq(x_.size)*n*df*2*np.pi
-    qx, qy, qz = np.meshgrid(qx_,qx_,qx_,indexing='ij')
+    qz_ = np.fft.rfftfreq(x_.size)*n*df*2*np.pi
+    # qx, qy, qz = np.meshgrid(qx_,qx_,qx_,indexing='ij')
+    qx, qy, qz = np.meshgrid(qx_,qx_,qz_,indexing='ij')
     qr = np.sqrt(qx**2+qy**2+qz**2)
     qmax = np.max(qr)
     qstep = np.min(qr[qr>0]) - 1e-8 #subtract a tiny bit to deal with floating point error
@@ -1075,8 +1105,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     qblravel = qbin_labels.ravel()
     xcount = np.bincount(qblravel)
 
-    #create modified qbins and put qbins in center of bin rather than at left edge of bin.
-    qbinsc = mybinmean(qr.ravel(), qblravel, xcount=xcount, DENSS_GPU=False)
+    #calculate qbinsc as average of q values in shell
+    qbinsc = mybinmean(qr.ravel(), qblravel, xcount, DENSS_GPU)
 
     #allow for any range of q data
     qdata = qbinsc[np.where( (qbinsc>=q.min()) & (qbinsc<=q.max()) )]
@@ -1134,8 +1164,7 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
     prng = np.random.RandomState(seed)
 
     if rho_start is not None:
-        rho_start *= dV
-        rho = np.copy(rho_start)
+        rho = rho_start #*dV
         if add_noise is not None:
             noise_factor = rho.max() * add_noise
             noise = prng.random_sample(size=x.shape)*noise_factor
@@ -1263,7 +1292,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
                 my_logger.info('Aborted!')
                 return []
 
-        F = myfftn(rho, DENSS_GPU=DENSS_GPU)
+        # F = myfftn(rho, DENSS_GPU=DENSS_GPU)
+        F = myrfftn(rho, DENSS_GPU=DENSS_GPU)
 
         #sometimes, when using denss.refine.py with non-random starting rho,
         #the resulting Fs result in zeros in some locations and the algorithm to break
@@ -1272,11 +1302,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
 
         #APPLY RECIPROCAL SPACE RESTRAINTS
         #calculate spherical average of intensities from 3D Fs
-        #for some reason, sometimes this fails
-        try:
-            I3D = abs2(F)
-        except:
-            I3D = myabs(F,DENSS_GPU=DENSS_GPU)**2
+        # I3D = myabs(F, DENSS_GPU=DENSS_GPU)**2
+        I3D = abs2(F)
         Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=DENSS_GPU)
 
         #scale Fs to match data
@@ -1289,7 +1316,8 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         chi[j] = mysum(((Imean[qba]-Idata[qba])/sigqdata[qba])**2, DENSS_GPU=DENSS_GPU)/Idata[qba].size
 
         #APPLY REAL SPACE RESTRAINTS
-        rhoprime = myifftn(F, DENSS_GPU=DENSS_GPU).real
+        # rhoprime = myifftn(F, DENSS_GPU=DENSS_GPU).real
+        rhoprime = myirfftn(F, DENSS_GPU=DENSS_GPU).real
 
         # use Guinier's law to approximate quickly
         rg[j] = calc_rg_by_guinier_first_2_points(qbinsc, Imean, DENSS_GPU=DENSS_GPU)
@@ -1533,16 +1561,20 @@ def denss(q, I, sigq, dmax, ne=None, voxel=5., oversampling=3., recenter=True, r
         qblravel = cp.asnumpy(qblravel)
         xcount = cp.asnumpy(xcount)
 
-    F = myfftn(rho)
+    # F = myfftn(rho)
+    F = myrfftn(rho)
     #calculate spherical average intensity from 3D Fs
     I3D = abs2(F)
-    Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=False)
+    # I3D = myabs(F)**2
+    Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount)
 
     #scale Fs to match data
     factors = np.sqrt(Idata/Imean)
     factors[~qba] = 1.0
     F *= factors[qbin_labels]
-    rho = myifftn(F).real
+    # rho = myifftn(F)
+    rho = myirfftn(F)
+    rho = rho.real
 
     #negative images yield the same scattering, so flip the image
     #to have more positive than negative values if necessary
