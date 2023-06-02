@@ -1669,11 +1669,6 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
     my_logger.info('Mean Density (all voxels): %3.5f', np.mean(rho))
     my_logger.info('Std. Dev. of Density (all voxels): %3.5f', np.std(rho))
     my_logger.info('RMSD of Density (all voxels): %3.5f', np.sqrt(np.mean(np.square(rho))))
-    # idx = np.where(np.abs(rho)>0.01*rho.max())
-    # my_logger.info('Modified Mean Density (voxels >0.01*max): %3.5f', np.mean(rho[idx]))
-    # my_logger.info('Modified Std. Dev. of Density (voxels >0.01*max): %3.5f', np.std(rho[idx]))
-    # my_logger.info('Modified RMSD of Density (voxels >0.01*max): %3.5f', np.sqrt(np.mean(np.square(rho[idx]))))
-    # my_logger.info('END')
 
     return qdata, Idata, sigqdata, qbinsc, Imean, chi, rg, supportV, rho, side, fit, final_chi2
 

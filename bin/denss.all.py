@@ -185,14 +185,15 @@ if __name__ == "__main__":
     sigqdata = denss_outputs[0][2]
     qbinsc = denss_outputs[0][3]
     all_Imean = [denss_outputs[i][4] for i in np.arange(superargs.nmaps)]
+    all_fits = [denss_outputs[i][-2] for i in np.arange(superargs.nmaps)]
     header = ['q','I','error']
-    fit = np.zeros(( len(qbinsc),superargs.nmaps+3 ))
-    fit[:len(qdata),0] = qdata
-    fit[:len(Idata),1] = Idata
-    fit[:len(sigqdata),2] = sigqdata
+    fit = np.zeros(( all_fits[0].shape[0],superargs.nmaps+3 ))
+    fit[:,0] = all_fits[0][:,0]
+    fit[:,1] = all_fits[0][:,1]
+    fit[:,2] = all_fits[0][:,2]
 
     for map in range(superargs.nmaps):
-        fit[:len(all_Imean[0]),map+3] = all_Imean[map]
+        fit[:,map+3] = all_fits[map][:,3]
         header.append("I_fit_"+str(map))
 
     np.savetxt(output+'_map.fit',fit,delimiter=" ",fmt="%.5e", header=" ".join(header))
@@ -297,10 +298,6 @@ if __name__ == "__main__":
     superlogger.info('Mean Density of Avg Map (all voxels): %3.5f', np.mean(average_rho))
     superlogger.info('Std. Dev. of Density (all voxels): %3.5f', np.std(average_rho))
     superlogger.info('RMSD of Density (all voxels): %3.5f', np.sqrt(np.mean(np.square(average_rho))))
-    idx = np.where(np.abs(average_rho)>0.01*average_rho.max())
-    superlogger.info('Modified Mean Density (voxels >0.01*max): %3.5f', np.mean(average_rho[idx]))
-    superlogger.info('Modified Std. Dev. of Density (voxels >0.01*max): %3.5f', np.std(average_rho[idx]))
-    superlogger.info('Modified RMSD of Density (voxels >0.01*max): %3.5f', np.sqrt(np.mean(np.square(average_rho[idx]))))
     saxs.write_mrc(average_rho, sides[0], output+'_avg.mrc')
 
     #rather than compare two halves, average all fsc's to the reference
