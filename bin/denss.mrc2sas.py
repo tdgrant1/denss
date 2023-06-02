@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 #
 #    denss.mrc2sas.py
-#    A tool for calculating the Fourier Shell Correlation
-#    between two pre-aligned MRC formatted electron density maps
+#    A tool for calculating a scattering profile from an electron density
+#    map and fitting to experimental SWAXS data.
 #
 #    Part of the DENSS package
 #    DENSS: DENsity from Solution Scattering
@@ -36,7 +36,7 @@ from saxstats._version import __version__
 import saxstats.saxstats as saxs
 from textwrap import wrap
 
-parser = argparse.ArgumentParser(description="A tool for calculating the Fourier Shell Correlation between two pre-aligned MRC formatted electron density maps", formatter_class=argparse.RawTextHelpFormatter)
+parser = argparse.ArgumentParser(description="A tool for calculating a scattering profile from an electron density map and fitting to experimental SWAXS data.", formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
 parser.add_argument("-f", "--file", type=str, help="Electron density filename (.mrc) (required)")
 parser.add_argument("-d", "--data", type=str, help="Experimental SAXS data file for input (3-column ASCII text file (q, I, err), required).")
