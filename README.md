@@ -15,7 +15,7 @@ Try out DENSS without installing the code using the DENSSWeb server. Run DENSSWe
 ## NEWS
 
 #### New SWAXS calculator for atomic models
-DENSS v1.7.0 introduces a new tool for calculating highly accurate SWAXS profiles from atomic models and fitting experimental data (like CRYSOL, FoXS and others). The denss.pdb2mrc.py script will also generate a high-resolution electron density map incorporating solvent terms such as excluded volume and the hydration shell. The article describing the method is available on bioRxiv at
+DENSS v1.7.0 introduces a new tool for calculating highly accurate SWAXS profiles from atomic models and fitting experimental data (like CRYSOL, FoXS and others). The denss.pdb2mrc.py script will accept atomic models in the PDB format and generate a high-resolution electron density map incorporating solvent terms such as excluded volume and the hydration shell. The article describing the method is available on bioRxiv (link to be added).
 
 #### DENSS v1.7.0 released
 DENSS v1.7.0 has now been released. Included in the updates are many bug fixes, speed and stability improvements. A new script called denss.mrc2sas.py is included to fit a calculated scattering profile from a density map to experimental SWAXS data, and calculate chi2 as a metric of the quality of fit. Similar fits are also now produced by denss.py, denss.refine.py, and denss.all.py.
