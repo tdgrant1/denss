@@ -1646,6 +1646,8 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
         sigqraw = sigq
     Iq_exp = np.vstack((qraw,Iraw,sigqraw)).T
     Iq_calc = np.vstack((qbinsc, Imean, Imean*0.01)).T
+    idx = np.where(Iraw>0)
+    Iq_exp = Iq_exp[idx]
     qmax = np.min([Iq_exp[:,0].max(),Iq_calc[:,0].max()])
     Iq_exp = Iq_exp[Iq_exp[:,0]<=qmax]
     Iq_calc = Iq_calc[Iq_calc[:,0]<=qmax]
