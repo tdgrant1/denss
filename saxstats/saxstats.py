@@ -1107,7 +1107,7 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
     xcount = np.bincount(qblravel)
 
     #calculate qbinsc as average of q values in shell
-    qbinsc = mybinmean(qr.ravel(), qblravel, xcount, DENSS_GPU)
+    qbinsc = mybinmean(qr.ravel(), qblravel, xcount)
 
     #allow for any range of q data
     qdata = qbinsc[np.where( (qbinsc>=q.min()) & (qbinsc<=q.max()) )]
@@ -1276,6 +1276,7 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
         rho = cp.array(rho)
         qbin_labels = cp.array(qbin_labels)
         qbins = cp.array(qbins)
+        qbinsc = cp.array(qbinsc)
         Idata = cp.array(Idata)
         qbin_args = cp.array(qbin_args)
         sigqdata = cp.array(sigqdata)
@@ -1554,6 +1555,7 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
         Imean = cp.asnumpy(Imean)
         chi = cp.asnumpy(chi)
         qbins = cp.asnumpy(qbins)
+        qbinsc = cp.asnumpy(qbinsc)
         Idata = cp.asnumpy(Idata)
         support = cp.asnumpy(support)
         supportV = cp.asnumpy(supportV)
