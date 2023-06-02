@@ -32,7 +32,7 @@ import multiprocessing
 import logging
 import sys
 import argparse
-import os
+import os, shutil
 import copy
 import time
 from functools import partial
@@ -142,6 +142,9 @@ if __name__ == "__main__":
     output = out_dir+'/'+output
     args.output = output
     superargs.output = output
+
+    #for convenience and record keeping, make a copy of the input file in the output directory
+    shutil.copy(superargs.file, out_dir)
 
     fname = output+'_final.log'
     superlogger = logging.getLogger(output+'_final')
