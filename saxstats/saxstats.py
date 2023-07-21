@@ -3629,7 +3629,7 @@ class PDB2MRC(object):
             rho_shell, sidex = read_mrc(self.shell_mrcfile)
             rho_shell *= self.dV #assume mrc file is in units of density, convert to electron count
             print(sidex, self.side)
-            if (sidex != self.side) or (rho_shell.shape[0] != self.x.shape[0]):
+            if not np.isclose(sidex,self.side,rtol=1e-3,atol=1e-3) or (rho_shell.shape[0] != self.x.shape[0]):
                 print("Error: shell_mrcfile does not match grid.")
                 print("Use denss.mrcops.py to resample onto the desired grid.")
                 exit()
