@@ -29,6 +29,7 @@
 
 import sys, os, copy, argparse
 import numpy as np
+from saxstats._version import __version__
 import saxstats.saxstats as saxs
 import matplotlib.pyplot as plt
 
@@ -37,13 +38,9 @@ parser = argparse.ArgumentParser(description="A tool for calculating simple elec
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
 parser.add_argument("-f", "--file", type=str, help="Hypred model as a .pdb file for input.")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix (default=basename_hypred)")
-parser.set_defaults(ignore_waters = False)
-parser.set_defaults(center = True)
-parser.set_defaults(plot=True)
-parser.set_defaults(use_b=False)
 args = parser.parse_args()
 
-file = sys.file
+file = args.file
 fname_nopath = os.path.basename(file)
 basename, ext = os.path.splitext(fname_nopath)
 output = basename

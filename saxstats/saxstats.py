@@ -3269,6 +3269,17 @@ def center_of_circle_from_sphere_intersection(x1,y1,z1,r1,x2,y2,z2,r2,a,b,c,d):
     zc = z1 + t*(z2-z1)
     return (xc,yc,zc)
 
+def calc_rho0(mw, conc):
+    """Estimate bulk solvent density, rho0, from list of molecular weights
+    and molar concentrations of components.
+    mw and conc can be lists (nth element of mw corresponds to nth element of concentration)
+    mw in g/mol
+    concentration in mol/L.
+    """
+    mw = np.atleast_1d(mw)
+    conc = np.atleast_1d(conc)
+    return 0.334 * (1 + np.sum(mw*conc*0.001))
+
 class PDB2MRC(object):
     def __init__(self, 
         pdb,
