@@ -225,6 +225,9 @@ if __name__ == "__main__":
     if superargs.ref is not None:
         #allow input of reference structure
         if superargs.ref.endswith('.pdb'):
+            reffname_nopath = os.path.basename(superargs.ref)
+            refbasename, refext = os.path.splitext(reffname_nopath)
+            refoutput = refbasename+"_centered.pdb"
             refside = sides[0]
             voxel = (refside/allrhos[0].shape)[0]
             halfside = refside/2
