@@ -90,12 +90,25 @@ if __name__ == "__main__":
             if args.center:
                 pdb.coords -= pdb.coords.mean(axis=0)
                 pdb.write(filename=refoutput)
-            #use the new fastgauss function
-            #refrho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=args.resolution)
-            # refrho = saxs.pdb2map_fastgauss(pdb,x=x,y=y,z=z,sigma=args.resolution,r=args.resolution*2)
-            refrho, support = saxs.pdb2map_multigauss(pdb,x=x,y=y,z=z,resolution=args.resolution,ignore_waters=args.ignore_waters)
-            refrho = refrho*np.sum(rho)/np.sum(refrho)
-            saxs.write_mrc(refrho,side,filename=refbasename+'_pdb.mrc')
+            pdb2mrc = saxs.PDB2MRC(
+                pdb=pdb,
+                center_coords=False, #done above
+                voxel=dx,
+                side=refside,
+                nsamples=n,
+                ignore_warnings=True,
+                )
+            pdb2mrc.scale_radii()
+            pdb2mrc.make_grids()
+            pdb2mrc.calculate_global_B()
+            pdb2mrc.calculate_invacuo_density()
+            pdb2mrc.calculate_excluded_volume()
+            pdb2mrc.calculate_hydration_shell()
+            pdb2mrc.calculate_structure_factors()
+            pdb2mrc.calc_rho_with_modified_params(pdb2mrc.params)
+            refrho = pdb2mrc.rho_insolvent
+            refrho = refrho*np.sum(allrhos[0])/np.sum(refrho)
+            saxs.write_mrc(refrho,pdb2mrc.side,filename=refbasename+'_pdb.mrc')
         if args.ref.endswith('.mrc'):
             refrho, refside = saxs.read_mrc(args.ref)
         if (not args.ref.endswith('.mrc')) and (not args.ref.endswith('.pdb')):

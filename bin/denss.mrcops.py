@@ -29,7 +29,7 @@
 #
 
 from __future__ import print_function
-import os, argparse, sys, imp
+import os, argparse, sys
 import logging
 import numpy as np
 from scipy import ndimage

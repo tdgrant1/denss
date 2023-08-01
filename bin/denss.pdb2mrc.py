@@ -51,10 +51,11 @@ parser.add_argument("-u", "--units", default="a", type=str, help="Angular units 
 parser.add_argument("-s", "--side", default=None, type=float, help="Desired side length of real space box (default=3*Dmax).")
 parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired voxel size (default=1.0)")
 parser.add_argument("-n", "--nsamples", default=None, type=int, help="Desired number of samples (i.e. voxels) per axis (default=variable)")
-parser.add_argument("-b", "--b", dest="use_b", action="store_true", help="Include B-factors in atomic model (optional, default=False)")
-parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (additional B-factor-like atomic displacement.)")
-parser.add_argument("-exH","-explicitH","--explicitH", dest="explicitH", action="store_true", help="Use hydrogens in pdb file (optional, default=True if H exists)")
-parser.add_argument("-imH","-implicitH","--implicitH", dest="explicitH", action="store_false", help=argparse.SUPPRESS) #help="Use implicit hydrogens approximation (optional, EXPERIMENTAL)")
+parser.add_argument("-b", "--use_b", dest="use_b", action="store_true", help="Include B-factors from atomic model (optional, default=False)")
+parser.add_argument("-B", "--global_B", default=None, type=float, help="Desired global B-factor (added to any individual B-factors if enabled), used for improving sampling for large voxel sizes (varies by voxel size, default=~7 for default 1 angstrom voxel.)")
+parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (after map calculation, blur map by this width using gaussian kernel, similar to Chimera Volume Filter function).")
+parser.add_argument("-exH","--explicitH", dest="explicitH", action="store_true", help="Use hydrogens in pdb file (optional, default=True if H exists)")
+parser.add_argument("-imH","--implicitH", dest="explicitH", action="store_false", help=argparse.SUPPRESS) #help="Use implicit hydrogens approximation (optional, EXPERIMENTAL)")
 parser.add_argument("-recalc","--recalc","--recalculate_volumes", dest="recalculate_atomic_volumes", action="store_true", help="Calculate atomic volumes directly from coordinates rather than using lookup table (default=False)")
 parser.add_argument("--read_radii", default=False, action="store_true", help="Read adjusted per atom radii (for volume calculation) from Occupancy column of PDB file (default=False)")
 parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB (default).")
@@ -72,12 +73,14 @@ parser.add_argument("-drho","--drho","-shell","-shell_contrast", "--shell_contra
 parser.add_argument("-shell_type", "--shell_type", default="water", type=str, help="Type of hydration shell (water (default) or uniform)")
 parser.add_argument("-shell_mrcfile", "--shell_mrcfile", default=None, type=str, help=argparse.SUPPRESS) #help="Filename of hydration shell mrc file (default=None)")
 parser.add_argument("-fit_radii", "--fit_radii", dest="fit_radii", action="store_true", help=argparse.SUPPRESS) #help="Fit atomic radii for excluded volume calculation (optional, default=False)")
+parser.add_argument("--radii_sf", default=None, type=float, nargs='+', help=argparse.SUPPRESS) #help="Atomic radii scale factors for excluded volume calculation (optional, ordered as [H C N O])")
+parser.add_argument("--set_radii_explicitly", default=None, type=str, help=argparse.SUPPRESS) #help="Set atomic radii explicitly for different atom types. Ignores --radii_sf. Format H:1.07:C:1.58:N:0.084:O:1.30"
 parser.add_argument("-fit_scale_on", "--fit_scale_on", dest="fit_scale", action="store_true", help="Include scale factor in least squares fit to data (optional, default=True)")
 parser.add_argument("-fit_scale_off", "--fit_scale_off", dest="fit_scale", action="store_false", help="Do not include offset in least squares fit to data.")
 parser.add_argument("-fit_offset_on", "--fit_offset_on", dest="fit_offset", action="store_true", help="Include offset in least squares fit to data (optional, default=False)")
 parser.add_argument("-fit_offset_off", "--fit_offset_off", dest="fit_offset", action="store_false", help="Do not include offset in least squares fit to data.")
 parser.add_argument("-p", "-penalty_weight", "--penalty_weight", default=None, type=float, help=argparse.SUPPRESS) #help="Overall penalty weight for fitting parameters (default=0)")
-parser.add_argument("-ps", "-penalty_weights", "--penalty_weights", default=[1.0, 1.0], type=float, nargs='+', help=argparse.SUPPRESS) #help="Individual penalty weights for each parameter (space separated listed of weights for [rho0,shell], default=1.0 1.0)")
+parser.add_argument("-ps", "-penalty_weights", "--penalty_weights", default=[1.0, 0.0], type=float, nargs='+', help=argparse.SUPPRESS) #help="Individual penalty weights for each parameter (space separated listed of weights for [rho0,shell], default=1.0 1.0)")
 parser.add_argument("-min_method", "--min_method", "-minimization_method","--minimization_method", dest="method", default='Nelder-Mead', type=str, help="Minimization method (scipy.optimize method, default=Nelder-Mead).")
 parser.add_argument("-min_options", "--min_options", "-minimization_options","--minimization_options", dest="minopts", default='{"adaptive": True}', type=str, help="Minimization options (scipy.optimize options formatted as python dictionary, default=\"{'adaptive': True}\").")
 parser.add_argument("-write_off", "--write_off", action="store_false", dest="write_mrc_file", help="Do not write MRC file (default=False).")
@@ -162,10 +165,11 @@ if __name__ == "__main__":
         explicitH=args.explicitH,
         modifiable_atom_types=None,
         center_coords=args.center,
-        radii_sf=None,
+        radii_sf=args.radii_sf,
         recalculate_atomic_volumes=args.recalculate_atomic_volumes,
         exvol_type=args.exvol_type,
         use_b=args.use_b,
+        global_B=args.global_B,
         resolution=args.resolution,
         voxel=args.voxel,
         side=args.side,
@@ -210,17 +214,19 @@ if __name__ == "__main__":
     #column, to prevent needing to recalculate if wanting
     #to run the fitting again.
     pdboutput = basename
-    if args.center:
-        pdboutput += '_centered.pdb'
-    else:
-        pdboutput += '_out.pdb'
+    pdboutput += '_out.pdb'
     pdbout = copy.deepcopy(pdb2mrc.pdb)
     pdbout.occupancy = pdb2mrc.pdb.unique_radius
     pdbout.write(filename=pdboutput)
 
-    pdb2mrc.scale_radii()
+    pdb2mrc.scale_radii(radii_sf=args.radii_sf)
+    if args.set_radii_explicitly is not None:
+        arg_list = args.set_radii_explicitly.split(":")
+        atom_types = arg_list[::2]
+        radii = np.array(arg_list[1::2], dtype=float)
+        pdb2mrc.set_radii(atom_types, radii)
     pdb2mrc.make_grids()
-    pdb2mrc.calculate_resolution()
+    pdb2mrc.calculate_global_B()
 
     print("Optimal Side length >= %.2f" % pdb2mrc.optimal_side)
     print("Optimal N samples   >= %d" % pdb2mrc.optimal_nsamples)
@@ -250,24 +256,22 @@ if __name__ == "__main__":
 
     pdb2mrc.calculate_structure_factors()
 
-    if args.fit_radii:
-        fit_radii = True
-        if args.penalty_weight is None:
-            pdb2mrc.penalty_weight = 10.0
-        else:
-            pdb2mrc.penalty_weight = args.penalty_weight
-    else:
-        fit_radii = False
-        if args.penalty_weight is None:
-            pdb2mrc.penalty_weight = 0.0
-        else:
-            pdb2mrc.penalty_weight = args.penalty_weight
-
     if args.data is not None:
         pdb2mrc.load_data()
+        #get initial chi2 without fitting
+        pdb2mrc.params_target = pdb2mrc.params
+        pdb2mrc.penalty_weight = 0.0
+        pdb2mrc.calc_I_with_modified_params(pdb2mrc.params)
+        pdb2mrc.calc_score_with_modified_params(pdb2mrc.params)
+        chi2_nofit = pdb2mrc.chi2
+        if args.penalty_weight is None:
+            # pdb2mrc.penalty_weight = 10.0
+            pdb2mrc.penalty_weight = chi2_nofit * 100.0
+        else:
+            pdb2mrc.penalty_weight = args.penalty_weight
         if pdb2mrc.fit_params:
             logging.info('Optimizing parameters...')
-        pdb2mrc.minimize_parameters(fit_radii=fit_radii)
+        pdb2mrc.minimize_parameters(fit_radii=args.fit_radii)
 
     logging.info('Final Parameter Values:')
     print()
@@ -346,6 +350,30 @@ if __name__ == "__main__":
             plt.savefig(output+'_fits.png',dpi=300)
             # plt.show()
             plt.close()
+
+    #after all the map calculations are done, apply any resolution-based blurring directly to the map
+    #but this should not be included in the scattering profile calculation, so we do it here just
+    #before writing the maps
+    if args.resolution is not None:
+        sigma = args.resolution / pdb2mrc.dx
+        if sigma <= 0.5:
+            print("Note: requested resolution is less than half a voxel, meaning nothing will be done for the Gaussian filter.")
+        if args.write_mrc_file:
+            ne = pdb2mrc.rho_insolvent.sum()
+            pdb2mrc.rho_insolvent = ndimage.gaussian_filter(pdb2mrc.rho_insolvent, sigma, mode='wrap')
+            pdb2mrc.rho_insolvent *= ne/pdb2mrc.rho_insolvent.sum()
+        if args.write_extras:
+            ne = pdb2mrc.rho_invacuo.sum()
+            pdb2mrc.rho_invacuo = ndimage.gaussian_filter(pdb2mrc.rho_invacuo, sigma, mode='wrap')
+            pdb2mrc.rho_invacuo *= ne/pdb2mrc.rho_invacuo.sum()
+
+            ne = pdb2mrc.rho_exvol.sum()
+            pdb2mrc.rho_exvol = ndimage.gaussian_filter(pdb2mrc.rho_exvol, sigma, mode='wrap')
+            pdb2mrc.rho_exvol *= ne/pdb2mrc.rho_exvol.sum()
+
+            ne = pdb2mrc.rho_shell.sum()
+            pdb2mrc.rho_shell = ndimage.gaussian_filter(pdb2mrc.rho_shell, sigma, mode='wrap')
+            pdb2mrc.rho_shell *= ne/pdb2mrc.rho_shell.sum()
 
     if args.write_mrc_file:
         #write output

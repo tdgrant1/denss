@@ -1196,7 +1196,11 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
         erode = False
     else:
         erode = True
-        erosion_width = 5
+        erosion_width = int(50/dx) #this is in pixels
+        print(erosion_width)
+        if erosion_width ==0:
+            #make minimum of one pixel
+            erosion_width = 1
 
     my_logger.info('q range of input data: %3.3f < q < %3.3f', q.min(), q.max())
     my_logger.info('Maximum dimension: %3.3f', D)
@@ -3280,6 +3284,22 @@ def calc_rho0(mw, conc):
     conc = np.atleast_1d(conc)
     return 0.334 * (1 + np.sum(mw*conc*0.001))
 
+def rotate_coordinates(coordinates, degrees_x=0, degrees_y=0, degrees_z=0):
+    # Convert degrees to radians
+    radians_x = np.deg2rad(degrees_x)
+    radians_y = np.deg2rad(degrees_y)
+    radians_z = np.deg2rad(degrees_z)
+
+    # Create rotation object for each axis
+    rotation_x = spatial.transform.Rotation.from_euler('x', radians_x)
+    rotation_y = spatial.transform.Rotation.from_euler('y', radians_y)
+    rotation_z = spatial.transform.Rotation.from_euler('z', radians_z)
+
+    # Apply rotations sequentially
+    rotated_coordinates = rotation_z.apply(rotation_y.apply(rotation_x.apply(coordinates)))
+
+    return rotated_coordinates
+
 class PDB2MRC(object):
     def __init__(self, 
         pdb,
@@ -3291,6 +3311,7 @@ class PDB2MRC(object):
         recalculate_atomic_volumes=False,
         exvol_type='gaussian',
         use_b=False,
+        global_B=None,
         resolution=None,
         voxel=None,
         side=None,
@@ -3313,6 +3334,7 @@ class PDB2MRC(object):
         fit_all=True,
         min_method='Nelder-Mead',
         min_opts='{"adaptive": True}',
+        ignore_warnings=False,
         ):
         self.pdb = pdb
         self.ignore_waters = ignore_waters
@@ -3363,6 +3385,7 @@ class PDB2MRC(object):
         self.optimal_voxel = 1.0
         self.optimal_nsamples = np.ceil(self.optimal_side/self.optimal_voxel).astype(int)
         self.nsamples_limit = 256
+        self.global_B = global_B
         self.resolution = resolution
         self.voxel=voxel
         self.side=side
@@ -3388,9 +3411,10 @@ class PDB2MRC(object):
         self.min_opts = min_opts
         self.param_names = ['rho0', 'shell_contrast']
         self.params = np.array([self.rho0, self.shell_contrast])
+        self.ignore_warnings = ignore_warnings
 
     def scale_radii(self, radii_sf=None):
-        """Set all the modifiable atom type radii in the pdb"""
+        """Scale all the modifiable atom type radii in the pdb"""
         if self.pdb.radius is None:
             self.pdb.radius = np.copy(self.pdb.unique_radius)
         if radii_sf is None:
@@ -3404,6 +3428,14 @@ class PDB2MRC(object):
             else:
                 self.pdb.exvolHradius = np.zeros(self.pdb.natoms)
                 self.pdb.radius[self.pdb.atomtype==self.modifiable_atom_types[i]] = radii_sf[i] * self.pdb.unique_radius[self.pdb.atomtype==self.modifiable_atom_types[i]]
+
+    def set_radii(self, atom_types, radii):
+        """For each atom type in atom_types, set its value to corresponding radius in radii."""
+        if self.pdb.radius is None:
+            self.pdb.radius = np.ones(self.pdb.natoms)
+        for i in range(len(atom_types)):
+            self.pdb.exvolHradius = np.zeros(self.pdb.natoms)
+            self.pdb.radius[self.pdb.atomtype==atom_types[i]] = radii[i]
 
     def calculate_average_radii(self):
         self.mean_radius = np.ones(len(self.modifiable_atom_types))
@@ -3425,7 +3457,7 @@ class PDB2MRC(object):
         nsamples = self.nsamples
         if voxel is not None and nsamples is not None and side is not None:
             #if v, n, s are all given, side and nsamples dominates
-            side = optimal_side
+            side = side
             nsamples = nsamples
             voxel = side / nsamples
         elif voxel is not None and nsamples is not None and side is None:
@@ -3475,41 +3507,42 @@ class PDB2MRC(object):
                 nsamples = nsamples_limit
             voxel = side / nsamples
 
-        #make some warnings for certain cases
-        side_small_warning = """
-            Side length may be too small and may result in undersampling errors."""
-        side_way_too_small_warning = """
-            Disabling interpolation of I_calc due to severe undersampling."""
-        voxel_big_warning = """
-            Voxel size is greater than 1 A. This may lead to less accurate I(q) estimates at high q."""
-        nsamples_warning = """
-            To avoid long computation times and excessive memory requirements, the number of voxels
-            has been limited to 256 and the voxel size has been set to {v:.2f},
-            which may be too large and lead to less accurate I(q) estimates at high q.""".format(v=voxel)
-        optimal_values_warning = """
-            To ensure the highest accuracy, manually set the -s option to {os:.2f} and
-            the -v option to {ov:.2f}, which will set -n option to {on:d} and thus 
-            may take a long time to calculate and use a lot of memory.
-            If that requires too much computation, set -s first, and -n to the 
-            limit you prefer (n=512 may approach an upper limit for many computers).
-            """.format(os=optimal_side, ov=optimal_voxel, on=optimal_nsamples)
+        if not self.ignore_warnings:
+            #make some warnings for certain cases
+            side_small_warning = """
+                Side length may be too small and may result in undersampling errors."""
+            side_way_too_small_warning = """
+                Disabling interpolation of I_calc due to severe undersampling."""
+            voxel_big_warning = """
+                Voxel size is greater than 1 A. This may lead to less accurate I(q) estimates at high q."""
+            nsamples_warning = """
+                To avoid long computation times and excessive memory requirements, the number of voxels
+                has been limited to 256 and the voxel size has been set to {v:.2f},
+                which may be too large and lead to less accurate I(q) estimates at high q.""".format(v=voxel)
+            optimal_values_warning = """
+                To ensure the highest accuracy, manually set the -s option to {os:.2f} and
+                the -v option to {ov:.2f}, which will set -n option to {on:d} and thus 
+                may take a long time to calculate and use a lot of memory.
+                If that requires too much computation, set -s first, and -n to the 
+                limit you prefer (n=512 may approach an upper limit for many computers).
+                """.format(os=optimal_side, ov=optimal_voxel, on=optimal_nsamples)
 
-        warn = False
-        if side < optimal_side:
-            print(side_small_warning)
-            warn = True
-        if side < 2/3*optimal_side:
-            print(side_way_too_small_warning)
-            self.Icalc_interpolation = False
-            warn = True
-        if voxel > optimal_voxel:
-            print(voxel_big_warning)
-            warn = True
-        if nsamples < optimal_nsamples:
-            print(nsamples_warning)
-            warn = True
-        if warn:
-            print(optimal_values_warning)
+            warn = False
+            if side < optimal_side:
+                print(side_small_warning)
+                warn = True
+            if side < 2/3*optimal_side:
+                print(side_way_too_small_warning)
+                self.Icalc_interpolation = False
+                warn = True
+            if voxel > optimal_voxel:
+                print(voxel_big_warning)
+                warn = True
+            if nsamples < optimal_nsamples:
+                print(nsamples_warning)
+                warn = True
+            if warn:
+                print(optimal_values_warning)
 
         #make the real space grid
         halfside = side/2
@@ -3567,20 +3600,20 @@ class PDB2MRC(object):
         qmax4calc = self.qx_.max()*1.1
         self.qidx = np.where((self.qr<=qmax4calc))
 
-    def calculate_resolution(self):
+    def calculate_global_B(self):
         if self.dx is None:
             #if make_grids has not been run yet, run it
             self.make_grids()
-        if self.resolution is None and not self.use_b:
-            self.resolution = 0.30 * self.dx #this helps with voxel sampling issues
+        if self.global_B is None:
+            self.global_B = u2B(0.30 * self.dx) #this helps with voxel sampling issues
         else:
-            self.resolution = 0.0
+            self.global_B = self.global_B
 
     def calculate_invacuo_density(self):
         print('Calculating in vacuo density...')
         self.rho_invacuo, self.support = pdb2map_multigauss(self.pdb,
             x=self.x,y=self.y,z=self.z,
-            resolution=self.resolution,
+            global_B=self.global_B,
             use_b=self.use_b,
             ignore_waters=self.ignore_waters)
         print('Finished in vacuo density.')
@@ -3668,10 +3701,11 @@ class PDB2MRC(object):
         #F_invacuo
         self.F_invacuo = myfftn(self.rho_invacuo)
         #perform B-factor sharpening to correct for B-factor sampling workaround
-        if self.resolution > 2:
+        if self.global_B > u2B(2):
+            #too much blurring causes artifacts. Limit to about 2 angstroms
             Bsharp = -u2B(2)
         else:
-            Bsharp = -u2B(self.resolution)
+            Bsharp = -self.global_B
         self.F_invacuo *= np.exp(-(Bsharp)*(self.qr/(4*np.pi))**2)
 
         #exvol F_exvol
@@ -3995,7 +4029,6 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
     # print("\n Calculate density map from PDB... ")
     values = np.zeros(x.shape)
     support = np.zeros(x.shape,dtype=bool)
-    # cutoff = max(cutoff,2*resolution)
     cutoffs = 2*pdb.vdW
     gxmin = x.min()
     gxmax = x.max()
@@ -4065,7 +4098,7 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
         support[slc] = True
     return values, support
 
-def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=None,use_b=False,ignore_waters=True):
+def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,global_B=None,use_b=False,ignore_waters=True):
     """5-term gaussian sum at coordinate locations using Cromer-Mann coefficients.
 
     This function only calculates the values at
@@ -4073,10 +4106,9 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=None,use_b=False,ignore_w
 
     pdb - instance of PDB class (required)
     x,y,z - meshgrids for x, y, and z (required)
-    sigma - width of Gaussian, i.e. effectively resolution
     cutoff - maximum distance from atom to calculate density
-    resolution - desired resolution of density map, calculated as a B-factor
-    corresonding to atomic displacement equal to resolution.
+    global_B - desired resolution of density map, calculated as a B-factor
+    corresonding to atomic displacement equal to resolution. 
     """
     side = x[-1,0,0] - x[0,0,0]
     halfside = side/2
@@ -4089,17 +4121,13 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=None,use_b=False,ignore_w
     # print("\n Calculate density map from PDB... ")
     values = np.zeros(x.shape)
     support = np.zeros(x.shape,dtype=bool)
-    if resolution is None:
-        resolution = 0.0
-    cutoff = max(cutoff,2*resolution)
-    #convert resolution to B-factor for form factor calculation
-    #set resolution equal to atomic displacement
+    if global_B is None:
+        global_B = 0.0
+    cutoff = max(cutoff,2*B2u(global_B))
     if use_b:
-        u = B2u(pdb.b)
+        B = global_B + pdb.b
     else:
-        u = np.zeros(pdb.natoms)
-    u += resolution
-    B = u2B(u)
+        B = global_B + pdb.b * 0
     gxmin = x.min()
     gxmax = x.max()
     gymin = y.min()
@@ -4182,12 +4210,13 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,resolution=None,use_b=False,ignore_w
         tmpvalues = realspace_formfactor(element=element,r=dist,B=B[i]+Bdiff)
         #rescale total number of electrons by expected number of electrons
         #pdb.nelectrons is already corrected with the number of electrons including hydrogens
-        if np.sum(tmpvalues)>1e-8:
-            ne_total = pdb.nelectrons[i]
-            tmpvalues *= ne_total / tmpvalues.sum()
+        # if np.sum(tmpvalues)>1e-8:
+        #     ne_total = pdb.nelectrons[i]
+        #     tmpvalues *= ne_total / tmpvalues.sum()
 
         values[slc] += tmpvalues.reshape(nx,ny,nz)
         support[slc] = True
+    values *= pdb.nelectrons.sum()/values.sum()
     return values, support
 
 def pdb2F_multigauss(pdb,qx,qy,qz,qr=None,radii=None,B=None):
@@ -4474,13 +4503,15 @@ def estimate_side_from_pdb(pdb):
     return side
 
 def calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True,return_sf=False,return_fit=False):
-    """Calculates a final score comparing experimental vs calculated intensity profiles
-    for optimization of parameters defined in pdb2mrc. Score includes the chi2 and penalty 
-    due to parameter variation from target parameter.
+    """Calculates a chi2 comparing experimental vs calculated intensity profiles using interpolation. 
 
-    Iq_exp - Experimental data, q, I, sigq (required)
-    Iq_calc - calculated scattering profile's q, I, and sigq (required)
-    scale (boolean) - Scale I_calc to I_exp
+    Iq_exp (ndarray) - Experimental data, q, I, sigq (required)
+    Iq_calc (ndarray) - calculated scattering profile's q, I, and sigq (required)
+    scale (bool) - whether to allow scaling of Iq_exp to Iq_calc
+    offset (bool) - whether to allow offset of Iq_exp to Iq_calc
+    interpolation (bool) - whether to allow fine interpolation of Icalc to qexp using cubic spline
+    return_sf (bool) - return scale factor of Iq_exp
+    return_fit (bool) - return fit formatted as Nx4 array of [qexp, c*Iexp+b, c*err, Icalc], where c,b are scale and offset
     """
     q_exp = np.copy(Iq_exp[:,0])
     I_exp = np.copy(Iq_exp[:,1])
@@ -4493,17 +4524,28 @@ def calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True,retu
     else:
         #if interpolation of (coarse) calculated profile is disabled, we still need to at least
         #put the experimental data on the correct grid for comparison, so regrid the exp arrays
-        #with simple 1D linear interpolation
+        #with simple 1D linear interpolation. Note, this interpolates the exp to calc, not calc to exp,
+        #becuase exp is finely sampled usually, whereas for denss in particular calc is coarse
         I_exp = np.interp(q_calc, q_exp, I_exp)
         sigq_exp = np.interp(q_calc, q_exp, sigq_exp)
         q_exp = np.copy(q_calc)
 
     if scale and offset:
+        #the offset is effectively a constant that is the same for each 
+        #data point (i.e., a bunch of ones times a number),
+        #so we fit two vectors to Icalc (one is Iexp and the other is the array of ones),
+        #such that Icalc = c*Iexp + b*ones
+        #and then the coefficients output by least squares are c (scale factor) and b (offset)
+        #then, the chi2 equation is chi2 = 1/N * sum((Icalc-(cIexp+b))/sigq)^2
+        #which can be refactored as chi2 = 1/N * sum( Icalc/sigq - cIexp/sigq - b/sigq )^2
+        #so for np.linalg.lstsq, give the curves divided by sigq to get back c and b coefficients
         exp = np.vstack((I_exp/sigq_exp, np.ones(len(sigq_exp))*1/sigq_exp))
         calc = I_calc/sigq_exp
         exp_scale_factor, offset = _fit_by_least_squares(calc, exp)
     elif scale:
-        exp_scale_factor = _fit_by_least_squares(I_calc/sigq_exp,I_exp/sigq_exp)
+        exp = I_exp/sigq_exp
+        calc = I_calc/sigq_exp
+        exp_scale_factor = _fit_by_least_squares(calc,exp)
         offset = 0.0
     else:
         exp_scale_factor = 1.0

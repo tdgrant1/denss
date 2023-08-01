@@ -236,8 +236,26 @@ if __name__ == "__main__":
             pdb = saxs.PDB(superargs.ref)
             if superargs.center:
                 pdb.coords -= pdb.coords.mean(axis=0)
-            refrho = saxs.pdb2map_gauss(pdb,xyz=xyz,sigma=superargs.resolution)
+                pdb.write(filename=refoutput)
+            pdb2mrc = saxs.PDB2MRC(
+                pdb=pdb,
+                center_coords=False, #done above
+                voxel=dx,
+                side=refside,
+                nsamples=n,
+                ignore_warnings=True,
+                )
+            pdb2mrc.scale_radii()
+            pdb2mrc.make_grids()
+            pdb2mrc.calculate_global_B()
+            pdb2mrc.calculate_invacuo_density()
+            pdb2mrc.calculate_excluded_volume()
+            pdb2mrc.calculate_hydration_shell()
+            pdb2mrc.calculate_structure_factors()
+            pdb2mrc.calc_rho_with_modified_params(pdb2mrc.params)
+            refrho = pdb2mrc.rho_insolvent
             refrho = refrho*np.sum(allrhos[0])/np.sum(refrho)
+            saxs.write_mrc(refrho,pdb2mrc.side,filename=refbasename+'_pdb.mrc')
         if superargs.ref.endswith('.mrc'):
             refrho, refside = saxs.read_mrc(superargs.ref)
 
