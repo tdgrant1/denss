@@ -1197,7 +1197,6 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
     else:
         erode = True
         erosion_width = int(50/dx) #this is in pixels
-        print(erosion_width)
         if erosion_width ==0:
             #make minimum of one pixel
             erosion_width = 1
