@@ -79,8 +79,8 @@ parser.add_argument("-fit_scale_on", "--fit_scale_on", dest="fit_scale", action=
 parser.add_argument("-fit_scale_off", "--fit_scale_off", dest="fit_scale", action="store_false", help="Do not include offset in least squares fit to data.")
 parser.add_argument("-fit_offset_on", "--fit_offset_on", dest="fit_offset", action="store_true", help="Include offset in least squares fit to data (optional, default=False)")
 parser.add_argument("-fit_offset_off", "--fit_offset_off", dest="fit_offset", action="store_false", help="Do not include offset in least squares fit to data.")
-parser.add_argument("-p", "-penalty_weight", "--penalty_weight", default=None, type=float, help=argparse.SUPPRESS) #help="Overall penalty weight for fitting parameters (default=0)")
-parser.add_argument("-ps", "-penalty_weights", "--penalty_weights", default=[1.0, 0.0], type=float, nargs='+', help=argparse.SUPPRESS) #help="Individual penalty weights for each parameter (space separated listed of weights for [rho0,shell], default=1.0 1.0)")
+parser.add_argument("-p", "-penalty_weight", "--penalty_weight", default=None, type=float, help="Overall penalty weight for fitting parameters (default=0)")
+parser.add_argument("-ps", "-penalty_weights", "--penalty_weights", default=[1.0, 0.01], type=float, nargs='+', help="Individual penalty weights for each parameter (space separated listed of weights for [rho0,shell], default=1.0 0.01)")
 parser.add_argument("-min_method", "--min_method", "-minimization_method","--minimization_method", dest="method", default='Nelder-Mead', type=str, help="Minimization method (scipy.optimize method, default=Nelder-Mead).")
 parser.add_argument("-min_options", "--min_options", "-minimization_options","--minimization_options", dest="minopts", default='{"adaptive": True}', type=str, help="Minimization options (scipy.optimize options formatted as python dictionary, default=\"{'adaptive': True}\").")
 parser.add_argument("-write_off", "--write_off", action="store_false", dest="write_mrc_file", help="Do not write MRC file (default=False).")
@@ -214,10 +214,11 @@ if __name__ == "__main__":
     #column, to prevent needing to recalculate if wanting
     #to run the fitting again.
     pdboutput = basename
-    pdboutput += '_out.pdb'
-    pdbout = copy.deepcopy(pdb2mrc.pdb)
-    pdbout.occupancy = pdb2mrc.pdb.unique_radius
-    pdbout.write(filename=pdboutput)
+    if not args.read_radii:
+        pdboutput += '_out.pdb'
+        pdbout = copy.deepcopy(pdb2mrc.pdb)
+        pdbout.occupancy = pdb2mrc.pdb.unique_radius
+        pdbout.write(filename=pdboutput)
 
     pdb2mrc.scale_radii(radii_sf=args.radii_sf)
     if args.set_radii_explicitly is not None:

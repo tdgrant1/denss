@@ -3134,7 +3134,7 @@ class PDB(object):
                 # H_count = Hbond_count[atom]
                 H_mean_volume = volH[res][atom] #the average volume of each H attached
             except:
-                print("atom ", atom, " not in ", res, " list. setting numH to 0.")
+                # print("atom ", atom, " not in ", res, " list. setting numH to 0.")
                 H_count = 0
                 H_mean_volume = 0
 

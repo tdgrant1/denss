@@ -54,7 +54,7 @@ if __name__ == "__main__":
     my_logger.addHandler(h2)
 
     my_logger.info('BEGIN')
-    my_logger.info('Script name: %s', sys.argv[0])
+    my_logger.info('Command: %s', ' '.join(sys.argv))
     my_logger.info('DENSS Version: %s', __version__)
     my_logger.info('Data filename: %s', args.file)
     my_logger.info('Output prefix: %s', args.output)
