@@ -3604,7 +3604,7 @@ class PDB2MRC(object):
             #if make_grids has not been run yet, run it
             self.make_grids()
         if self.global_B is None:
-            self.global_B = u2B(0.30 * self.dx) #this helps with voxel sampling issues
+            self.global_B = u2B(0.40 * self.dx) #this helps with voxel sampling issues
         else:
             self.global_B = self.global_B
 
@@ -3666,7 +3666,7 @@ class PDB2MRC(object):
                 print("Use denss.mrcops.py to resample onto the desired grid.")
                 exit()
         elif self.shell_type == "water":
-            #the default is gaussian type shell
+            #the default is water type shell
             #generate initial hydration shell
             thickness = max(1.0,self.dx) #in angstroms
             #calculate euclidean distance transform of grid to water shell center
@@ -3674,7 +3674,9 @@ class PDB2MRC(object):
             protein_idx = pdb2support_fast(self.pdb,self.x,self.y,self.z,radius=self.pdb.vdW,probe=0)
             protein_rw_idx = calc_uniform_shell(self.pdb,self.x,self.y,self.z,thickness=self.r_water,distance=self.r_water).astype(bool)
             print('Calculating dist transform...')
-            dist = ndimage.distance_transform_edt(~protein_rw_idx)
+            dist = ndimage.distance_transform_edt(~protein_rw_idx) 
+            #convert dist from pixels to angstroms
+            dist *= self.dx
             #look at only the voxels near the shell for efficiency
             rho_shell = np.zeros(self.x.shape)
             print('Calculating shell values...')
@@ -3850,7 +3852,7 @@ class PDB2MRC(object):
         for i in range(nparams):
             if params_target[i] != 0:
                 params_weights[i] = 1/params_target[i]
-        #multiply each weight be the desired individual penalty weight
+        #multiply each weight by the desired individual penalty weight
         if penalty_weights is not None:
             params_weights *= penalty_weights
         #use quadratic loss function
