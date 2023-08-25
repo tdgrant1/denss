@@ -235,6 +235,7 @@ if __name__ == "__main__":
     print("Actual  Side length  = %.2f" % pdb2mrc.side)
     print("Actual  N samples    = %d" % pdb2mrc.n)
     print("Actual  Voxel size   = %.4f" % pdb2mrc.dx)
+    print("Global B-factor      = %.4f" % pdb2mrc.global_B)
 
     logging.info('Optimal Side length: %.2f', pdb2mrc.optimal_side)
     logging.info('Optimal N samples:   %d', pdb2mrc.optimal_nsamples)
@@ -242,6 +243,7 @@ if __name__ == "__main__":
     logging.info('Actual  Side length: %.2f', pdb2mrc.side)
     logging.info('Actual  N samples:   %d', pdb2mrc.n)
     logging.info('Actual  Voxel size:  %.4f', pdb2mrc.dx)
+    logging.info('Global B-factor:  %.4f', pdb2mrc.global_B)
 
     logging.info('Calculating in vacuo density...')
     pdb2mrc.calculate_invacuo_density()
@@ -255,7 +257,9 @@ if __name__ == "__main__":
     pdb2mrc.calculate_hydration_shell()
     logging.info('Finished hydration shell.')
 
+    logging.info('Calculating structure factors...')
     pdb2mrc.calculate_structure_factors()
+    logging.info('Finished structure factors.')
 
     if args.data is not None:
         pdb2mrc.load_data()

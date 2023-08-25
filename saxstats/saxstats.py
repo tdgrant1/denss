@@ -3604,9 +3604,13 @@ class PDB2MRC(object):
             #if make_grids has not been run yet, run it
             self.make_grids()
         if self.global_B is None:
-            self.global_B = u2B(0.40 * self.dx) #this helps with voxel sampling issues
+            self.global_B = u2B(0.25 * self.dx) #this helps with voxel sampling issues
         else:
             self.global_B = self.global_B
+        #greater than 2A causes problems
+        if B2u(self.global_B) > 1.5:
+            self.global_B = u2B(1.5)
+        print(self.global_B)
 
     def calculate_invacuo_density(self):
         print('Calculating in vacuo density...')
@@ -3646,43 +3650,59 @@ class PDB2MRC(object):
 
     def calculate_hydration_shell(self):
         print('Calculating hydration shell...')
-        #calculate the volume of a shell of water diameter
-        #this assumes a single layer of hexagonally packed water molecules on the surface
         self.r_water = r_water = 1.4 
-        uniform_shell = calc_uniform_shell(self.pdb,self.x,self.y,self.z,thickness=self.r_water)
+        uniform_shell = calc_uniform_shell(self.pdb,self.x,self.y,self.z,thickness=self.r_water*2, distance=self.r_water)
         self.water_shell_idx = water_shell_idx = uniform_shell.astype(bool)
-        V_shell = water_shell_idx.sum() * self.dV
-        N_H2O_in_shell = 2/(3**0.5) * V_shell / (2*r_water)**3
-        V_H2O = 4/3*np.pi*r_water**3
-        V_H2O_in_shell = N_H2O_in_shell * V_H2O
 
         if self.shell_mrcfile is not None:
             #allow user to provide mrc filename to read in a custom shell
             rho_shell, sidex = read_mrc(self.shell_mrcfile)
             rho_shell *= self.dV #assume mrc file is in units of density, convert to electron count
-            print(sidex, self.side)
             if not np.isclose(sidex,self.side,rtol=1e-3,atol=1e-3) or (rho_shell.shape[0] != self.x.shape[0]):
                 print("Error: shell_mrcfile does not match grid.")
                 print("Use denss.mrcops.py to resample onto the desired grid.")
                 exit()
         elif self.shell_type == "water":
             #the default is water type shell
-            #generate initial hydration shell
-            thickness = max(1.0,self.dx) #in angstroms
-            #calculate euclidean distance transform of grid to water shell center
-            #where the water shell center is the surface of the protein plus a water radius
-            protein_idx = pdb2support_fast(self.pdb,self.x,self.y,self.z,radius=self.pdb.vdW,probe=0)
-            protein_rw_idx = calc_uniform_shell(self.pdb,self.x,self.y,self.z,thickness=self.r_water,distance=self.r_water).astype(bool)
+            #make two supports, one for the outer half of the shell, one for the inner half of the shell
+            #grab all voxels outside the protein surface plus a water radius
+            #subtract a half voxel because we will dilate a inner shell by one voxel, so that we have
+            #at least one voxel that is the center of the water shell at distance zero, so that puts
+            #the center of the water shell halfway between the inner and outer halves of the shell
+            protein_rw_idx = pdb2support_fast(self.pdb,self.x,self.y,self.z,radius=self.pdb.vdW,probe=self.r_water-self.dx/2)
             print('Calculating dist transform...')
-            dist = ndimage.distance_transform_edt(~protein_rw_idx) 
+            #calculate the distance of each voxel outside the particle to the surface of the protein+water support
+            #for speed, only do this for voxels in a box around the particle
+            xmin = self.pdb.coords[:,0].min() - 2*self.r_water
+            xmax = self.pdb.coords[:,0].max() + 2*self.r_water
+            ymin = self.pdb.coords[:,1].min() - 2*self.r_water
+            ymax = self.pdb.coords[:,1].max() + 2*self.r_water
+            zmin = self.pdb.coords[:,2].min() - 2*self.r_water
+            zmax = self.pdb.coords[:,2].max() + 2*self.r_water
+            xmini = np.floor(xmin/self.dx).astype(int)
+            xmaxi = np.ceil(xmax/self.dx).astype(int)
+            ymini = np.floor(ymin/self.dx).astype(int)
+            ymaxi = np.ceil(ymax/self.dx).astype(int)
+            zmini = np.floor(zmin/self.dx).astype(int)
+            zmaxi = np.ceil(zmax/self.dx).astype(int)
+            nearby_idx = np.s_[xmini:xmaxi,ymini:ymaxi,zmini:zmaxi]
+            dist1 = np.zeros(self.x.shape)
+            dist1[nearby_idx] = ndimage.distance_transform_edt(protein_rw_idx[nearby_idx])
+            #now calculate the distance of each voxel inside the protein+water support by inverting it, but first add one voxel
+            protein_rw_idx2 = ndimage.binary_dilation(protein_rw_idx)
+            dist2 = np.zeros(self.x.shape)
+            dist2[nearby_idx] = ndimage.distance_transform_edt(~protein_rw_idx2[nearby_idx])
+            #now merge the distances of the outer voxels and the inner voxels
+            dist = dist1 + dist2
             #convert dist from pixels to angstroms
             dist *= self.dx
-            #look at only the voxels near the shell for efficiency
+            #for form factor calculation, look at only the voxels near the shell for efficiency
             rho_shell = np.zeros(self.x.shape)
             print('Calculating shell values...')
-            rho_shell[dist<2*r_water] = realspace_formfactor(element='HOH',r=dist[dist<2*r_water],B=u2B(0.5))
-            #zero out any voxels overlapping protein atoms
-            # rho_shell[protein_idx] = 0.0
+            shell_idx = np.where(dist<2*r_water)
+            shell_idx_bool = np.zeros(self.x.shape, dtype=bool)
+            shell_idx_bool[shell_idx] = True
+            rho_shell[shell_idx] = realspace_formfactor(element='HOH',r=dist[shell_idx],B=self.global_B)
             #estimate initial shell scale based on contrast using mean density
             shell_mean_density = np.mean(rho_shell[water_shell_idx]) / self.dV
             #scale the mean density of the invacuo shell to match the desired mean density
@@ -3701,12 +3721,9 @@ class PDB2MRC(object):
         print('Calculating structure factors...')
         #F_invacuo
         self.F_invacuo = myfftn(self.rho_invacuo)
+        
         #perform B-factor sharpening to correct for B-factor sampling workaround
-        if self.global_B > u2B(2):
-            #too much blurring causes artifacts. Limit to about 2 angstroms
-            Bsharp = -u2B(2)
-        else:
-            Bsharp = -self.global_B
+        Bsharp = -self.global_B
         self.F_invacuo *= np.exp(-(Bsharp)*(self.qr/(4*np.pi))**2)
 
         #exvol F_exvol
@@ -3761,6 +3778,13 @@ class PDB2MRC(object):
         else:
             qmax4calc = self.qx_.max()*1.1
         self.qidx = np.where((self.qr<=qmax4calc))
+        #if the voxel size of the map is too large for the data to sample, limit the data
+        if self.q_exp.max() > self.qx_.max():
+            idx = np.where(self.q_exp < self.qx_.max())
+            self.q_exp = self.q_exp[idx]
+            self.I_exp = self.I_exp[idx]
+            self.sigq_exp = self.sigq_exp[idx]
+            self.Iq_exp = self.Iq_exp[idx]
         print('Data loaded.')
 
     def minimize_parameters(self, fit_radii=False):
@@ -4211,13 +4235,13 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,global_B=None,use_b=False,ignore_wat
         tmpvalues = realspace_formfactor(element=element,r=dist,B=B[i]+Bdiff)
         #rescale total number of electrons by expected number of electrons
         #pdb.nelectrons is already corrected with the number of electrons including hydrogens
-        # if np.sum(tmpvalues)>1e-8:
-        #     ne_total = pdb.nelectrons[i]
-        #     tmpvalues *= ne_total / tmpvalues.sum()
+        if np.sum(tmpvalues)>1e-8:
+            ne_total = pdb.nelectrons[i]
+            tmpvalues *= ne_total / tmpvalues.sum()
 
         values[slc] += tmpvalues.reshape(nx,ny,nz)
         support[slc] = True
-    values *= pdb.nelectrons.sum()/values.sum()
+    # values *= pdb.nelectrons.sum()/values.sum()
     return values, support
 
 def pdb2F_multigauss(pdb,qx,qy,qz,qr=None,radii=None,B=None):
@@ -4565,21 +4589,14 @@ def calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True,retu
     else:
         return chi2
 
-def calc_uniform_shell(pdb,x,y,z,thickness,distance=1.4):
-    """create a one angstrom uniform layer around the particle
-
-    Centered one water molecule radius away from the particle surface,
-    #which means add the radius of a water molecule (1.4 A) to the radius of
-    #the pdb surface atom (say 1.7 A), for a total of 1.4+1.7 from the pdb coordinates
-    #since that is the center of the shell, and we want 1 A thick shell before blurring,
-    #subtract 0.5 A from the inner support, and add 0.5 A for the outer support,
-    #then subtract the inner support from the outer support
+def calc_uniform_shell(pdb,x,y,z,thickness=2.8,distance=1.4):
+    """Create a uniform density hydration shell around the particle.
 
     pdb - instance of PDB class (required)
     x,y,z - meshgrids for x, y, and z (required)
-    thickness - thickness of the shell (required)
+    thickness - thickness of the shell (e.g. water diameter)
+    distance - distance from the protein surface defining the center of the shell (e.g., water radius)
     """
-    r_water = 1.4
     inner_support = pdb2support_fast(pdb,x,y,z,radius=pdb.vdW,probe=distance-thickness/2)
     outer_support = pdb2support_fast(pdb,x,y,z,radius=pdb.vdW,probe=distance+thickness/2)
     shell_idx = outer_support
