@@ -3673,25 +3673,27 @@ class PDB2MRC(object):
             print('Calculating dist transform...')
             #calculate the distance of each voxel outside the particle to the surface of the protein+water support
             #for speed, only do this for voxels in a box around the particle
-            xmin = self.pdb.coords[:,0].min() - 2*self.r_water
-            xmax = self.pdb.coords[:,0].max() + 2*self.r_water
-            ymin = self.pdb.coords[:,1].min() - 2*self.r_water
-            ymax = self.pdb.coords[:,1].max() + 2*self.r_water
-            zmin = self.pdb.coords[:,2].min() - 2*self.r_water
-            zmax = self.pdb.coords[:,2].max() + 2*self.r_water
-            xmini = np.floor(xmin/self.dx).astype(int)
-            xmaxi = np.ceil(xmax/self.dx).astype(int)
-            ymini = np.floor(ymin/self.dx).astype(int)
-            ymaxi = np.ceil(ymax/self.dx).astype(int)
-            zmini = np.floor(zmin/self.dx).astype(int)
-            zmaxi = np.ceil(zmax/self.dx).astype(int)
-            nearby_idx = np.s_[xmini:xmaxi,ymini:ymaxi,zmini:zmaxi]
+            # xmin = self.pdb.coords[:,0].min() - 2*self.r_water
+            # xmax = self.pdb.coords[:,0].max() + 2*self.r_water
+            # ymin = self.pdb.coords[:,1].min() - 2*self.r_water
+            # ymax = self.pdb.coords[:,1].max() + 2*self.r_water
+            # zmin = self.pdb.coords[:,2].min() - 2*self.r_water
+            # zmax = self.pdb.coords[:,2].max() + 2*self.r_water
+            # xmini = np.floor(xmin/self.dx).astype(int)
+            # xmaxi = np.ceil(xmax/self.dx).astype(int)
+            # ymini = np.floor(ymin/self.dx).astype(int)
+            # ymaxi = np.ceil(ymax/self.dx).astype(int)
+            # zmini = np.floor(zmin/self.dx).astype(int)
+            # zmaxi = np.ceil(zmax/self.dx).astype(int)
+            # nearby_idx = np.s_[xmini:xmaxi,ymini:ymaxi,zmini:zmaxi]
             dist1 = np.zeros(self.x.shape)
-            dist1[nearby_idx] = ndimage.distance_transform_edt(protein_rw_idx[nearby_idx])
+            # dist1[nearby_idx] = ndimage.distance_transform_edt(protein_rw_idx[nearby_idx])
+            dist1 = ndimage.distance_transform_edt(protein_rw_idx)
             #now calculate the distance of each voxel inside the protein+water support by inverting it, but first add one voxel
             protein_rw_idx2 = ndimage.binary_dilation(protein_rw_idx)
             dist2 = np.zeros(self.x.shape)
-            dist2[nearby_idx] = ndimage.distance_transform_edt(~protein_rw_idx2[nearby_idx])
+            # dist2[nearby_idx] = ndimage.distance_transform_edt(~protein_rw_idx2[nearby_idx])
+            dist2 = ndimage.distance_transform_edt(~protein_rw_idx2)
             #now merge the distances of the outer voxels and the inner voxels
             dist = dist1 + dist2
             #convert dist from pixels to angstroms
