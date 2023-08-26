@@ -3669,6 +3669,7 @@ class PDB2MRC(object):
             #subtract a half voxel because we will dilate a inner shell by one voxel, so that we have
             #at least one voxel that is the center of the water shell at distance zero, so that puts
             #the center of the water shell halfway between the inner and outer halves of the shell
+            protein_idx = pdb2support_fast(self.pdb,self.x,self.y,self.z,radius=self.pdb.vdW,probe=0)
             protein_rw_idx = pdb2support_fast(self.pdb,self.x,self.y,self.z,radius=self.pdb.vdW,probe=self.r_water-self.dx/2)
             print('Calculating dist transform...')
             #calculate the distance of each voxel outside the particle to the surface of the protein+water support
@@ -3710,6 +3711,8 @@ class PDB2MRC(object):
             #scale the mean density of the invacuo shell to match the desired mean density
             rho_shell *= self.shell_contrast / shell_mean_density
             #shell should still be in electron count units
+            #remove protein voxels
+            rho_shell[protein_idx] = 0
         elif self.shell_type == "uniform":
             rho_shell = water_shell_idx * (self.shell_contrast)
             rho_shell *= self.dV #convert to electron units
