@@ -3674,7 +3674,6 @@ class PDB2MRC(object):
             print('Calculating dist transform...')
             #calculate the distance of each voxel outside the particle to the surface of the protein+water support
             dist1 = np.zeros(self.x.shape)
-            # dist1[nearby_idx] = ndimage.distance_transform_edt(protein_rw_idx[nearby_idx])
             dist1 = ndimage.distance_transform_edt(protein_rw_idx)
             #now calculate the distance of each voxel inside the protein+water support by inverting it, but first add one voxel
             protein_rw_idx2 = ndimage.binary_dilation(protein_rw_idx)
@@ -3690,14 +3689,14 @@ class PDB2MRC(object):
             shell_idx = np.where(dist<2*r_water)
             shell_idx_bool = np.zeros(self.x.shape, dtype=bool)
             shell_idx_bool[shell_idx] = True
-            rho_shell[shell_idx_bool] = realspace_formfactor(element='HOH',r=dist[shell_idx_bool],B=self.global_B)
+            if shell_idx_bool.sum() == 0:
+                shell_idx_bool = np.ones(self.x.shape, dtype=bool)
+            rho_shell[shell_idx_bool] = realspace_formfactor(element='HOH',r=dist[shell_idx_bool],B=u2B(0.25)+self.global_B)
             #estimate initial shell scale based on contrast using mean density
             shell_mean_density = np.mean(rho_shell[water_shell_idx]) / self.dV
             #scale the mean density of the invacuo shell to match the desired mean density
             rho_shell *= self.shell_contrast / shell_mean_density
             #shell should still be in electron count units
-            #remove protein voxels
-            rho_shell[protein_idx] = 0
         elif self.shell_type == "uniform":
             rho_shell = water_shell_idx * (self.shell_contrast)
             rho_shell *= self.dV #convert to electron units
