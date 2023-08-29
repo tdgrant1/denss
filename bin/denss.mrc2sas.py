@@ -119,6 +119,14 @@ if __name__ == "__main__":
         #get rid of any data points equal to zero in the intensities or errors columns
         idx = np.where((Iq[:,1]!=0)&(Iq[:,2]!=0))
         Iq = Iq[idx]
+        if args.units == "nm":
+            Iq[:,0] *= 0.1
+        Iq_exp_orig = np.copy(Iq)
+        if args.n1 is None:
+            args.n1 = 0
+        if args.n2 is None:
+            args.n2 = len(Iq[:,0])
+        Iq = Iq[args.n1:args.n2]
     else:
         #if no experimental data given, create a new qgrid for interpolation
         if args.qfile is not None:
