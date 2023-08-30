@@ -3334,6 +3334,7 @@ class PDB2MRC(object):
         min_method='Nelder-Mead',
         min_opts='{"adaptive": True}',
         ignore_warnings=False,
+        run_all_on_init=False,
         ):
         self.pdb = pdb
         self.ignore_waters = ignore_waters
@@ -3411,6 +3412,21 @@ class PDB2MRC(object):
         self.param_names = ['rho0', 'shell_contrast']
         self.params = np.array([self.rho0, self.shell_contrast])
         self.ignore_warnings = ignore_warnings
+        if run_all_on_init:
+            self.run_all()
+
+    def run_all(self):
+        """Run all necessary steps to generate final density map using current settings."""
+        self.scale_radii()
+        self.make_grids()
+        self.calculate_global_B()
+        self.calculate_invacuo_density()
+        self.calculate_excluded_volume()
+        self.calculate_hydration_shell()
+        self.calculate_structure_factors()
+        self.calc_F_with_modified_params(self.params,full_qr=True)
+        self.calc_I_with_modified_params(self.params)
+        self.calc_rho_with_modified_params(self.params)
 
     def scale_radii(self, radii_sf=None):
         """Scale all the modifiable atom type radii in the pdb"""
@@ -3610,7 +3626,6 @@ class PDB2MRC(object):
         #greater than 2A causes problems
         if B2u(self.global_B) > 1.5:
             self.global_B = u2B(1.5)
-        print(self.global_B)
 
     def calculate_invacuo_density(self):
         print('Calculating in vacuo density...')
@@ -3873,7 +3888,7 @@ class PDB2MRC(object):
         penalty *= penalty_weight
         self.penalty = penalty
 
-    def calc_F_with_modified_params(self, params):
+    def calc_F_with_modified_params(self, params, full_qr=False):
         """Calculates structure factor sum from set of parameters"""
         #sf_ex is ratio of params[0] to initial rho0
         if self.rho0 != 0:
@@ -3886,7 +3901,11 @@ class PDB2MRC(object):
         else:
             sf_sh = 1.0
         self.F = np.zeros_like(self.F_invacuo)
-        self.F[self.qidx] = self.F_invacuo[self.qidx] - sf_ex * self.F_exvol[self.qidx] + sf_sh * self.F_shell[self.qidx]
+        if full_qr:
+            self.F = self.F_invacuo - sf_ex * self.F_exvol + sf_sh * self.F_shell
+        else:
+            #scale Fs only in the data range for fitting for speed
+            self.F[self.qidx] = self.F_invacuo[self.qidx] - sf_ex * self.F_exvol[self.qidx] + sf_sh * self.F_shell[self.qidx]
 
     def calc_I_with_modified_params(self,params):
         """Calculates intensity profile for optimization of parameters"""
