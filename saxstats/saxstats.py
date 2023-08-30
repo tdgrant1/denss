@@ -2864,7 +2864,7 @@ class Sasrec(object):
 
 class PDB(object):
     """Load pdb file."""
-    def __init__(self, filename=None, natoms=None, ignore_waters=False):
+    def __init__(self, filename=None, natoms=None, ignore_waters=True):
         if isinstance(filename, int):
             #if a user gives no keyword argument, but just an integer,
             #assume the user means the argument is to be interpreted
@@ -2880,7 +2880,7 @@ class PDB(object):
         self.unique_radius = None
         self.unique_volume = None
 
-    def read_pdb(self, filename, ignore_waters=False):
+    def read_pdb(self, filename, ignore_waters=True):
         self.natoms = 0
         with open(filename) as f:
             for line in f:
@@ -3316,7 +3316,7 @@ class PDB2MRC(object):
         side=None,
         nsamples=None,
         rho0=0.334,
-        shell_contrast=0.019,
+        shell_contrast=0.011,
         shell_mrcfile=None,
         shell_type='water',
         Icalc_interpolation=True,
@@ -3326,8 +3326,8 @@ class PDB2MRC(object):
         data_units="a",
         n1=None,
         n2=None,
-        penalty_weight=0.0,
-        penalty_weights=[1.0,0.0],
+        penalty_weight=1.0,
+        penalty_weights=[1.0,0.01],
         fit_rho0=True,
         fit_shell=True,
         fit_all=True,
@@ -3411,12 +3411,13 @@ class PDB2MRC(object):
         self.min_opts = min_opts
         self.param_names = ['rho0', 'shell_contrast']
         self.params = np.array([self.rho0, self.shell_contrast])
+        self.params_target = np.copy(self.params)
         self.ignore_warnings = ignore_warnings
         if run_all_on_init:
             self.run_all()
 
     def run_all(self):
-        """Run all necessary steps to generate final density map using current settings."""
+        """Run all necessary steps to generate density maps, structure factors, and scattering profile using current settings."""
         self.scale_radii()
         self.make_grids()
         self.calculate_global_B()
@@ -3737,7 +3738,7 @@ class PDB2MRC(object):
         self.F_shell = myfftn(self.rho_shell)
         print('Finished structure factors.')
 
-    def load_data(self, filename=None):
+    def load_data(self, filename=None, units=None):
         print('Loading data...')
         if filename is None and self.data_filename is None:
             print("ERROR: No data filename given.")
@@ -3746,6 +3747,8 @@ class PDB2MRC(object):
         else:
             fn = filename
             self.data_filename = filename
+        if units is not None:
+            self.data_units = units
         if self.data_filename is not None:
             Iq_exp = np.genfromtxt(fn, invalid_raise = False, usecols=(0,1,2))
             if len(Iq_exp.shape) < 2:
