@@ -3670,6 +3670,10 @@ class PDB2MRC(object):
         uniform_shell = calc_uniform_shell(self.pdb,self.x,self.y,self.z,thickness=self.r_water*2, distance=self.r_water)
         self.water_shell_idx = water_shell_idx = uniform_shell.astype(bool)
 
+        if self.dx > 2*self.r_water and self.shell_type == "water":
+            print("Voxel size too large for water form factor hydration shell. Changing shell type to uniform.")
+            self.shell_type = "uniform"
+
         if self.shell_mrcfile is not None:
             #allow user to provide mrc filename to read in a custom shell
             rho_shell, sidex = read_mrc(self.shell_mrcfile)
