@@ -32,10 +32,19 @@
 #
 
 from __future__ import print_function
+
+import time
+t = []
+fs = []
+t.append(time.time())
+fs.append("start")
+
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
+t.append(time.time())
+fs.append("import saxstats")
 import numpy as np
-from scipy import interpolate, ndimage, optimize
+from scipy import ndimage
 import sys, argparse, os, logging
 import copy
 import time
@@ -89,6 +98,7 @@ parser.add_argument("-interp_on", "--interp_on", dest="Icalc_interpolation", act
 parser.add_argument("-interp_off", "--interp_off", dest="Icalc_interpolation", action="store_false", help="Do not interpolate I_calc to experimental q grid .")
 parser.add_argument("--plot_on", dest="plot", action="store_true", help="Create simple plots of results (requires Matplotlib, default if module exists).")
 parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not create simple plots of results. (Default if Matplotlib does not exist)")
+parser.add_argument("--print_timings", default=False, action="store_true", help="Print timings for each step of the script.")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix (default=basename_pdb)")
 parser.set_defaults(ignore_waters = True)
 parser.set_defaults(center = True)
@@ -108,6 +118,9 @@ args = parser.parse_args()
 
 np.set_printoptions(linewidth=150,precision=10)
 
+t.append(time.time())
+fs.append("argparse")
+
 if args.plot:
     #if plotting is enabled, try to import matplotlib
     #if import fails, set plotting to false
@@ -117,6 +130,9 @@ if args.plot:
     except ImportError as e:
         print("matplotlib import failed.")
         args.plot = False
+
+t.append(time.time())
+fs.append("import matplotlib")
 
 if __name__ == "__main__":
     start = time.time()
@@ -139,8 +155,13 @@ if __name__ == "__main__":
     logging.info('DENSS Version: %s', __version__)
     logging.info('PDB filename: %s', args.file)
 
+    t.append(time.time())
+    fs.append("init log")
 
     pdb = saxs.PDB(args.file, ignore_waters=args.ignore_waters)
+
+    t.append(time.time())
+    fs.append("read pdb")
 
     if args.read_radii:
         #if the file has unique radius in occupancy column, use it
@@ -194,6 +215,9 @@ if __name__ == "__main__":
         min_opts=args.minopts,
         )
 
+    t.append(time.time())
+    fs.append("pdb2mrc init")
+
     logging.info('Data filename: %s', pdb2mrc.data_filename)
     logging.info('First data point: %s', pdb2mrc.n1)
     logging.info('Last data point: %s', pdb2mrc.n2)
@@ -220,14 +244,25 @@ if __name__ == "__main__":
         pdbout.occupancy = pdb2mrc.pdb.unique_radius
         pdbout.write(filename=pdboutput)
 
+    t.append(time.time())
+    fs.append("log stuff")
+
     pdb2mrc.scale_radii(radii_sf=args.radii_sf)
+    t.append(time.time())
+    fs.append("scale_radii")
+
     if args.set_radii_explicitly is not None:
         arg_list = args.set_radii_explicitly.split(":")
         atom_types = arg_list[::2]
         radii = np.array(arg_list[1::2], dtype=float)
         pdb2mrc.set_radii(atom_types, radii)
     pdb2mrc.make_grids()
+    t.append(time.time())
+    fs.append("make_grids")
+
     pdb2mrc.calculate_global_B()
+    t.append(time.time())
+    fs.append("calculate_global_B")
 
     print("Optimal Side length >= %.2f" % pdb2mrc.optimal_side)
     print("Optimal N samples   >= %d" % pdb2mrc.optimal_nsamples)
@@ -248,26 +283,42 @@ if __name__ == "__main__":
     logging.info('Calculating in vacuo density...')
     pdb2mrc.calculate_invacuo_density()
     logging.info('Finished in vacuo density.')
+    t.append(time.time())
+    fs.append("calculate_invacuo_density")
 
     logging.info('Calculating excluded volume...')
     pdb2mrc.calculate_excluded_volume()
     logging.info('Finished excluded volume.')
+    t.append(time.time())
+    fs.append("calculate_excluded_volume")
 
     logging.info('Calculating hydration shell...')
     pdb2mrc.calculate_hydration_shell()
     logging.info('Finished hydration shell.')
+    t.append(time.time())
+    fs.append("calculate_hydration_shell")
 
     logging.info('Calculating structure factors...')
     pdb2mrc.calculate_structure_factors()
     logging.info('Finished structure factors.')
+    t.append(time.time())
+    fs.append("calculate_structure_factors")
 
     if args.data is not None:
         pdb2mrc.load_data()
+        t.append(time.time())
+        fs.append("load_data")
         #get initial chi2 without fitting
         pdb2mrc.params_target = pdb2mrc.params
         pdb2mrc.penalty_weight = 0.0
         pdb2mrc.calc_I_with_modified_params(pdb2mrc.params)
+        t.append(time.time())
+        fs.append("calc_I_with_modified_params")
+
         pdb2mrc.calc_score_with_modified_params(pdb2mrc.params)
+        t.append(time.time())
+        fs.append("calc_score_with_modified_params")
+
         chi2_nofit = pdb2mrc.chi2
         if args.penalty_weight is None:
             # pdb2mrc.penalty_weight = 10.0
@@ -277,6 +328,8 @@ if __name__ == "__main__":
         if pdb2mrc.fit_params:
             logging.info('Optimizing parameters...')
         pdb2mrc.minimize_parameters(fit_radii=args.fit_radii)
+    t.append(time.time())
+    fs.append("minimize_parameters")
 
     logging.info('Final Parameter Values:')
     print()
@@ -287,10 +340,14 @@ if __name__ == "__main__":
 
     pdb2mrc.calc_rho_with_modified_params(pdb2mrc.params)
     pdb2mrc.shell_mean_density = np.mean(pdb2mrc.rho_shell[pdb2mrc.water_shell_idx])
+    t.append(time.time())
+    fs.append("calc_rho_with_modified_params")
 
     qmax = pdb2mrc.qr.max()-1e-8
     pdb2mrc.qidx = np.where((pdb2mrc.qr<qmax))
     pdb2mrc.calc_I_with_modified_params(pdb2mrc.params)
+    t.append(time.time())
+    fs.append("calc_I_with_modified_params")
     if args.data:
         optimized_chi2, exp_scale_factor, offset, fit = saxs.calc_chi2(pdb2mrc.Iq_exp, pdb2mrc.Iq_calc,interpolation=pdb2mrc.Icalc_interpolation,scale=args.fit_scale,offset=args.fit_offset,return_sf=True,return_fit=True)
         print("Scale factor: %.5e " % exp_scale_factor)
@@ -303,6 +360,8 @@ if __name__ == "__main__":
     print("Calculated average radii:")
     logging.info("Calculated average radii:")
     pdb2mrc.calculate_average_radii()
+    t.append(time.time())
+    fs.append("calculate_average_radii")
     for i in range(len(pdb2mrc.modifiable_atom_types)):
         print("%s: %.3f"%(pdb2mrc.modifiable_atom_types[i],pdb2mrc.mean_radius[i]))
         logging.info("%s: %.3f"%(pdb2mrc.modifiable_atom_types[i],pdb2mrc.mean_radius[i]))
@@ -355,6 +414,8 @@ if __name__ == "__main__":
             plt.savefig(output+'_fits.png',dpi=300)
             # plt.show()
             plt.close()
+    t.append(time.time())
+    fs.append("plotting")
 
     #after all the map calculations are done, apply any resolution-based blurring directly to the map
     #but this should not be included in the scattering profile calculation, so we do it here just
@@ -379,6 +440,8 @@ if __name__ == "__main__":
             ne = pdb2mrc.rho_shell.sum()
             pdb2mrc.rho_shell = ndimage.gaussian_filter(pdb2mrc.rho_shell, sigma, mode='wrap')
             pdb2mrc.rho_shell *= ne/pdb2mrc.rho_shell.sum()
+    t.append(time.time())
+    fs.append("gaussian_filter")
 
     if args.write_mrc_file:
         #write output
@@ -388,7 +451,13 @@ if __name__ == "__main__":
         saxs.write_mrc(pdb2mrc.rho_invacuo/pdb2mrc.dV,pdb2mrc.side,output+"_invacuo.mrc")
         saxs.write_mrc(pdb2mrc.rho_exvol/pdb2mrc.dV,pdb2mrc.side,output+"_exvol.mrc")
         saxs.write_mrc(pdb2mrc.rho_shell/pdb2mrc.dV,pdb2mrc.side,output+"_shell.mrc")
+    t.append(time.time())
+    fs.append("write_mrc")
 
+    if args.print_timings:
+        print("%40s: %7s %7s"%("function","time","cumtime"))
+        for i in range(1,len(t)):
+            print("%40s: %7.3f %7.3f"%(fs[i],t[i]-t[i-1],t[i]-t[0]))
 
 
 
