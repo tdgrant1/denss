@@ -1196,7 +1196,7 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
         erode = False
     else:
         erode = True
-        erosion_width = int(50/dx) #this is in pixels
+        erosion_width = int(20/dx) #this is in pixels
         if erosion_width ==0:
             #make minimum of one pixel
             erosion_width = 1
@@ -3386,6 +3386,12 @@ class PDB2MRC(object):
         self.optimal_nsamples = np.ceil(self.optimal_side/self.optimal_voxel).astype(int)
         self.nsamples_limit = 256
         self.global_B = global_B
+        if self.global_B is None:
+            self.limit_global_B = True
+        else:
+            #if the user explicitly sets global_B at the command line
+            #let them do it.
+            self.limit_global_B = False
         self.resolution = resolution
         self.voxel=voxel
         self.side=side
@@ -3625,7 +3631,7 @@ class PDB2MRC(object):
         else:
             self.global_B = self.global_B
         #greater than 2A causes problems
-        if B2u(self.global_B) > 1.5:
+        if self.limit_global_B and (B2u(self.global_B) > 1.5):
             self.global_B = u2B(1.5)
 
     def calculate_invacuo_density(self):
