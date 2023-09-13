@@ -3651,7 +3651,8 @@ class PDB2MRC(object):
             self.rho_exvol, self.supportexvol = pdb2map_simple_gauss_by_radius(self.pdb,
                 self.x,self.y,self.z,
                 rho0=self.rho0,
-                ignore_waters=self.ignore_waters)
+                ignore_waters=self.ignore_waters,
+                ) #global_B=self.global_B)
         elif self.exvol_type == "flat":
             #generate excluded volume assuming flat solvent
             if not self.explicitH:
@@ -3739,10 +3740,12 @@ class PDB2MRC(object):
         
         #perform B-factor sharpening to correct for B-factor sampling workaround
         Bsharp = -self.global_B
-        self.F_invacuo *= np.exp(-(Bsharp)*(self.qr/(4*np.pi))**2)
+        Bsharp3D = np.exp(-(Bsharp)*(self.qr/(4*np.pi))**2)
+        self.F_invacuo *= Bsharp3D
 
         #exvol F_exvol
         self.F_exvol = myfftn(self.rho_exvol)
+        # self.F_exvol *= Bsharp3D
 
         #shell invacuo F_shell
         self.F_shell = myfftn(self.rho_shell)
@@ -4053,7 +4056,7 @@ if numba:
             I[qi]=acc
         return I
 
-def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters=True):
+def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,global_B=None,rho0=0.334,ignore_waters=True):
     """Simple isotropic single gaussian sum at coordinate locations.
 
     This function only calculates the values at
@@ -4075,6 +4078,9 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
     # print("\n Calculate density map from PDB... ")
     values = np.zeros(x.shape)
     support = np.zeros(x.shape,dtype=bool)
+    if global_B is None:
+        global_B = 0.0
+    B = global_B * np.ones(pdb.natoms)
     cutoffs = 2*pdb.vdW
     gxmin = x.min()
     gxmax = x.max()
@@ -4133,7 +4139,7 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,rho0=0.334,ignore_waters
         VallH = pdb.numH[i]*VoneH
         Vtot = V + VallH
         V = Vtot
-        tmpvalues = realspace_gaussian_formfactor(r=dist, rho0=rho0, V=V, radius=None)
+        tmpvalues = realspace_gaussian_formfactor(r=dist, rho0=rho0, V=V, radius=None, B=B[i])
 
         #rescale total number of electrons by expected number of electrons
         if np.sum(tmpvalues)>1e-8:
@@ -4493,8 +4499,10 @@ def realspace_formfactor(element, r=(np.arange(501))/1000., B=None):
     # ff += signal.unit_impulse(r.shape, i) * ffcoeff[element]['c']
     return ff
 
-def reciprocalspace_gaussian_formfactor(q=np.linspace(0,0.5,501), rho0=0.334, V=None, radius=None):
+def reciprocalspace_gaussian_formfactor(q=np.linspace(0,0.5,501), rho0=0.334, V=None, radius=None, B=None):
     """Calculate reciprocal space atomic form factors assuming an isotropic gaussian sphere (for excluded volume)."""
+    if B is None:
+        B = 0.0
     if (V is None) and (radius is None):
         print("Error: either radius or volume of atom must be given.")
         exit()
@@ -4502,10 +4510,13 @@ def reciprocalspace_gaussian_formfactor(q=np.linspace(0,0.5,501), rho0=0.334, V=
         #calculate volume from radius assuming sphere
         V = (4*np.pi/3)*radius**3
     ff = rho0 * V * np.exp(-q**2*V**(2./3)/(4*np.pi))
+    ff *= np.exp(-B* (q / (4*np.pi))**2)
     return ff
 
-def realspace_gaussian_formfactor(r=np.linspace(-3,3,101), rho0=0.334, V=None, radius=None):
+def realspace_gaussian_formfactor(r=np.linspace(-3,3,101), rho0=0.334, V=None, radius=None, B=None):
     """Calculate real space atomic form factors assuming an isotropic gaussian sphere (for excluded volume)."""
+    if B is None:
+        B = 0.0
     if (V is None) and (radius is None):
         print("Error: either radius or volume of atom must be given.")
         exit()
@@ -4515,7 +4526,8 @@ def realspace_gaussian_formfactor(r=np.linspace(-3,3,101), rho0=0.334, V=None, r
     if V <= 0:
         ff = r*0
     else:
-        ff = rho0 * np.exp(-np.pi*r**2/V**(2./3))
+        # ff = rho0 * np.exp(-np.pi*r**2/V**(2./3))
+        ff = 8 * rho0 * np.pi**(3./2) * V / (B + 4*np.pi*V**(2./3))**(3./2) * np.exp(-4*np.pi**2 * r**2 / (B + 4*np.pi*V**(2./3)) )
     return ff
 
 def estimate_side_from_pdb(pdb):
