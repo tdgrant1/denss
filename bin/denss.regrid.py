@@ -98,7 +98,7 @@ if __name__ == "__main__":
         if args.qmax is not None:
             qmax = args.qmax
         else:
-            qmax = np.max(qbinsc)
+            qmax = np.max(q)
         if args.nq is not None:
             nq = args.nq
         else:

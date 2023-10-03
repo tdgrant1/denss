@@ -72,7 +72,7 @@ if __name__ == "__main__":
     else:
         output = args.output
 
-    pdb = saxs.PDB(args.file)
+    pdb = saxs.PDB(args.file,ignore_waters=args.ignore_waters)
     if args.center:
         pdboutput = basename+"_centered.pdb"
         pdb.coords -= pdb.coords.mean(axis=0)
