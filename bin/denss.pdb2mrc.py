@@ -57,6 +57,7 @@ parser.add_argument("-d", "--data", type=str, help="Experimental SAXS data file 
 parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use of experimental data")
 parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use of experimental data")
 parser.add_argument("-u", "--units", default="a", type=str, help="Angular units of experimental data (\"a\" [1/angstrom] or \"nm\" [1/nanometer]; default=\"a\"). If nm, will convert output to angstroms.")
+parser.add_argument("-qmax", "--qmax", default=None, type=float, help="Maximum q value to use for fitting experimental data.")
 parser.add_argument("-s", "--side", default=None, type=float, help="Desired side length of real space box (default=3*Dmax).")
 parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired voxel size (default=1.0)")
 parser.add_argument("-n", "--nsamples", default=None, type=int, help="Desired number of samples (i.e. voxels) per axis (default=variable)")
@@ -206,6 +207,7 @@ if __name__ == "__main__":
         data_units=args.units,
         n1=args.n1,
         n2=args.n2,
+        qmax=args.qmax,
         penalty_weight=args.penalty_weight,
         penalty_weights=args.penalty_weights,
         fit_rho0=args.fit_rho0,
@@ -350,6 +352,7 @@ if __name__ == "__main__":
     fs.append("calc_I_with_modified_params")
     if args.data:
         optimized_chi2, exp_scale_factor, offset, fit = saxs.calc_chi2(pdb2mrc.Iq_exp, pdb2mrc.Iq_calc,interpolation=pdb2mrc.Icalc_interpolation,scale=args.fit_scale,offset=args.fit_offset,return_sf=True,return_fit=True)
+        pdb2mrc.optimized_chi2 = optimized_chi2
         print("Scale factor: %.5e " % exp_scale_factor)
         print("Offset: %.5e " % offset)
         print("chi2 of fit:  %.5e " % optimized_chi2)

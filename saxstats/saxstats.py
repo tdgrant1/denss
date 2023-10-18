@@ -3326,6 +3326,7 @@ class PDB2MRC(object):
         data_units="a",
         n1=None,
         n2=None,
+        qmax=None,
         penalty_weight=1.0,
         penalty_weights=[1.0,0.01],
         fit_rho0=True,
@@ -3407,6 +3408,7 @@ class PDB2MRC(object):
         self.data_units = data_units
         self.n1 = n1
         self.n2 = n2
+        self.qmax4fitting = qmax
         self.penalty_weight = penalty_weight
         self.penalty_weights = penalty_weights
         self.fit_rho0 = fit_rho0
@@ -3781,6 +3783,9 @@ class PDB2MRC(object):
                 self.n1 = 0
             if self.n2 is None:
                 self.n2 = len(Iq_exp[:,0])
+            if self.qmax4fitting is not None:
+                #determine n2 value associated with qmax4fitting
+                self.n2 = find_nearest_i(Iq_exp[:,0],self.qmax4fitting)
             self.Iq_exp = Iq_exp[self.n1:self.n2]
             self.q_exp = self.Iq_exp[:,0]
             self.I_exp = self.Iq_exp[:,1]
@@ -3794,10 +3799,10 @@ class PDB2MRC(object):
 
         #save an array of indices containing only desired q range for speed
         if self.data_filename:
-            qmax4calc = self.q_exp.max()*1.1
+            self.qmax4calc = self.q_exp.max()*1.1
         else:
-            qmax4calc = self.qx_.max()*1.1
-        self.qidx = np.where((self.qr<=qmax4calc))
+            self.qmax4calc = self.qx_.max()*1.1
+        self.qidx = np.where((self.qr<=self.qmax4calc))
         #if the voxel size of the map is too large for the data to sample, limit the data
         if self.q_exp.max() > self.qx_.max():
             idx = np.where(self.q_exp < self.qx_.max())
@@ -3865,7 +3870,7 @@ class PDB2MRC(object):
             self.calc_score_with_modified_params(self.params)
             self.optimized_params = self.params_guess
             self.optimized_chi2 = self.chi2
-        self.params = self.optimized_params 
+        self.params = np.copy(self.optimized_params)
 
     def calc_score_with_modified_params(self, params):
         self.calc_I_with_modified_params(params)
@@ -4578,7 +4583,9 @@ def calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True,retu
     I_calc = np.copy(Iq_calc[:,1])
     if interpolation:
         I_calc_interpolator = interpolate.interp1d(q_calc,I_calc,kind='cubic',fill_value='extrapolate')
-        I_calc = I_calc_interpolator(q_exp)
+        I_calc_interp = I_calc_interpolator(q_exp)
+        I_calc = np.copy(I_calc_interp)
+
     else:
         #if interpolation of (coarse) calculated profile is disabled, we still need to at least
         #put the experimental data on the correct grid for comparison, so regrid the exp arrays
