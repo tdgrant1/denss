@@ -232,7 +232,7 @@ if __name__ == "__main__":
         #print "%s file saved" % (output+".sascif")
         param_str = store_parameters_as_string()
         #add column headers to param_str for output
-        param_str += 'q, I, error, fit'
+        param_str += 'q, I, error, fit ; chi2 = %.3f'%sasrec.chi2
         #quick, interpolate the raw data, sasrec.I, to the new qc values, but be sure to 
         #put zeros in for the q values not measured
         Iinterp = np.interp(sasrec.qc, sasrec.q_data, sasrec.I_data, left=0.0, right=0.0)
@@ -292,6 +292,7 @@ if __name__ == "__main__":
         I_l1, = axI.plot(sasrec.q_data, sasrec.I_data, 'k.', ms=3, label='test')
         I_l2, = axI.plot(sasrec.qc, sasrec.Ic, 'r-', lw=2)
         I_l3, = axI.plot(sasrec.qn, sasrec.In, 'bo', mec='b', mfc='none', mew=2)
+        chi2_text = axI.text(0.75,0.9,"$\chi^2$ = %.3f"%sasrec.chi2,transform=axI.transAxes,fontsize='large')
         if args.log: axI.semilogy()
         axI.set_ylabel('I(q)')
         axI.set_xlabel('q')
@@ -370,6 +371,7 @@ if __name__ == "__main__":
             I_l1.set_data(sasrec.q_data, sasrec.I_data)
             I_l2.set_data(sasrec.qc, sasrec.Ic)
             I_l3.set_data(sasrec.qn, sasrec.In)
+            chi2_text.set_text("$\chi^2$ = %.3f"%sasrec.chi2)
             Ires_l1.set_data(sasrec.q_data[ridx], res[ridx])
             P_l2.set_data(sasrec.r, sasrec.P)
             axI0.set_text("$I(0)$  = %.2e $\pm$ %.2e"%(sasrec.I0,sasrec.I0err))
@@ -450,7 +452,6 @@ if __name__ == "__main__":
             n1 = int(n1_box.text)
             n2 = int(n2_box.text)
             extrapolate = extrapolate_check.get_status()[0]
-            #print(extrapolate)
             analyze(dmax,alpha,n1,n2,extrapolate)
             # partitions the slider, so clicking in the upper and lower range scale valmax
             if (dmax > 0.9 * sdmax.valmax) or (dmax < 0.1 * sdmax.valmax):

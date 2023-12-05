@@ -57,6 +57,7 @@ parser.add_argument("-d", "--data", type=str, help="Experimental SAXS data file 
 parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use of experimental data")
 parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use of experimental data")
 parser.add_argument("-u", "--units", default="a", type=str, help="Angular units of experimental data (\"a\" [1/angstrom] or \"nm\" [1/nanometer]; default=\"a\"). If nm, will convert output to angstroms.")
+parser.add_argument("-qmin", "--qmin", default=None, type=float, help="Minimum q value to use for fitting experimental data.")
 parser.add_argument("-qmax", "--qmax", default=None, type=float, help="Maximum q value to use for fitting experimental data.")
 parser.add_argument("-s", "--side", default=None, type=float, help="Desired side length of real space box (default=3*Dmax).")
 parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired voxel size (default=1.0)")
@@ -207,6 +208,7 @@ if __name__ == "__main__":
         data_units=args.units,
         n1=args.n1,
         n2=args.n2,
+        qmin=args.qmin,
         qmax=args.qmax,
         penalty_weight=args.penalty_weight,
         penalty_weights=args.penalty_weights,

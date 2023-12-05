@@ -2341,6 +2341,15 @@ def fsc2res(fsc, cutoff=0.5, return_plot=False):
     else:
         return resn
 
+def sigmoid(x, L ,x0, k, b):
+    y = L / (1 + np.exp(-k*(x-x0))) + b
+    return (y)
+
+def sigmoid_find_x_value_given_y(y, L ,x0, k, b):
+    """find the corresponding x value given a desired y value on a sigmoid curve"""
+    x = -1/k * np.log(L/(y-b)-1)+x0
+    return x
+
 class Sasrec(object):
     def __init__(self, Iq, D, qc=None, r=None, nr=None, alpha=0.0, ne=2, extrapolate=True):
         self.Iq = Iq
@@ -2427,6 +2436,7 @@ class Sasrec(object):
         self.mwVcerr = self.mwVcerrf()
         self.lc = self.Ish2lc()
         self.lcerr = self.lcerrf()
+        self.chi2 = self.calc_chi2()
 
     def create_lowq(self):
         """Create a calculated q range for Sasrec for low q out to q=0.
@@ -2460,7 +2470,7 @@ class Sasrec(object):
         chi2 = []
         #here, alphas are actually the exponents, since the range can
         #vary from 10^-20 upwards of 10^20. This should cover nearly all likely values
-        alphas = np.arange(-20,20.)
+        alphas = np.arange(-20,20.,1)
         i = 0
         nalphas = len(alphas)
         for alpha in alphas:
@@ -2480,20 +2490,38 @@ class Sasrec(object):
         print()
         #find optimal alpha value based on where chi2 begins to rise, to 10% above the ideal chi2
         #interpolate between tested alphas to find more precise value
-        #x = np.linspace(alphas[0],alphas[-1],1000)
         x = np.linspace(al[0],al[-1],1000)
         y = np.interp(x, al, chi2)
-        chif = 1.1
-        #take the maximum alpha value (x) where the chi2 just starts to rise above ideal
-        try:
-            ali = np.argmax(x[y<=chif*ideal_chi2])
-        except:
-            #if it fails, it may mean that the lowest alpha value of 10^-20 is still too large, so just take that.
-            ali = 0
-        #set the optimal alpha to be 10^alpha, since we were actually using exponents
-        #also interpolate between the two neighboring alpha values, to get closer to the chif*ideal_chi2
-        opt_alpha_exponent = np.interp(chif*ideal_chi2,[y[ali],y[ali-1]],[x[ali],x[ali-1]])
-        #print(opt_alpha_exponent)
+        use_sigmoid = False
+        if use_sigmoid:
+            chif = 1.0000001
+            #try and use a sigmoid fit
+            #guess the midpoint of the sigmoid
+            chi2_mid = (chi2.max()-chi2.min())/2
+            idx = find_nearest_i(chi2_mid, y)
+            al_mid = x[idx]
+            #guess the min, max, etc.
+            p0 = [max(chi2), np.median(al),al_mid,min(chi2)]
+            # print(p0)
+            popt, pcov = optimize.curve_fit(sigmoid, al, chi2, p0, method='dogbox')
+            # print(popt)
+            fit = sigmoid(x, *popt)
+            #find the value of the sigmoid closest to 1.1*ideal_chi2
+            #minimum of the sigmoid is b parameter, which can be taken from popt
+            b = popt[-1]
+            L = popt[0]
+            opt_alpha_exponent = sigmoid_find_x_value_given_y((L-b)*(chif-1)+b, *popt)
+        else:
+            chif = 1.1
+            #take the maximum alpha value (x) where the chi2 just starts to rise above ideal
+            try:
+                ali = np.argmax(x[y<=chif*ideal_chi2])
+            except:
+                #if it fails, it may mean that the lowest alpha value of 10^-20 is still too large, so just take that.
+                ali = 0
+            #set the optimal alpha to be 10^alpha, since we were actually using exponents
+            #also interpolate between the two neighboring alpha values, to get closer to the chif*ideal_chi2
+            opt_alpha_exponent = np.interp(chif*ideal_chi2,[y[ali],y[ali-1]],[x[ali],x[ali-1]])
         opt_alpha = 10.0**(opt_alpha_exponent)
         self.alpha = opt_alpha
         self.update()
@@ -2504,8 +2532,8 @@ class Sasrec(object):
         Bn = self.B_data
         #calculate Ic at experimental q vales for chi2 calculation
         Ic_qe = 2*np.einsum('n,nq->q',Ish,Bn)
-        chi2 = (1./(self.nq-self.n-1.))*np.sum(1/(self.Ierr_data**2)*(self.I_data-Ic_qe)**2)
-        return chi2
+        self.chi2 = (1./(self.nq-self.n-1.))*np.sum(1/(self.Ierr_data**2)*(self.I_data-Ic_qe)**2)
+        return self.chi2
 
     def estimate_Vp_etal(self):
         """Estimate Porod volume using modified method based on oversmoothing.
@@ -3326,6 +3354,7 @@ class PDB2MRC(object):
         data_units="a",
         n1=None,
         n2=None,
+        qmin=None,
         qmax=None,
         penalty_weight=1.0,
         penalty_weights=[1.0,0.01],
@@ -3408,6 +3437,7 @@ class PDB2MRC(object):
         self.data_units = data_units
         self.n1 = n1
         self.n2 = n2
+        self.qmin4fitting = qmin
         self.qmax4fitting = qmax
         self.penalty_weight = penalty_weight
         self.penalty_weights = penalty_weights
@@ -3783,6 +3813,9 @@ class PDB2MRC(object):
                 self.n1 = 0
             if self.n2 is None:
                 self.n2 = len(Iq_exp[:,0])
+            if self.qmin4fitting is not None:
+                #determine n1 value associated with qmin4fitting
+                self.n1 = find_nearest_i(Iq_exp[:,0],self.qmin4fitting)
             if self.qmax4fitting is not None:
                 #determine n2 value associated with qmax4fitting
                 self.n2 = find_nearest_i(Iq_exp[:,0],self.qmax4fitting)
