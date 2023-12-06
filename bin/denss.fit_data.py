@@ -256,7 +256,6 @@ if __name__ == "__main__":
             qtsuccess = True
         except ImportError:
             qtsuccess = False
-        print(qtsuccess)
         if not qtsuccess:
             print("Using TkAgg")
             try:

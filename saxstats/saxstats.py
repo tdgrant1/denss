@@ -994,7 +994,12 @@ def estimate_dmax(Iq,dmax=None,clean_up=True):
     #run Sasrec to perform IFT
     sasrec = Sasrec(Iq, D, qc=None, alpha=0.0, extrapolate=False)
     #now filter the P(r) curve for estimating Dmax better
-    r, Pfilt, sigrfilt = filter_P(sasrec.r, sasrec.P, sasrec.Perr, qmax=Iq[:,0].max())
+    qmax_fraction = 0.5
+    r, Pfilt, sigrfilt = filter_P(sasrec.r, sasrec.P, sasrec.Perr, qmax=qmax_fraction*Iq[:,0].max())
+    # import matplotlib.pyplot as plt
+    # plt.plot(sasrec.r,sasrec.r*0,'k--')
+    # plt.plot(sasrec.r, sasrec.P,'b-')
+    # plt.plot(r,Pfilt,'r-')
     #estimate D as the first position where P becomes less than 0.01*P.max(), after P.max()
     Pargmax = Pfilt.argmax()
     #catch cases where the P(r) plot goes largely negative at large r values,
@@ -1002,13 +1007,18 @@ def estimate_dmax(Iq,dmax=None,clean_up=True):
     #identifier for where to begin searching for Dmax, to be any P value whose
     #absolute value is greater than at least 10% of Pfilt.max. The large 10% is to 
     #avoid issues with oscillations in P(r).
-    above_idx = np.where((np.abs(Pfilt)>0.1*Pfilt.max())&(r>r[Pargmax]))
+    threshold = 0.05
+    above_idx = np.where((np.abs(Pfilt)>threshold*Pfilt.max())&(r>r[Pargmax]))
     Pargmax = np.max(above_idx)
     near_zero_idx = np.where((np.abs(Pfilt[Pargmax:])<(0.001*Pfilt.max())))[0]
     near_zero_idx += Pargmax
     D_idx = near_zero_idx[0]
     D = r[D_idx]
     sasrec.D = D
+    # plt.plot(sasrec.r,sasrec.r*0+threshold*Pfilt.max(),'g--')
+    # plt.plot(sasrec.r,sasrec.r*0-threshold*Pfilt.max(),'g--')
+    # plt.show()
+    # exit()
     sasrec.update()
     return D, sasrec
 
@@ -2341,11 +2351,11 @@ def fsc2res(fsc, cutoff=0.5, return_plot=False):
     else:
         return resn
 
-def sigmoid(x, L ,x0, k, b):
+def sigmoid(x, x0, k, b, L):
     y = L / (1 + np.exp(-k*(x-x0))) + b
     return (y)
 
-def sigmoid_find_x_value_given_y(y, L ,x0, k, b):
+def sigmoid_find_x_value_given_y(y, x0, k, b, L):
     """find the corresponding x value given a desired y value on a sigmoid curve"""
     x = -1/k * np.log(L/(y-b)-1)+x0
     return x
@@ -2470,7 +2480,7 @@ class Sasrec(object):
         chi2 = []
         #here, alphas are actually the exponents, since the range can
         #vary from 10^-20 upwards of 10^20. This should cover nearly all likely values
-        alphas = np.arange(-20,20.,1)
+        alphas = np.arange(-30,30.,2)
         i = 0
         nalphas = len(alphas)
         for alpha in alphas:
@@ -2492,25 +2502,44 @@ class Sasrec(object):
         #interpolate between tested alphas to find more precise value
         x = np.linspace(al[0],al[-1],1000)
         y = np.interp(x, al, chi2)
-        use_sigmoid = False
+        use_sigmoid = True
         if use_sigmoid:
-            chif = 1.0000001
+            chif = 1.01
             #try and use a sigmoid fit
             #guess the midpoint of the sigmoid
             chi2_mid = (chi2.max()-chi2.min())/2
             idx = find_nearest_i(chi2_mid, y)
             al_mid = x[idx]
             #guess the min, max, etc.
-            p0 = [max(chi2), np.median(al),al_mid,min(chi2)]
-            # print(p0)
-            popt, pcov = optimize.curve_fit(sigmoid, al, chi2, p0, method='dogbox')
-            # print(popt)
-            fit = sigmoid(x, *popt)
+            L = max(chi2)
+            b = min(chi2)
+            x0_guess = al_mid
+            k_guess = np.median(al)
+            p0 = [x0_guess, k_guess] #, b, L]
+            # bounds = (  ((1-1e-8)*L,-np.inf,-np.inf, b),
+            #             (L,np.inf,np.inf,(1+1e-8)*b)
+            #         )
+            # popt, pcov = optimize.curve_fit(sigmoid, al, chi2, p0, bounds=bounds,method='dogbox')
+            #constrain b and L, only fit x0 and k
+            popt, pcov = optimize.curve_fit(lambda x, x0, k : sigmoid(x, x0, k, b, L), al, chi2, p0, method='dogbox')
+            fit = sigmoid(x, popt[0], popt[1], b, L)
             #find the value of the sigmoid closest to 1.1*ideal_chi2
             #minimum of the sigmoid is b parameter, which can be taken from popt
-            b = popt[-1]
-            L = popt[0]
-            opt_alpha_exponent = sigmoid_find_x_value_given_y((L-b)*(chif-1)+b, *popt)
+            # b = popt[-1]
+            # L = popt[0]
+            # print((L-b)*(chif-1)+b)
+            # print(chif*b)
+            opt_alpha_exponent = sigmoid_find_x_value_given_y(chif*b, popt[0], popt[1], b, L)
+            # print(opt_alpha_exponent)
+            # import matplotlib.pyplot as plt
+            # plt.plot(al,chi2,'k.')
+            # plt.plot(x,fit,'r-')
+            # plt.axvline(opt_alpha_exponent)
+            # plt.plot(x,x*0+sigmoid(opt_alpha_exponent, popt[0], popt[1], b, L),'k--')
+            # plt.xlabel("log(alpha)")
+            # plt.ylabel("chi2")
+            # plt.show()
+            # exit()
         else:
             chif = 1.1
             #take the maximum alpha value (x) where the chi2 just starts to rise above ideal
