@@ -2489,7 +2489,13 @@ class Sasrec(object):
             sys.stdout.flush()
             try:
                 self.alpha = 10.**alpha
-                self.update()
+                # self.update()
+                # don't run the full update, just update the Ins with the new alpha for speed
+                # then run the full update at the end
+                # updating alpha just updates C, so all steps from C to In calculation need to be run
+                self.C = self.Ct2()
+                self.Cinv = np.linalg.inv(self.C)
+                self.In = np.linalg.solve(self.C,self.Y)
             except:
                 continue
             chi2value = self.calc_chi2()
