@@ -965,6 +965,27 @@ def calc_rg_by_guinier_peak(Iq,exp=1,nb=0,ne=None):
     rg = (3.*d/2.)**0.5 / qpeak
     return rg
 
+def direct_I2P(q,I,D=None):
+    #the maximum possible distance is pi/dq
+    #use 0.5 just to be sure theres at minimum 2 points per shannon channel
+    if D is None:
+        rmax = 0.5 * np.pi/(q[2]-q[1])
+    else:
+        rmax = D
+    # r = np.logspace(0.001,np.log10(rmax),500) - 1
+    r = np.linspace(0,rmax,1000)
+    P = np.zeros(len(r))
+    for ri in range(len(r)):
+        qrsinqr = q*r[ri]*np.sin(q*r[ri])
+        P[ri] += np.trapz(qrsinqr*I,q)
+    return r, 1/(2*np.pi**2) * P
+
+def P2Rg(r,P):
+    num = np.trapz(r**2*P,r)
+    denom = 2*np.trapz(P,r)
+    rg2 = num/denom
+    return rg2**0.5
+
 def estimate_dmax(Iq,dmax=None,clean_up=True):
     """Attempt to roughly estimate Dmax directly from data."""
     #first, clean up the data
@@ -972,6 +993,7 @@ def estimate_dmax(Iq,dmax=None,clean_up=True):
         Iq = clean_up_data(Iq)
     q = Iq[:,0]
     I = Iq[:,1]
+    nq = len(q)
     if dmax is None:
         #first, estimate a very rough rg from the first 20 data points
         nmax = 20
@@ -989,13 +1011,33 @@ def estimate_dmax(Iq,dmax=None,clean_up=True):
     #create a calculated q range for Sasrec for low q out to q=0
     qmin = np.min(q)
     dq = (q.max()-q.min())/(q.size-1)
-    nq = int(qmin/dq)
-    qc = np.concatenate(([0.0],np.arange(nq)*dq+(qmin-nq*dq),q))
+    nqc = int(qmin/dq)
+    qc = np.concatenate(([0.0],np.arange(nqc)*dq+(qmin-nqc*dq),q))
     #run Sasrec to perform IFT
-    sasrec = Sasrec(Iq, D, qc=None, alpha=0.0, extrapolate=False)
+    sasrec = Sasrec(Iq[:nq//2], D, qc=None, alpha=0.0, extrapolate=False)
+    #if the rg estimate was way off, it would screw up Dmax estimate
+    #but the sasrec rg should be more accurate, even with a screwed up guinier estimate
+    #so run it again, but this time with the Dmax = 7*sasrec.rg
+    #only do this if rg is significantly different
+    if np.abs(sasrec.rg-rg)>0.2*sasrec.rg:
+        sasrec = Sasrec(Iq[:nq//2], D=7*sasrec.rg, qc=None, alpha=0.0, extrapolate=False)
+    #lets test a bunch of different dmax's on a logarithmic spacing
+    #then see where chi2 is minimal. that at least gives us a good ball park of Dmax
+    #the main problem is that we don't know the scale even remotely, or the units, 
+    #so we need to check many orders of magnitude
+    Ds = np.logspace(.1,np.log10(2*7*rg),10)
+    chi2 = np.zeros(len(Ds))
+    for i in range(len(Ds)):
+        sasrec = Sasrec(Iq[:nq//2], D=Ds[i], qc=None, alpha=0.0, extrapolate=False)
+        chi2[i] = sasrec.calc_chi2()
+    order = np.argsort(chi2)
+    D = 2*np.interp(2*chi2.min(),chi2[order],Ds[order])
+    #one final time with new D and full q range
+    sasrec = Sasrec(Iq, D=D, qc=None, alpha=0.0, extrapolate=False)
     #now filter the P(r) curve for estimating Dmax better
-    qmax_fraction = 0.5
-    r, Pfilt, sigrfilt = filter_P(sasrec.r, sasrec.P, sasrec.Perr, qmax=qmax_fraction*Iq[:,0].max())
+    qmax = 2*np.pi/D 
+    # qmax_fraction = 0.5
+    r, Pfilt, sigrfilt = filter_P(sasrec.r, sasrec.P, sasrec.Perr, qmax=qmax) #qmax_fraction*Iq[:,0].max())
     # import matplotlib.pyplot as plt
     # plt.plot(sasrec.r,sasrec.r*0,'k--')
     # plt.plot(sasrec.r, sasrec.P,'b-')
@@ -1007,16 +1049,20 @@ def estimate_dmax(Iq,dmax=None,clean_up=True):
     #identifier for where to begin searching for Dmax, to be any P value whose
     #absolute value is greater than at least 10% of Pfilt.max. The large 10% is to 
     #avoid issues with oscillations in P(r).
-    threshold = 0.05
-    above_idx = np.where((np.abs(Pfilt)>threshold*Pfilt.max())&(r>r[Pargmax]))
+    argmax_threshold = 0.05
+    above_idx = np.where((np.abs(Pfilt)>argmax_threshold*Pfilt.max())&(r>r[Pargmax]))
     Pargmax = np.max(above_idx)
-    near_zero_idx = np.where((np.abs(Pfilt[Pargmax:])<(0.001*Pfilt.max())))[0]
+    dmax_threshold = (0.01*Pfilt.max())
+    near_zero_idx = np.where((np.abs(Pfilt[Pargmax:])<dmax_threshold))[0]
     near_zero_idx += Pargmax
     D_idx = near_zero_idx[0]
     D = r[D_idx]
-    sasrec.D = D
-    # plt.plot(sasrec.r,sasrec.r*0+threshold*Pfilt.max(),'g--')
-    # plt.plot(sasrec.r,sasrec.r*0-threshold*Pfilt.max(),'g--')
+    sasrec.D = np.copy(D)
+    # plt.plot(sasrec.r,sasrec.r*0+argmax_threshold*Pfilt.max(),'g--')
+    # plt.plot(sasrec.r,sasrec.r*0-argmax_threshold*Pfilt.max(),'g--')
+    # plt.plot(sasrec.r,sasrec.r*0+dmax_threshold,'r--')
+    # plt.axvline(D,c='r')
+    # plt.plot()
     # plt.show()
     # exit()
     sasrec.update()
@@ -2567,7 +2613,8 @@ class Sasrec(object):
         Bn = self.B_data
         #calculate Ic at experimental q vales for chi2 calculation
         Ic_qe = 2*np.einsum('n,nq->q',Ish,Bn)
-        self.chi2 = (1./(self.nq-self.n-1.))*np.sum(1/(self.Ierr_data**2)*(self.I_data-Ic_qe)**2)
+        # self.chi2 = (1./(self.nq-self.n-1.))*np.sum(1/(self.Ierr_data**2)*(self.I_data-Ic_qe)**2)
+        self.chi2 = 1/self.nq * np.sum(1/(self.Ierr_data**2)*(self.I_data-Ic_qe)**2)
         return self.chi2
 
     def estimate_Vp_etal(self):
