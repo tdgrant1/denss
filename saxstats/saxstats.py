@@ -2418,13 +2418,17 @@ class Sasrec(object):
         self.q_data = np.copy(self.q)
         self.I_data = np.copy(self.I)
         self.Ierr_data = np.copy(self.Ierr)
+        self.nq_data = len(self.q_data)
         if qc is None:
             #self.qc = self.q
             self.create_lowq()
         else:
             self.qc = qc
         if extrapolate:
+            self.extrapolation = True
             self.extrapolate()
+        else:
+            self.extrapolation = False
         self.D = D
         self.qmin = np.min(self.q)
         self.qmax = np.max(self.q)
@@ -2504,9 +2508,10 @@ class Sasrec(object):
     def extrapolate(self):
         """Extrapolate to high q values"""
         #create a range of 1001 data points from 1*qmax to 3*qmax
-        qe = np.linspace(1.0*self.q[-1],3.0*self.q[-1],1001)
+        self.ne = 1001
+        qe = np.linspace(1.0*self.q[-1],3.0*self.q[-1],self.ne)
         qe = qe[qe>self.q[-1]]
-        qce = np.linspace(1.0*self.qc[-1],3.0*self.q[-1],1001)
+        qce = np.linspace(1.0*self.qc[-1],3.0*self.q[-1],self.ne)
         qce = qce[qce>self.qc[-1]]
         #extrapolated intensities can be anything, since they will
         #have infinite errors and thus no impact on the calculation
@@ -2612,9 +2617,8 @@ class Sasrec(object):
         Ish = self.In
         Bn = self.B_data
         #calculate Ic at experimental q vales for chi2 calculation
-        Ic_qe = 2*np.einsum('n,nq->q',Ish,Bn)
-        # self.chi2 = (1./(self.nq-self.n-1.))*np.sum(1/(self.Ierr_data**2)*(self.I_data-Ic_qe)**2)
-        self.chi2 = 1/self.nq * np.sum(1/(self.Ierr_data**2)*(self.I_data-Ic_qe)**2)
+        self.Ic_qe = 2*np.einsum('n,nq->q',Ish,Bn)
+        self.chi2 = 1/(self.nq_data-1) * np.sum(1/(self.Ierr_data**2)*(self.I_data-self.Ic_qe)**2)
         return self.chi2
 
     def estimate_Vp_etal(self):

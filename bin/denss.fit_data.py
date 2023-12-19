@@ -200,6 +200,7 @@ if __name__ == "__main__":
 
     def store_parameters_as_string(event=None):
         param_str = ("Parameter Values:\n"
+        "Chi2  = {chi2:.5e}\n"
         "Dmax  = {dmax:.5e}\n"
         "alpha = {alpha:.5e}\n"
         "I(0)  = {I0:.5e} +- {I0err:.5e}\n"
@@ -210,7 +211,8 @@ if __name__ == "__main__":
         "Vc    = {Vc:.5e} +- {Vcerr:.5e}\n"
         "MW_Vc = {mwVc:.5e} +- {mwVcerr:.5e}\n"
         "Lc    = {lc:.5e} +- {lcerr:.5e}\n"
-        ).format(dmax=sasrec.D,alpha=sasrec.alpha,
+        ).format(chi2=sasrec.chi2,
+            dmax=sasrec.D,alpha=sasrec.alpha,
             I0=sasrec.I0,I0err=sasrec.I0err,
             rg=sasrec.rg,rgerr=sasrec.rgerr,
             r=sasrec.avgr,rerr=sasrec.avgrerr,
@@ -364,14 +366,13 @@ if __name__ == "__main__":
             global sasrec
             sasrec = saxs.Sasrec(Iq_orig[n1:n2], dmax, qc=qc, r=r, nr=args.nr, alpha=alpha, ne=nes, extrapolate=extrapolate)
             sasrec.estimate_Vp_etal()
-            Icinterp = np.interp(sasrec.q_data, sasrec.qc, sasrec.Ic)
-            res = (sasrec.I_data - Icinterp)/sasrec.Ierr_data
+            res = (sasrec.I_data - sasrec.Ic_qe)/sasrec.Ierr_data
             ridx = np.where((sasrec.q_data<sasrec.qc.max()))
             I_l1.set_data(sasrec.q_data, sasrec.I_data)
             I_l2.set_data(sasrec.qc, sasrec.Ic)
             I_l3.set_data(sasrec.qn, sasrec.In)
             chi2_text.set_text("$\chi^2$ = %.3f"%sasrec.chi2)
-            Ires_l1.set_data(sasrec.q_data[ridx], res[ridx])
+            Ires_l1.set_data(sasrec.q_data, res)
             P_l2.set_data(sasrec.r, sasrec.P)
             axI0.set_text("$I(0)$  = %.2e $\pm$ %.2e"%(sasrec.I0,sasrec.I0err))
             axrg.set_text("$R_g$   = %.2e $\pm$ %.2e"%(sasrec.rg,sasrec.rgerr))
