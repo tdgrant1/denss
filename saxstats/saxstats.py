@@ -3062,8 +3062,16 @@ class PDB(object):
                     atomtype = atomtype0 + atomtype1
                 if len(atomtype) == 0:
                     #if atomtype column is not in pdb file, set to first
-                    #character of atomname
+                    #character of atomname that is in the database of elements
+                    #(sometimes a number is the first character)
+                    #otherwise default to Carbon
                     atomtype = self.atomname[atom][0]
+                    if atomtype not in ffcoeff:
+                        atomtype = self.atomname[atom][1]
+                    if atomtype not in ffcoeff:
+                        print("%s atomtype not recognized for atom number %s"%(atomtype, self.atomnum[atom]))
+                        print("Setting atomtype to default Carbon.")
+                        atomtype = "C"
                 self.atomtype[atom] = atomtype
                 self.charge[atom] = line[78:80].strip('\n')
                 self.nelectrons[atom] = electrons.get(self.atomtype[atom].upper(),6)
