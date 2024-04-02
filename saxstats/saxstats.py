@@ -2406,6 +2406,14 @@ def sigmoid_find_x_value_given_y(y, x0, k, b, L):
     x = -1/k * np.log(L/(y-b)-1)+x0
     return x
 
+def create_lowq(q):
+    """Create a calculated q range for Sasrec for low q out to q=0.
+    Just the q values, not any extrapolation of intensities."""
+    dq = (q.max()-q.min())/(q.size-1)
+    nq = int(q.min()/dq)
+    qc = np.concatenate(([0.0],np.arange(nq)*dq+(q.min()-nq*dq),q))
+    return qc
+
 class Sasrec(object):
     def __init__(self, Iq, D, qc=None, r=None, nr=None, alpha=0.0, ne=2, extrapolate=True):
         self.Iq = Iq
@@ -2420,8 +2428,7 @@ class Sasrec(object):
         self.Ierr_data = np.copy(self.Ierr)
         self.nq_data = len(self.q_data)
         if qc is None:
-            #self.qc = self.q
-            self.create_lowq()
+            self.qc = create_lowq(self.q)
         else:
             self.qc = qc
         if extrapolate:

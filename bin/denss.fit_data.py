@@ -298,6 +298,13 @@ if __name__ == "__main__":
         axI.set_ylabel('I(q)')
         axI.set_xlabel('q')
 
+        #make plots for each Bn (should we also do each Sn for P(r) plot?)
+        # I_Bn = []
+        # nn = range(5,20) #range(20) #idx Bns to show
+        # for i in nn:
+        #     I_Bn.append(axI.plot(sasrec.q, 2*sasrec.In[i]*sasrec.B[i], label='B_%d'%i))
+
+
         #residuals
         #first, just ensure that we're comparing similar q ranges, so
         #interpolate from qc to q_data to enable subtraction, since there's
@@ -317,6 +324,13 @@ if __name__ == "__main__":
         P_l2, = axP.plot(sasrec.r, sasrec.P, 'b-', lw=2)
         axP.set_ylabel('P(r)')
         axP.set_xlabel('r')
+
+        #plot Sns on P(r)
+        # P_Sn = []
+        # for i in nn:
+        #     P_Sn.append(axP.plot(sasrec.r, sasrec.In[i]*sasrec.S[i], label='S_%d'%i))
+        # mm = nn #range(0,20)
+        # P_Sn[-1] = axP.plot(sasrec.r, np.sum(sasrec.In[mm,None]*sasrec.S[mm],axis=0),'k-',lw=4)
 
         #axI.set_xlim([0,1.1*np.max(sasrec.q)])
         #axR.set_xlim([0,1.1*np.max(sasrec.q)])
@@ -361,10 +375,29 @@ if __name__ == "__main__":
         dmax = D
         n1 = str(n1)
         n2 = str(n2)
+        nRemove = ""
 
-        def analyze(dmax,alpha,n1,n2,extrapolate):
+        def analyze(dmax,alpha,n1,n2,nRemove,extrapolate):
             global sasrec
-            sasrec = saxs.Sasrec(Iq_orig[n1:n2], dmax, qc=qc, r=r, nr=args.nr, alpha=alpha, ne=nes, extrapolate=extrapolate)
+            points = np.arange(Iq_orig.shape[0])
+            mask = np.ones(len(points),dtype=bool)
+            mask[points<=n1] = False
+            mask[points>=n2] = False
+            #parse nRemove string, allow n point or n-m ranges
+            ranges = nRemove.split(",")
+            for rangei in ranges:
+                if "-" in rangei:
+                    rangei_a, rangei_b = [int(j) for j in rangei.split("-")]
+                    mask[(points>=rangei_a)&(points<=rangei_b)] = False
+                elif rangei == "":
+                    pass
+                else:
+                    try:
+                        mask[int(rangei)] = False
+                    except:
+                        print("Invalid Remove Range")
+            qc = saxs.create_lowq(q=Iq_orig[:,0])
+            sasrec = saxs.Sasrec(Iq_orig[mask], dmax, qc=qc, r=r, nr=args.nr, alpha=alpha, ne=nes, extrapolate=extrapolate)
             sasrec.estimate_Vp_etal()
             res = (sasrec.I_data - sasrec.Ic_qe)/sasrec.Ierr_data
             ridx = np.where((sasrec.q_data<sasrec.qc.max()))
@@ -382,14 +415,25 @@ if __name__ == "__main__":
             axlc.set_text("$\ell_c$ = %.2e $\pm$ %.2e"%(sasrec.lc,sasrec.lcerr))
             #axVpmw.set_text("Vp MW = %.2e $\pm$ %.2e"%(sasrec.mwVp,sasrec.mwVperr))
             #axVcmw.set_text("Vc MW = %.2e $\pm$ %.2e"%(sasrec.mwVc,sasrec.mwVcerr))
+            # j = 0
+            # for i in nn:
+            #     I_Bn[j][0].set_data(sasrec.q, 2*sasrec.In[i]*sasrec.B[i])
+            #     j+=1
+            # j = 0
+            # for i in nn:
+            #     P_Sn[j][0].set_data(sasrec.r, sasrec.In[i]*sasrec.S[i])
+            #     j+=1
+            # P_Sn[-1][0].set_data(sasrec.r, np.sum(sasrec.In[mm,None]*sasrec.S[mm],axis=0))
+
 
         def n1_submit(text):
             dmax = sdmax.val
             alpha = salpha.val
             n1 = int(text)
             n2 = int(n2_box.text)
+            nRemove = str(nRemove_box.text)
             extrapolate = extrapolate_check.get_status()[0]
-            analyze(dmax,alpha,n1,n2,extrapolate)
+            analyze(dmax,alpha,n1,n2,nRemove,extrapolate)
             fig.canvas.draw_idle()
 
         def n2_submit(text):
@@ -397,8 +441,19 @@ if __name__ == "__main__":
             alpha = salpha.val
             n1 = int(n1_box.text)
             n2 = int(text)
+            nRemove = str(nRemove_box.text)
             extrapolate = extrapolate_check.get_status()[0]
-            analyze(dmax,alpha,n1,n2,extrapolate)
+            analyze(dmax,alpha,n1,n2,nRemove,extrapolate)
+            fig.canvas.draw_idle()
+
+        def nRemove_submit(text):
+            dmax = sdmax.val
+            alpha = salpha.val
+            n1 = int(n1_box.text)
+            n2 = int(n2_box.text)
+            nRemove = str(text)
+            extrapolate = extrapolate_check.get_status()[0]
+            analyze(dmax,alpha,n1,n2,nRemove,extrapolate)
             fig.canvas.draw_idle()
 
         def extrapolate_submit(text):
@@ -406,8 +461,9 @@ if __name__ == "__main__":
             alpha = salpha.val
             n1 = int(n1_box.text)
             n2 = int(n2_box.text)
+            nRemove = str(nRemove_box.text)
             extrapolate = extrapolate_check.get_status()[0]
-            analyze(dmax,alpha,n1,n2,extrapolate)
+            analyze(dmax,alpha,n1,n2,nRemove,extrapolate)
             fig.canvas.draw_idle()
 
         def D_submit(text):
@@ -415,8 +471,9 @@ if __name__ == "__main__":
             alpha = salpha.val
             n1 = int(n1_box.text)
             n2 = int(n2_box.text)
+            nRemove = str(nRemove_box.text)
             extrapolate = extrapolate_check.get_status()[0]
-            analyze(dmax,alpha,n1,n2,extrapolate)
+            analyze(dmax,alpha,n1,n2,nRemove,extrapolate)
             # this updates the slider value based on text box value
             sdmax.set_val(dmax)
             if (dmax > 0.9 * sdmax.valmax) or (dmax < 0.1 * sdmax.valmax):
@@ -430,8 +487,9 @@ if __name__ == "__main__":
             alpha = float(text)
             n1 = int(n1_box.text)
             n2 = int(n2_box.text)
+            nRemove = str(nRemove_box.text)
             extrapolate = extrapolate_check.get_status()[0]
-            analyze(dmax,alpha,n1,n2,extrapolate)
+            analyze(dmax,alpha,n1,n2,nRemove,extrapolate)
             # this updates the slider value based on text box value
             salpha.set_val(alpha)
             # partions alpha slider
@@ -451,8 +509,10 @@ if __name__ == "__main__":
             alpha = salpha.val
             n1 = int(n1_box.text)
             n2 = int(n2_box.text)
+            nRemove = str(nRemove_box.text)
             extrapolate = extrapolate_check.get_status()[0]
-            analyze(dmax,alpha,n1,n2,extrapolate)
+            #print(extrapolate)
+            analyze(dmax,alpha,n1,n2,nRemove,extrapolate)
             # partitions the slider, so clicking in the upper and lower range scale valmax
             if (dmax > 0.9 * sdmax.valmax) or (dmax < 0.1 * sdmax.valmax):
                 sdmax.valmax = 2 * dmax
@@ -488,20 +548,31 @@ if __name__ == "__main__":
 
         # making a text entry for n1 that allows for user input
         n1value = "{}".format(n1)
-        plt.figtext(0.0085, 0.178, "First point")
-        axIntn1 = plt.axes([0.075, 0.170, 0.08, 0.03])
+        # plt.figtext(0.0085, 0.178, "First:")
+        # axIntn1 = plt.axes([0.075, 0.170, 0.08, 0.03])
+        plt.figtext(0.02, 0.178, "First:")
+        axIntn1 = plt.axes([0.05, 0.170, 0.05, 0.03])
         n1_box = TextBox(axIntn1, '', initial=n1)
         n1_box.on_submit(n1_submit)
 
         # making a text entry for n2 that allows for user input
         n2value = "{}".format(n2)
-        plt.figtext(0.17, 0.178, "Last point")
-        axIntn2 = plt.axes([0.235, 0.170, 0.08, 0.03])
+        # plt.figtext(0.17, 0.178, "Last:")
+        # axIntn2 = plt.axes([0.235, 0.170, 0.08, 0.03])
+        plt.figtext(0.12, 0.178, "Last:")
+        axIntn2 = plt.axes([0.15, 0.170, 0.05, 0.03])
         n2_box = TextBox(axIntn2, '', initial=n2)
         n2_box.on_submit(n2_submit)
 
+        # making a text entry for removing points that allows for user input
+        nRemovevalue = "{}".format(nRemove)
+        plt.figtext(0.21, 0.178, "Remove:")
+        axnRemove = plt.axes([0.27, 0.170, 0.08, 0.03])
+        nRemove_box = TextBox(axnRemove, '', initial=nRemove)
+        nRemove_box.on_submit(nRemove_submit)
+
         # create a checkbox for extrapolation
-        axExtrap = plt.axes([0.35, 0.170, 0.015, 0.03], frameon=True)
+        axExtrap = plt.axes([0.37, 0.170, 0.015, 0.03], frameon=True)
         axExtrap.margins(0.0)
         extrapolate_check = CheckButtons(axExtrap, ["Extrapolate"], [args.extrapolate])
         #the axes object for the checkbutton is crazy large, and actually
