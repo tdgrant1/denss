@@ -1159,6 +1159,7 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
     #create an array labeling each voxel according to which qbin it belongs
     qbin_labels = np.searchsorted(qbins,qr,"right")
     qbin_labels -= 1
+    qbl = qbin_labels
     qblravel = qbin_labels.ravel()
     xcount = np.bincount(qblravel)
 
