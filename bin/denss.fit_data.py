@@ -47,6 +47,7 @@ parser.add_argument("-a", "--alpha", default=None, type=float, help="Set alpha s
 parser.add_argument("-u", "--units", default="a", type=str, help="Angular units (\"a\" [1/angstrom] or \"nm\" [1/nanometer]; default=\"a\"). If nm, will convert output to angstroms.")
 parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use")
 parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use")
+parser.add_argument("--ignore_errors", dest="ignore_errors", action="store_true", help="Ignore error bars (i.e., set all error bars to 1.0).")
 parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional)")
 parser.add_argument("-qmax", "--qmax", default=None, type=float, help="Maximum q value for calculated intensities (optional)")
 parser.add_argument("-nq", "--nq", default=None, type=int, help="Number of data points in calculated intensity profile (optional)")
@@ -63,6 +64,7 @@ parser.add_argument("--write_shannon", dest="write_shannon", action="store_true"
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
 parser.set_defaults(plot=True)
 parser.set_defaults(write_shannon=False)
+parser.set_defaults(ignore_errors=False)
 args = parser.parse_args()
 
 if __name__ == "__main__":
@@ -77,20 +79,18 @@ if __name__ == "__main__":
         output = args.output
 
 
-    Iq = np.genfromtxt(args.file, invalid_raise = False, usecols=(0,1,2))
-    Iq = Iq[~np.isnan(Iq).any(axis = 1)]
+    Iq = np.genfromtxt(args.file, invalid_raise = False) #, usecols=(0,1,2))
     if len(Iq.shape) < 2:
         print("Invalid data format. Data file must have 3 columns: q, I, errors.")
         exit()
-    if Iq.shape[1] < 3:
-        print("Not enough columns (data must have 3 columns: q, I, errors).")
-        #attempt to make a simulated errors column
+    if Iq.shape[1] < 3 or args.ignore_errors:
+        print("WARNING: Only 2 columns given. Data should have 3 columns: q, I, errors.")
+        print("WARNING: Setting error bars to 1.0 (i.e., ignoring error bars)")
         Iq2 = np.zeros((Iq.shape[0],3))
-        Iq2[:,:2] = Iq
-        err = Iq[:,1]*.003 #percentage of intensity for each point
-        err += np.mean(Iq[:10,1])*.01 #minimum error for all points
-        Iq2[:,2] = err
+        Iq2[:,:2] = Iq[:,:2]
+        Iq2[:,2] += 1.0 #set error bars to 1.0
         Iq = Iq2
+    Iq = Iq[~np.isnan(Iq).any(axis = 1)]
     #get rid of any data points equal to zero in the intensities or errors columns
     idx = np.where((Iq[:,1]!=0)&(Iq[:,2]!=0))
     Iq = Iq[idx]

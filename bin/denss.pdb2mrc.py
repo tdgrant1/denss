@@ -64,7 +64,7 @@ parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired vox
 parser.add_argument("-n", "--nsamples", default=None, type=int, help="Desired number of samples (i.e. voxels) per axis (default=variable)")
 parser.add_argument("-b", "--use_b", dest="use_b", action="store_true", help="Include B-factors from atomic model (optional, default=False)")
 parser.add_argument("-B", "--global_B", default=None, type=float, help="Desired global B-factor (added to any individual B-factors if enabled), used for improving sampling for large voxel sizes (varies by voxel size, default=~7 for default 1 angstrom voxel.)")
-parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (after map calculation, blur map by this width using gaussian kernel, similar to Chimera Volume Filter function).")
+parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (after scattering profile calculation, blur map by this width using gaussian kernel, similar to Chimera Volume Filter function).")
 parser.add_argument("-exH","--explicitH", dest="explicitH", action="store_true", help="Use hydrogens in pdb file (optional, default=True if H exists)")
 parser.add_argument("-imH","--implicitH", dest="explicitH", action="store_false", help=argparse.SUPPRESS) #help="Use implicit hydrogens approximation (optional, EXPERIMENTAL)")
 parser.add_argument("-recalc","--recalc","--recalculate_volumes", dest="recalculate_atomic_volumes", action="store_true", help="Calculate atomic volumes directly from coordinates rather than using lookup table (default=False)")
@@ -155,7 +155,7 @@ if __name__ == "__main__":
     logging.info('BEGIN')
     logging.info('Command: %s', ' '.join(sys.argv))
     logging.info('DENSS Version: %s', __version__)
-    logging.info('PDB filename: %s', args.file)
+    # logging.info('PDB filename: %s', args.file)
 
     t.append(time.time())
     fs.append("init log")
@@ -222,21 +222,6 @@ if __name__ == "__main__":
     t.append(time.time())
     fs.append("pdb2mrc init")
 
-    logging.info('Data filename: %s', pdb2mrc.data_filename)
-    logging.info('First data point: %s', pdb2mrc.n1)
-    logging.info('Last data point: %s', pdb2mrc.n2)
-    logging.info('Use atomic B-factors: %s', pdb2mrc.use_b)
-    logging.info('Use explicit Hydrogens: %s', pdb2mrc.explicitH)
-    logging.info('Center PDB: %s', pdb2mrc.center_coords)
-    logging.info('Ignore waters: %s', pdb2mrc.ignore_waters)
-    logging.info('Excluded volume type: %s', pdb2mrc.exvol_type)
-    logging.info('Number of atoms: %s' % (pdb2mrc.pdb.natoms))
-    print('Number of atoms: %s' % (pdb2mrc.pdb.natoms))
-    types, n_per_type = np.unique(pdb2mrc.pdb.atomtype,return_counts=True)
-    for i in range(len(types)):
-        print('Number of %s atoms: %s' % (types[i], n_per_type[i]))
-        logging.info('Number of %s atoms: %s' % (types[i], n_per_type[i]))
-
     #write the modified pdb file, and store the 
     #new unique volume/radius value in the occupancy
     #column, to prevent needing to recalculate if wanting
@@ -276,35 +261,19 @@ if __name__ == "__main__":
     print("Actual  Voxel size   = %.4f" % pdb2mrc.dx)
     print("Global B-factor      = %.4f" % pdb2mrc.global_B)
 
-    logging.info('Optimal Side length: %.2f', pdb2mrc.optimal_side)
-    logging.info('Optimal N samples:   %d', pdb2mrc.optimal_nsamples)
-    logging.info('Optimal Voxel size:  %.4f', pdb2mrc.optimal_voxel)
-    logging.info('Actual  Side length: %.2f', pdb2mrc.side)
-    logging.info('Actual  N samples:   %d', pdb2mrc.n)
-    logging.info('Actual  Voxel size:  %.4f', pdb2mrc.dx)
-    logging.info('Global B-factor:  %.4f', pdb2mrc.global_B)
-
-    logging.info('Calculating in vacuo density...')
     pdb2mrc.calculate_invacuo_density()
-    logging.info('Finished in vacuo density.')
     t.append(time.time())
     fs.append("calculate_invacuo_density")
 
-    logging.info('Calculating excluded volume...')
     pdb2mrc.calculate_excluded_volume()
-    logging.info('Finished excluded volume.')
     t.append(time.time())
     fs.append("calculate_excluded_volume")
 
-    logging.info('Calculating hydration shell...')
     pdb2mrc.calculate_hydration_shell()
-    logging.info('Finished hydration shell.')
     t.append(time.time())
     fs.append("calculate_hydration_shell")
 
-    logging.info('Calculating structure factors...')
     pdb2mrc.calculate_structure_factors()
-    logging.info('Finished structure factors.')
     t.append(time.time())
     fs.append("calculate_structure_factors")
 
@@ -312,35 +281,15 @@ if __name__ == "__main__":
         pdb2mrc.load_data()
         t.append(time.time())
         fs.append("load_data")
-        #get initial chi2 without fitting
-        pdb2mrc.params_target = pdb2mrc.params
-        pdb2mrc.penalty_weight = 0.0
-        pdb2mrc.calc_I_with_modified_params(pdb2mrc.params)
-        t.append(time.time())
-        fs.append("calc_I_with_modified_params")
-
-        pdb2mrc.calc_score_with_modified_params(pdb2mrc.params)
-        t.append(time.time())
-        fs.append("calc_score_with_modified_params")
-
-        chi2_nofit = pdb2mrc.chi2
-        if args.penalty_weight is None:
-            # pdb2mrc.penalty_weight = 10.0
-            pdb2mrc.penalty_weight = chi2_nofit * 100.0
-        else:
-            pdb2mrc.penalty_weight = args.penalty_weight
-        if pdb2mrc.fit_params:
-            logging.info('Optimizing parameters...')
+        pdb2mrc.initialize_penalties(penalty_weight=args.penalty_weight)
         pdb2mrc.minimize_parameters(fit_radii=args.fit_radii)
     t.append(time.time())
     fs.append("minimize_parameters")
 
-    logging.info('Final Parameter Values:')
     print()
     print("Final parameter values:")
     for i in range(len(pdb2mrc.params)):
         print("%s : %.5e" % (pdb2mrc.param_names[i],pdb2mrc.params[i]))
-        logging.info("%s : %.5e" % (pdb2mrc.param_names[i],pdb2mrc.params[i]))
 
     pdb2mrc.calc_rho_with_modified_params(pdb2mrc.params)
     pdb2mrc.shell_mean_density = np.mean(pdb2mrc.rho_shell[pdb2mrc.water_shell_idx])
@@ -353,41 +302,32 @@ if __name__ == "__main__":
     t.append(time.time())
     fs.append("calc_I_with_modified_params")
     if args.data:
-        optimized_chi2, exp_scale_factor, offset, fit = saxs.calc_chi2(pdb2mrc.Iq_exp, pdb2mrc.Iq_calc,interpolation=pdb2mrc.Icalc_interpolation,scale=args.fit_scale,offset=args.fit_offset,return_sf=True,return_fit=True)
-        pdb2mrc.optimized_chi2 = optimized_chi2
-        print("Scale factor: %.5e " % exp_scale_factor)
-        print("Offset: %.5e " % offset)
-        print("chi2 of fit:  %.5e " % optimized_chi2)
-        logging.info("Scale factor: %.5e " % exp_scale_factor)
-        logging.info("Offset: %.5e " % offset)
-        logging.info("chi2 of fit:  %.5e " % optimized_chi2)
+        pdb2mrc.calc_chi2()
+        fit = pdb2mrc.fit
+        optimized_chi2 = pdb2mrc.optimized_chi2
+        exp_scale_factor = pdb2mrc.exp_scale_factor
+        offset = pdb2mrc.offset
+        print("Scale factor: %.5e " % pdb2mrc.exp_scale_factor)
+        print("Offset: %.5e " % pdb2mrc.offset)
+        print("chi2 of fit:  %.5e " % pdb2mrc.optimized_chi2)
 
     print("Calculated average radii:")
-    logging.info("Calculated average radii:")
     pdb2mrc.calculate_average_radii()
     t.append(time.time())
     fs.append("calculate_average_radii")
     for i in range(len(pdb2mrc.modifiable_atom_types)):
         print("%s: %.3f"%(pdb2mrc.modifiable_atom_types[i],pdb2mrc.mean_radius[i]))
-        logging.info("%s: %.3f"%(pdb2mrc.modifiable_atom_types[i],pdb2mrc.mean_radius[i]))
 
-    print("Calculated excluded volume: %.2f"%(np.sum(saxs.sphere_volume_from_radius(pdb2mrc.pdb.radius)) + np.sum(saxs.sphere_volume_from_radius(pdb2mrc.pdb.exvolHradius)*pdb2mrc.pdb.numH)))
-    logging.info("Calculated excluded volume: %.2f"%(np.sum(saxs.sphere_volume_from_radius(pdb2mrc.pdb.radius)) + np.sum(saxs.sphere_volume_from_radius(pdb2mrc.pdb.exvolHradius)*pdb2mrc.pdb.numH)))
+    pdb2mrc.calculate_excluded_volume_in_A3()
+    print("Calculated excluded volume: %.2f"%(pdb2mrc.exvol_in_A3))
 
     end = time.time()
     print("Total calculation time: %.3f seconds" % (end-start))
-    logging.info("Total calculation time: %.3f seconds" % (end-start))
 
-    header = ' '.join('%s: %.5e ; '%(pdb2mrc.param_names[i],pdb2mrc.params[i]) for i in range(len(pdb2mrc.params)))
-    header_dat = header + "\n q_calc I_calc err_calc"
-
-    np.savetxt(output+'.pdb2mrc2sas.dat',pdb2mrc.Iq_calc[pdb2mrc.q_calc<=qmax],delimiter=' ',fmt='%.8e',header=header_dat)
+    pdb2mrc.save_Iq_calc(prefix=output)
 
     if args.data is not None:
-        # fit = np.vstack((q_exp_to_q0, I_exp_to_q0, sigq_exp_to_q0, I_calc)).T
-        chi2 = pdb2mrc.optimized_chi2
-        header_fit = header + '\n q, I, error, fit ; chi2= %.3e'%(chi2 if chi2 is not None else 0)
-        np.savetxt(output+'.pdb2mrc2sas.fit', fit, delimiter=' ',fmt='%.5e',header=header_fit)
+        pdb2mrc.save_fit(prefix=output)
 
         if args.plot:
             fig = plt.figure(figsize=(8, 6))
@@ -401,7 +341,7 @@ if __name__ == "__main__":
             Ic = fit[:,3]
 
             ax0.plot(q, Ie,'.',c='gray',label=pdb2mrc.data_filename)
-            ax0.plot(q, Ic, '-',c='red',label=basename+'.pdb2mrc2sas.fit \n' + r'$\chi^2 = $ %.2f'%optimized_chi2)
+            ax0.plot(q, Ic, '-',c='red',label=basename+'.fit \n' + r'$\chi^2 = $ %.2f'%optimized_chi2)
             resid = (Ie - Ic)/err
             ax1.plot(q, resid*0, 'k--')
             ax1.plot(q, resid, '.',c='red')

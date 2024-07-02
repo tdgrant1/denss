@@ -2994,7 +2994,19 @@ class PDB(object):
             natoms = filename
             filename = None
         if filename is not None:
-            self.read_pdb(filename, ignore_waters=ignore_waters)
+            ext = os.path.splitext(filename)[1]
+            if ext == ".cif":
+                # self.read_cif(filename, ignore_waters=ignore_waters)
+                print("ERROR: Cannot parse .cif files (yet).")
+                exit()
+            else:
+                #if it's not a cif file, default to a pdb file. This allows
+                #for extensions that are not .pdb, such as .pdb1 which exists.
+                try:
+                    self.read_pdb(filename, ignore_waters=ignore_waters)
+                except:
+                    print("ERROR: Cannot parse file: %s"%filename)
+                    exit()
         elif natoms is not None:
             self.generate_pdb_from_defaults(natoms)
         self.rij = None
@@ -3003,6 +3015,7 @@ class PDB(object):
         self.unique_volume = None
 
     def read_pdb(self, filename, ignore_waters=True):
+        self.filename = filename
         self.natoms = 0
         with open(filename) as f:
             for line in f:
@@ -3097,6 +3110,68 @@ class PDB(object):
                         dr = vdW['C']
                 self.vdW[atom] = dr
                 atom += 1
+
+    def read_cif(self, filename, ignore_waters=True):
+        self.filename = filename
+        self.natoms = 0
+        atom_data = []
+        with open(filename) as f:
+            lines = f.readlines()
+            in_atom_site = False
+            for line in lines:
+                if line.startswith("data_"):
+                    continue
+                if "_atom_site." in line:
+                    in_atom_site = True
+                elif in_atom_site and line.strip() == "":
+                    in_atom_site = False
+                if in_atom_site:
+                    atom_data.append(line.strip().split())
+        
+        atom_site_columns = [col for col in atom_data if col[0].startswith("_atom_site.")]
+        atom_site_indices = {col[0]: idx for idx, col in enumerate(atom_site_columns)}
+        atom_data = [data for data in atom_data if not data[0].startswith("_atom_site.")]
+
+        self.natoms = len(atom_data)
+        self.atomnum = np.zeros((self.natoms), dtype=int)
+        self.atomname = np.zeros((self.natoms), dtype=np.dtype((str, 3)))
+        self.atomalt = np.zeros((self.natoms), dtype=np.dtype((str, 1)))
+        self.resname = np.zeros((self.natoms), dtype=np.dtype((str, 3)))
+        self.resnum = np.zeros((self.natoms), dtype=int)
+        self.chain = np.zeros((self.natoms), dtype=np.dtype((str, 1)))
+        self.coords = np.zeros((self.natoms, 3))
+        self.occupancy = np.zeros((self.natoms))
+        self.b = np.zeros((self.natoms))
+        self.atomtype = np.zeros((self.natoms), dtype=np.dtype((str, 2)))
+        self.charge = np.zeros((self.natoms), dtype=np.dtype((str, 2)))
+        self.nelectrons = np.zeros((self.natoms), dtype=int)
+        self.vdW = np.zeros(self.natoms)
+        self.numH = np.zeros(self.natoms)
+        self.unique_exvolHradius = np.zeros(self.natoms)
+        self.exvolHradius = np.zeros(self.natoms)
+
+        for atom, data in enumerate(atom_data):
+            try:
+                self.atomnum[atom] = int(data[atom_site_indices["_atom_site.id"]])
+                self.atomname[atom] = data[atom_site_indices["_atom_site.label_atom_id"]]
+                self.resname[atom] = data[atom_site_indices["_atom_site.label_comp_id"]]
+                self.resnum[atom] = int(data[atom_site_indices["_atom_site.label_seq_id"]])
+                self.chain[atom] = data[atom_site_indices["_atom_site.label_asym_id"]]
+                self.coords[atom, 0] = float(data[atom_site_indices["_atom_site.Cartn_x"]])
+                self.coords[atom, 1] = float(data[atom_site_indices["_atom_site.Cartn_y"]])
+                self.coords[atom, 2] = float(data[atom_site_indices["_atom_site.Cartn_z"]])
+                self.occupancy[atom] = float(data[atom_site_indices["_atom_site.occupancy"]])
+                self.b[atom] = float(data[atom_site_indices["_atom_site.B_iso_or_equiv"]])
+                self.atomtype[atom] = data[atom_site_indices["_atom_site.type_symbol"]]
+                self.charge[atom] = data[atom_site_indices["_atom_site.pdbx_formal_charge"]]
+                self.nelectrons[atom] = electrons.get(self.atomtype[atom].upper(), 6)
+                try:
+                    dr = vdW[self.atomtype[atom]]
+                except KeyError:
+                    dr = vdW['C']
+                self.vdW[atom] = dr
+            except:
+                print("ERROR: Cannot parse atom %i. Atom skipped." % atom)
 
     def generate_pdb_from_defaults(self, natoms):
         self.natoms = natoms
@@ -3445,8 +3520,8 @@ class PDB2MRC(object):
         voxel=None,
         side=None,
         nsamples=None,
-        rho0=0.334,
-        shell_contrast=0.011,
+        rho0=None,
+        shell_contrast=None,
         shell_mrcfile=None,
         shell_type='water',
         Icalc_interpolation=True,
@@ -3466,8 +3541,11 @@ class PDB2MRC(object):
         min_method='Nelder-Mead',
         min_opts='{"adaptive": True}',
         ignore_warnings=False,
+        quiet=False,
         run_all_on_init=False,
+        logger=None,
         ):
+        self.quiet = quiet
         self.pdb = pdb
         self.ignore_waters = ignore_waters
         self.explicitH = explicitH
@@ -3480,7 +3558,7 @@ class PDB2MRC(object):
                 self.explicitH = True
         if not self.explicitH:
             self.pdb.add_ImplicitH()
-            print("Implicit hydrogens used")
+            if not self.quiet: print("Implicit hydrogens used")
         #add a line here that will delete alternate conformations if they exist
         if 'B' in self.pdb.atomalt:
             self.pdb.remove_atomalt()
@@ -3492,11 +3570,11 @@ class PDB2MRC(object):
         if self.center_coords:
             self.pdb.coords -= self.pdb.coords.mean(axis=0)
         if recalculate_atomic_volumes:
-            print("Calculating unique atomic volumes...")
+            if not self.quiet: print("Calculating unique atomic volumes...")
             self.pdb.unique_volume = np.zeros(self.pdb.natoms)
             self.pdb.calculate_unique_volume()
         elif self.pdb.unique_volume is None:
-            print("Looking up unique atomic volumes...")
+            if not self.quiet: print("Looking up unique atomic volumes...")
             self.pdb.lookup_unique_volume()
         self.pdb.unique_radius = sphere_radius_from_volume(self.pdb.unique_volume)
         if radii_sf is None:
@@ -3528,8 +3606,14 @@ class PDB2MRC(object):
         self.voxel=voxel
         self.side=side
         self.nsamples=nsamples
-        self.rho0 = rho0
-        self.shell_contrast = shell_contrast
+        if rho0 is None:
+            self.rho0 = 0.334
+        else:
+            self.rho0 = rho0
+        if shell_contrast is None:
+            self.shell_contrast = 0.011
+        else:
+            self.shell_contrast = shell_contrast
         self.shell_mrcfile = shell_mrcfile
         self.shell_type = shell_type
         self.Icalc_interpolation=Icalc_interpolation
@@ -3552,7 +3636,28 @@ class PDB2MRC(object):
         self.param_names = ['rho0', 'shell_contrast']
         self.params = np.array([self.rho0, self.shell_contrast])
         self.params_target = np.copy(self.params)
+        self.penalties_initialized = False
         self.ignore_warnings = ignore_warnings
+        fname_nopath = os.path.basename(self.pdb.filename)
+        self.pdb_basename, ext = os.path.splitext(fname_nopath)
+        if logger is not None:
+            self.logger = logger
+        else:
+            logging.basicConfig(filename=self.pdb_basename+'.log',level=logging.INFO,filemode='w',
+                        format='%(asctime)s %(message)s') #, datefmt='%Y-%m-%d %I:%M:%S %p')
+            self.logger = logging.getLogger()
+        self.logger.info('Current Directory: %s', os.getcwd())
+        self.logger.info('PDB Filename: %s', self.pdb.filename)
+        self.logger.info('Center PDB: %s', self.center_coords)
+        self.logger.info('Ignore waters: %s', self.ignore_waters)
+        self.logger.info('Excluded volume type: %s', self.exvol_type)
+        self.logger.info('Number of atoms: %s' % (self.pdb.natoms))
+        types, n_per_type = np.unique(self.pdb.atomtype,return_counts=True)
+        for i in range(len(types)):
+            self.logger.info('Number of %s atoms: %s' % (types[i], n_per_type[i]))
+        self.logger.info('Use atomic B-factors: %s', self.use_b)
+        self.logger.info('Use explicit Hydrogens: %s', self.explicitH)
+
         if run_all_on_init:
             self.run_all()
 
@@ -3601,6 +3706,9 @@ class PDB2MRC(object):
                 self.mean_radius[i] = self.pdb.exvolHradius[i]
             else:
                 self.mean_radius[i] = self.pdb.radius[self.pdb.atomtype==self.modifiable_atom_types[i]].mean()
+        self.logger.info("Calculated average radii:")
+        for i in range(len(self.modifiable_atom_types)):
+            self.logger.info("%s: %.3f"%(self.modifiable_atom_types[i],self.mean_radius[i]))
 
     def make_grids(self):
         optimal_side = self.optimal_side
@@ -3673,8 +3781,8 @@ class PDB2MRC(object):
                 Voxel size is greater than 1 A. This may lead to less accurate I(q) estimates at high q."""
             nsamples_warning = """
                 To avoid long computation times and excessive memory requirements, the number of voxels
-                has been limited to 256 and the voxel size has been set to {v:.2f},
-                which may be too large and lead to less accurate I(q) estimates at high q.""".format(v=voxel)
+                has been limited to {n:d} and the voxel size has been set to {v:.2f},
+                which may be too large and lead to less accurate I(q) estimates at high q.""".format(v=voxel,n=nsamples)
             optimal_values_warning = """
                 To ensure the highest accuracy, manually set the -s option to {os:.2f} and
                 the -v option to {ov:.2f}, which will set -n option to {on:d} and thus 
@@ -3756,6 +3864,13 @@ class PDB2MRC(object):
         qmax4calc = self.qx_.max()*1.1
         self.qidx = np.where((self.qr<=qmax4calc))
 
+        self.logger.info('Optimal Side length: %.2f', self.optimal_side)
+        self.logger.info('Optimal N samples:   %d', self.optimal_nsamples)
+        self.logger.info('Optimal Voxel size:  %.4f', self.optimal_voxel)
+        self.logger.info('Actual  Side length: %.2f', self.side)
+        self.logger.info('Actual  N samples:   %d', self.n)
+        self.logger.info('Actual  Voxel size:  %.4f', self.dx)
+
     def calculate_global_B(self):
         if self.dx is None:
             #if make_grids has not been run yet, run it
@@ -3768,17 +3883,19 @@ class PDB2MRC(object):
         if self.limit_global_B and (B2u(self.global_B) > 1.5):
             self.global_B = u2B(1.5)
 
+        self.logger.info('Global B-factor:  %.4f', self.global_B)
+
     def calculate_invacuo_density(self):
-        print('Calculating in vacuo density...')
+        if not self.quiet: print('Calculating in vacuo density...')
         self.rho_invacuo, self.support = pdb2map_multigauss(self.pdb,
             x=self.x,y=self.y,z=self.z,
             global_B=self.global_B,
             use_b=self.use_b,
             ignore_waters=self.ignore_waters)
-        print('Finished in vacuo density.')
+        if not self.quiet: print('Finished in vacuo density.')
 
     def calculate_excluded_volume(self, quiet=False):
-        if not quiet: print('Calculating excluded volume...')
+        if not self.quiet: print('Calculating excluded volume...')
         if self.exvol_type == "gaussian":
             #generate excluded volume assuming gaussian dummy atoms
             #this function outputs in electron count units
@@ -3803,10 +3920,10 @@ class PDB2MRC(object):
             # self.rho_exvol = ndimage.gaussian_filter(self.supportexvol*1.0,sigma=sigma,mode='wrap')
             self.rho_exvol = 1.0 * self.supportexvol
             self.rho_exvol *= ne/self.rho_exvol.sum() #put in electron count units
-        if not quiet: print('Finished excluded volume.')
+        if not self.quiet: print('Finished excluded volume.')
 
     def calculate_hydration_shell(self):
-        print('Calculating hydration shell...')
+        if not self.quiet: print('Calculating hydration shell...')
         self.r_water = r_water = 1.4 
         uniform_shell = calc_uniform_shell(self.pdb,self.x,self.y,self.z,thickness=self.r_water*2, distance=self.r_water)
         self.water_shell_idx = water_shell_idx = uniform_shell.astype(bool)
@@ -3832,7 +3949,7 @@ class PDB2MRC(object):
             #the center of the water shell halfway between the inner and outer halves of the shell
             protein_idx = pdb2support_fast(self.pdb,self.x,self.y,self.z,radius=self.pdb.vdW,probe=0)
             protein_rw_idx = pdb2support_fast(self.pdb,self.x,self.y,self.z,radius=self.pdb.vdW,probe=self.r_water-self.dx/2)
-            print('Calculating dist transform...')
+            if not self.quiet: print('Calculating dist transform...')
             #calculate the distance of each voxel outside the particle to the surface of the protein+water support
             dist1 = np.zeros(self.x.shape)
             dist1 = ndimage.distance_transform_edt(protein_rw_idx)
@@ -3846,7 +3963,7 @@ class PDB2MRC(object):
             dist *= self.dx
             #for form factor calculation, look at only the voxels near the shell for efficiency
             rho_shell = np.zeros(self.x.shape)
-            print('Calculating shell values...')
+            if not self.quiet: print('Calculating shell values...')
             shell_idx = np.where(dist<2*r_water)
             shell_idx_bool = np.zeros(self.x.shape, dtype=bool)
             shell_idx_bool[shell_idx] = True
@@ -3865,10 +3982,10 @@ class PDB2MRC(object):
             print("Error: no valid shell_type given (water or uniform). Disabling hydration shell.")
             rho_shell = self.x*0.0
         self.rho_shell = rho_shell
-        print('Finished hydration shell.')
+        if not self.quiet: print('Finished hydration shell.')
 
     def calculate_structure_factors(self):
-        print('Calculating structure factors...')
+        if not self.quiet: print('Calculating structure factors...')
         #F_invacuo
         self.F_invacuo = myfftn(self.rho_invacuo)
         
@@ -3883,10 +4000,10 @@ class PDB2MRC(object):
 
         #shell invacuo F_shell
         self.F_shell = myfftn(self.rho_shell)
-        print('Finished structure factors.')
+        if not self.quiet: print('Finished structure factors.')
 
     def load_data(self, filename=None, units=None):
-        print('Loading data...')
+        if not self.quiet: print('Loading data...')
         if filename is None and self.data_filename is None:
             print("ERROR: No data filename given.")
         elif filename is None:
@@ -3945,9 +4062,29 @@ class PDB2MRC(object):
             self.I_exp = self.I_exp[idx]
             self.sigq_exp = self.sigq_exp[idx]
             self.Iq_exp = self.Iq_exp[idx]
-        print('Data loaded.')
+        if not self.quiet: print('Data loaded.')
+
+        self.logger.info('Data filename: %s', self.data_filename)
+        self.logger.info('First data point: %s', self.n1)
+        self.logger.info('Last data point: %s', self.n2)
+
+    def initialize_penalties(self, penalty_weight=None):
+        #get initial chi2 without fitting
+        self.params_target = self.params
+        self.penalty_weight = 0.0
+        self.calc_I_with_modified_params(self.params)
+        self.calc_score_with_modified_params(self.params)
+        chi2_nofit = self.chi2
+        if penalty_weight is None:
+            self.penalty_weight = chi2_nofit * 100.0
+        else:
+            self.penalty_weight = penalty_weight
+        self.penalties_initialized = True
 
     def minimize_parameters(self, fit_radii=False):
+
+        if not self.penalties_initialized:
+            self.initialize_penalties()
 
         if fit_radii:
             self.param_names += self.modifiable_atom_types
@@ -3986,12 +4123,16 @@ class PDB2MRC(object):
         self.params_target = self.params_guess
 
         if self.fit_params:
-            print('Optimizing parameters...')
+            if not self.quiet: print('Optimizing parameters...')
+            # self.logger.info('Optimizing parameters...')
             if self.penalty_weight != 0:
-                print(["scale_factor"], self.param_names, ["penalty"], ["chi2"])
+                if not self.quiet:
+                    print(["scale_factor"], self.param_names, ["penalty"], ["chi2"])
+                    print("-"*100)
             else:
-                print(["scale_factor"], self.param_names, ["chi2"])
-            print("-"*100)
+                if not self.quiet:
+                    print(["scale_factor"], self.param_names, ["chi2"])
+                    print("-"*100)
             results = optimize.minimize(self.calc_score_with_modified_params, self.params_guess,
                 bounds = self.bounds,
                 method=self.min_method,
@@ -4000,12 +4141,22 @@ class PDB2MRC(object):
                 )
             self.optimized_params = results.x
             self.optimized_chi2 = results.fun
-            print('Finished minimizing parameters.')
+            if not self.quiet: print('Finished minimizing parameters.')
         else:
             self.calc_score_with_modified_params(self.params)
             self.optimized_params = self.params_guess
             self.optimized_chi2 = self.chi2
         self.params = np.copy(self.optimized_params)
+
+        self.logger.info('Final Parameter Values:')
+        for i in range(len(self.params)):
+            self.logger.info("%s : %.5e" % (self.param_names[i],self.params[i]))
+
+    def calc_chi2(self):
+        self.optimized_chi2, self.exp_scale_factor, self.offset, self.fit = calc_chi2(self.Iq_exp, self.Iq_calc,interpolation=self.Icalc_interpolation,scale=self.fit_scale,offset=self.fit_offset,return_sf=True,return_fit=True)
+        self.logger.info("Scale factor: %.5e " % self.exp_scale_factor)
+        self.logger.info("Offset: %.5e " % self.offset)
+        self.logger.info("chi2 of fit:  %.5e " % self.optimized_chi2)
 
     def calc_score_with_modified_params(self, params):
         self.calc_I_with_modified_params(params)
@@ -4015,9 +4166,11 @@ class PDB2MRC(object):
         if self.fit_params:
             if self.penalty_weight != 0:
                 #include printing of penalties if that option is give
-                print("%.5e"%self.exp_scale_factor, ' '.join("%.5e"%param for param in params), "%.3f"%self.penalty, "%.3f"%self.chi2)
+                if not self.quiet:
+                    print("%.5e"%self.exp_scale_factor, ' '.join("%.5e"%param for param in params), "%.3f"%self.penalty, "%.3f"%self.chi2)
             else:
-                print("%.5e"%self.exp_scale_factor, ' '.join("%.5e"%param for param in params), "%.3f"%self.chi2)
+                if not self.quiet:
+                    print("%.5e"%self.exp_scale_factor, ' '.join("%.5e"%param for param in params), "%.3f"%self.chi2)
         return self.score
 
     def calc_penalty(self, params):
@@ -4077,6 +4230,9 @@ class PDB2MRC(object):
         self.I3D = abs2(self.F)
         self.I_calc = mybinmean(self.I3D.ravel(), self.qblravel, xcount=self.xcount)
         self.Iq_calc = np.vstack((self.qbinsc, self.I_calc, self.I_calc*.01 + self.I_calc[0]*0.002)).T
+        #calculate Rg and I0 and store it:
+        self.Rg = calc_rg_by_guinier_first_2_points(self.q_calc, self.I_calc)
+        self.I0 = self.I_calc[0]
 
     def calc_rho_with_modified_params(self,params):
         """Calculates electron density map for protein in solution. Includes the excluded volume and
@@ -4090,6 +4246,47 @@ class PDB2MRC(object):
         self.rho_exvol *= sf_ex
         self.rho_shell *= sf_sh
         self.rho_insolvent = self.rho_invacuo - self.rho_exvol + self.rho_shell
+
+    def calculate_excluded_volume_in_A3(self):
+        """Calculate the excluded volume of the particle in angstroms cubed."""
+        self.exvol_in_A3 = np.sum(sphere_volume_from_radius(self.pdb.radius)) + np.sum(sphere_volume_from_radius(self.pdb.exvolHradius)*self.pdb.numH)
+        self.logger.info("Calculated excluded volume: %.2f"%(self.exvol_in_A3))
+
+    def regrid_Iq_calc(self, qmax=None, nq=501):
+        #interpolate Iq_calc to desired qgrid
+        if qmax is None:
+            if self.qmax is None:
+                qmax = 0.5
+            else:
+                qmax = self.qmax
+        qc = np.linspace(0,qmax,nq)
+        I_interpolator = interpolate.interp1d(self.Iq_calc[:,0],self.Iq_calc[:,1],kind='cubic',fill_value='extrapolate')
+        Ic = I_interpolator(qc)
+        err_interpolator = interpolate.interp1d(self.Iq_calc[:,0],self.Iq_calc[:,2],kind='cubic',fill_value='extrapolate')
+        errc = err_interpolator(qc)
+        Iq_calc_interp = np.vstack((qc,Ic,errc)).T
+        self.Iq_calc_interp = Iq_calc_interp
+        return Iq_calc_interp
+
+    def save_Iq_calc(self, prefix=None):
+        """Save the calculated Iq curve to a .dat file."""
+        header = ' '.join('%s: %.5e ; '%(self.param_names[i],self.params[i]) for i in range(len(self.params)))
+        header_dat = header + "\n q_calc I_calc err_calc"
+        qmax = self.qx_.max()-1e-8
+        if prefix is None:
+            prefix = self.pdb_basename
+        np.savetxt(prefix+'.dat',self.Iq_calc[self.q_calc<=qmax],delimiter=' ',fmt='%.8e',header=header_dat)
+
+    def save_fit(self, prefix=None):
+        """Save the combined experimental and calculted Iq curve to a .fit file."""
+        if self.fit is not None:
+            header = ' '.join('%s: %.5e ; '%(self.param_names[i],self.params[i]) for i in range(len(self.params)))
+            header_fit = header + '\n q, I, error, fit ; chi2= %.3e'%(self.chi2 if self.chi2 is not None else 0)
+            if prefix is None:
+                prefix = self.pdb_basename
+            np.savetxt(prefix+'.fit',self.fit,delimiter=' ',fmt='%.8e',header=header_fit)
+        else:
+            print("No fit exists. First calculate a fit with pdb2mrc.calc_chi2()")
 
 class PDB2SAS(object):
     """Calculate the scattering of an object from a set of 3D coordinates using the Debye formula.
