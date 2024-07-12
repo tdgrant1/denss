@@ -186,9 +186,13 @@ def abs2(x):
 
 def mybinmean(xravel,binsravel,xcount=None,DENSS_GPU=False):
     if DENSS_GPU:
+        if isinstance(binsravel, np.ndarray):
+            binsravel = cp.asarray(binsravel)
         xsum = cp.bincount(binsravel, xravel)
         if xcount is None:
             xcount = cp.bincount(binsravel)
+        elif isinstance(xcount, np.ndarray):
+            xcount = cp.asarray(xcount)
         return xsum/xcount
     else:
         xsum = np.bincount(binsravel, xravel)
@@ -1386,6 +1390,8 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
 
         #Error Reduction
         newrho *= 0
+        if DENSS_GPU:
+            newrho = cp.asarray(newrho)
         newrho[support] = rhoprime[support]
 
         if not DENSS_GPU and j%write_freq == 0:
