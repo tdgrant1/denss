@@ -73,6 +73,8 @@ if __name__ == "__main__":
         sys.exit()
 
     fsc = saxs.calc_fsc(rho,refrho,side)
+    rscc = saxs.real_space_correlation_coefficient(rho,refrho)
+    print("RSCC: %.3e"%rscc)
     resn, x, y, resx = saxs.fsc2res(fsc, return_plot=True)
     if np.min(fsc[:,1]) > 0.5:
         print("Resolution: < %.1f A (maximum possible)" % resn)

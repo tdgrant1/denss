@@ -365,9 +365,9 @@ if __name__ == "__main__":
             plt.plot(fscs[i,:,0],fscs[i,:,1],'k--',alpha=0.1)
         plt.plot(fsc[:,0],fsc[:,1],'bo-')
         #plt.plot(x,y,'k-')
-        plt.plot([resx],[0.5],'ro',label='Resolution = %.2f $\mathrm{\AA}$'%resn)
+        plt.plot([resx],[0.5],'ro',label=r'Resolution = %.2f $\mathrm{\AA}$'%resn)
         plt.legend()
-        plt.xlabel('Resolution (1/$\mathrm{\AA}$)')
+        plt.xlabel(r'Resolution (1/$\mathrm{\AA}$)')
         plt.ylabel('Fourier Shell Correlation')
         pltoutput = os.path.splitext(output)[0]
         print(pltoutput)

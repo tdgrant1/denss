@@ -183,7 +183,8 @@ if __name__ == "__main__":
     if n%2==1: n += 1
     dx = side/n
     dV = dx**3
-    x_ = np.linspace(-halfside,halfside,n)
+    # x_ = np.linspace(-halfside,halfside,n)
+    x_ = np.linspace(-(n//2)*dx,(n//2-1)*dx,n)
     x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
 
     xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))

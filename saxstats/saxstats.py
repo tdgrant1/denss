@@ -263,7 +263,7 @@ def rho2rg(rho,side=None,r=None,support=None,dx=None):
     if dx is None:
         print("Error: To calculate Rg, must provide dx")
         sys.exit()
-    gridcenter = (np.array(rho.shape)-1.)/2.
+    gridcenter = grid_center(rho) #(np.array(rho.shape)-1.)/2.
     com = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
     rhocom = (gridcenter-com)*dx
     rg2 = np.sum(r[support]**2*rho[support])/np.sum(rho[support])
@@ -276,9 +276,9 @@ def write_mrc(rho,side,filename="map.mrc"):
        See here: http://www2.mrc-lmb.cam.ac.uk/research/locally-developed-software/image-processing-software/#image
     """
     xs, ys, zs = rho.shape
-    nxstart = -xs//2+1
-    nystart = -ys//2+1
-    nzstart = -zs//2+1
+    nxstart = -xs//2
+    nystart = -ys//2
+    nzstart = -zs//2
     side = np.atleast_1d(side)
     if len(side) == 1:
         a,b,c = side, side, side
@@ -286,6 +286,7 @@ def write_mrc(rho,side,filename="map.mrc"):
         a,b,c = side
     else:
         print("Error. Argument 'side' must be float or 3-tuple")
+        return None
     with open(filename, "wb") as fout:
         # NC, NR, NS, MODE = 2 (image : 32-bit reals)
         fout.write(struct.pack('<iiii', xs, ys, zs, 2))
@@ -308,6 +309,8 @@ def write_mrc(rho,side,filename="map.mrc"):
         for i in range(0, 12):
             fout.write(struct.pack('<f', 0.0))
 
+        #CCP4 format does not use the ORIGIN header records.
+        #To keep map on correct origin in programs such as COOT, use NCSTART, etc header fields
         # XORIGIN, YORIGIN, ZORIGIN
         fout.write(struct.pack('<fff', 0.,0.,0. )) #nxstart*(a/xs), nystart*(b/ys), nzstart*(c/zs) ))
         # MAP
@@ -465,21 +468,21 @@ def loadOutFile(filename):
     dictionary of miscellaneous results from GNOM. Taken from the BioXTAS
     RAW software package, used with permission under the GPL license."""
 
-    five_col_fit = re.compile('\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s*$')
-    three_col_fit = re.compile('\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s*$')
-    two_col_fit = re.compile('\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s*$')
+    five_col_fit = re.compile(r'\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s*$')
+    three_col_fit = re.compile(r'\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s*$')
+    two_col_fit = re.compile(r'\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s*$')
 
-    results_fit = re.compile('\s*Current\s+\d*[.]\d*[+eE-]*\d*\s+\d*[.]\d*[+eE-]*\d*\s+\d*[.]\d*[+eE-]*\d*\s+\d*[.]\d*[+eE-]*\d*\s+\d*[.]\d*[+eE-]*\d*\s+\d*[.]\d*[+eE-]*\d*\s*\d*[.]?\d*[+eE-]*\d*\s*$')
+    results_fit = re.compile(r'\s*Current\s+\d*[.]\d*[+eE-]*\d*\s+\d*[.]\d*[+eE-]*\d*\s+\d*[.]\d*[+eE-]*\d*\s+\d*[.]\d*[+eE-]*\d*\s+\d*[.]\d*[+eE-]*\d*\s+\d*[.]\d*[+eE-]*\d*\s*\d*[.]?\d*[+eE-]*\d*\s*$')
 
-    te_fit = re.compile('\s*Total\s+[Ee]stimate\s*:\s+\d*[.]\d+\s*\(?[A-Za-z\s]+\)?\s*$')
-    te_num_fit = re.compile('\d*[.]\d+')
-    te_quality_fit = re.compile('[Aa][A-Za-z\s]+\)?\s*$')
+    te_fit = re.compile(r'\s*Total\s+[Ee]stimate\s*:\s+\d*[.]\d+\s*\(?[A-Za-z\s]+\)?\s*$')
+    te_num_fit = re.compile(r'\d*[.]\d+')
+    te_quality_fit = re.compile(r'[Aa][A-Za-z\s]+\)?\s*$')
 
-    p_rg_fit = re.compile('\s*Real\s+space\s*\:?\s*Rg\:?\s*\=?\s*\d*[.]\d+[+eE-]*\d*\s*\+-\s*\d*[.]\d+[+eE-]*\d*')
-    q_rg_fit = re.compile('\s*Reciprocal\s+space\s*\:?\s*Rg\:?\s*\=?\s*\d*[.]\d+[+eE-]*\d*\s*')
+    p_rg_fit = re.compile(r'\s*Real\s+space\s*\:?\s*Rg\:?\s*\=?\s*\d*[.]\d+[+eE-]*\d*\s*\+-\s*\d*[.]\d+[+eE-]*\d*')
+    q_rg_fit = re.compile(r'\s*Reciprocal\s+space\s*\:?\s*Rg\:?\s*\=?\s*\d*[.]\d+[+eE-]*\d*\s*')
 
-    p_i0_fit = re.compile('\s*Real\s+space\s*\:?[A-Za-z0-9\s\.,+-=]*\(0\)\:?\s*\=?\s*\d*[.]\d+[+eE-]*\d*\s*\+-\s*\d*[.]\d+[+eE-]*\d*')
-    q_i0_fit = re.compile('\s*Reciprocal\s+space\s*\:?[A-Za-z0-9\s\.,+-=]*\(0\)\:?\s*\=?\s*\d*[.]\d+[+eE-]*\d*\s*')
+    p_i0_fit = re.compile(r'\s*Real\s+space\s*\:?[A-Za-z0-9\s\.,+-=]*\(0\)\:?\s*\=?\s*\d*[.]\d+[+eE-]*\d*\s*\+-\s*\d*[.]\d+[+eE-]*\d*')
+    q_i0_fit = re.compile(r'\s*Reciprocal\s+space\s*\:?[A-Za-z0-9\s\.,+-=]*\(0\)\:?\s*\=?\s*\d*[.]\d+[+eE-]*\d*\s*')
 
     qfull = []
     qshort = []
@@ -627,7 +630,7 @@ def loadDatFile(filename):
     ''' Loads a Primus .dat format file. Taken from the BioXTAS RAW software package,
     used with permission under the GPL license.'''
 
-    iq_pattern = re.compile('\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s*')
+    iq_pattern = re.compile(r'\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s*')
 
     i = []
     q = []
@@ -711,7 +714,7 @@ def loadFitFile(filename):
     ''' Loads a four column .fit format file (q, I, err, fit). Taken from the BioXTAS RAW software package,
     used with permission under the GPL license.'''
 
-    iq_pattern = re.compile('\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s*')
+    iq_pattern = re.compile(r'\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s*')
 
     i = []
     q = []
@@ -786,7 +789,7 @@ def loadOldFitFile(filename):
     ''' Loads a old denss _fit.dat format file. Taken from the BioXTAS RAW software package,
     used with permission under the GPL license.'''
 
-    iq_pattern = re.compile('\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s*')
+    iq_pattern = re.compile(r'\s*\d*[.]\d*[+eE-]*\d+\s+-?\d*[.]\d*[+eE-]*\d+\s+\d*[.]\d*[+eE-]*\d+\s*')
 
     i = []
     q = []
@@ -1096,6 +1099,9 @@ def filter_P(r,P,sigr=None,qmax=0.5,cutoff=0.75,qmin=0.0,cutoffmin=1.25):
         else:
             return r, Pfilt
 
+def grid_center(rho):
+    return np.array(rho.shape)//2
+
 def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
     ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
     recenter_mode="com", positivity=True, positivity_steps=None, extrapolate=True, output="map",
@@ -1141,7 +1147,7 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
     dx = side/n
     dV = dx**3
     V = side**3
-    x_ = np.linspace(-halfside,halfside,n)
+    x_ = np.linspace(-(n//2)*dx,(n//2-1)*dx,n)
     x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
     r = np.sqrt(x**2 + y**2 + z**2)
 
@@ -1470,7 +1476,7 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
                 rhocom = np.unravel_index(newrho.argmax(), newrho.shape)
             else:
                 rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(newrho)))
-            gridcenter = (np.array(newrho.shape)-1.)/2.
+            gridcenter = grid_center(newrho) #(np.array(newrho.shape)-1.)/2.
             shift = gridcenter-rhocom
             shift = np.rint(shift).astype(int)
             newrho = np.roll(np.roll(np.roll(newrho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
@@ -1715,10 +1721,10 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
     Iq_calc = Iq_calc[Iq_calc[:,0]<=qmax]
     final_chi2, exp_scale_factor, offset, fit = calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True,return_sf=True,return_fit=True)
 
-    np.savetxt(fprefix+'_map.fit', fit, delimiter=' ', fmt='%.5e'.encode('ascii'),
+    np.savetxt(fprefix+'_map.fit', fit, delimiter=' ', fmt='%.5e',
         header='q(data),I(data),error(data),I(density); chi2=%.3f'%final_chi2)
     np.savetxt(fprefix+'_stats_by_step.dat',np.vstack((chi, rg, supportV)).T,
-        delimiter=" ", fmt="%.5e".encode('ascii'), header='Chi2 Rg SupportVolume')
+        delimiter=" ", fmt="%.5e", header='Chi2 Rg SupportVolume')
 
     chi[j+1] = final_chi2
 
@@ -1803,7 +1809,7 @@ def center_rho(rho, centering="com", return_shift=False, maxfirst=True, iteratio
                 center of mass ("com"). Can also center on maximum density value ("max").
     """
     ne_rho= np.sum((rho))
-    gridcenter = (np.array(rho.shape)-1.)/2.
+    gridcenter = grid_center(rho) #(np.array(rho.shape)-1.)/2.
     total_shift = np.zeros(3)
     if maxfirst:
         #sometimes the density crosses the box boundary, meaning
@@ -1834,7 +1840,7 @@ def center_rho_roll(rho, recenter_mode="com", maxfirst=True, return_shift=False)
     recenter_mode - a string either com (center of mass) or max (maximum density)
     """
     total_shift = np.zeros(3,dtype=int)
-    gridcenter = (np.array(rho.shape)-1.)/2.
+    gridcenter = grid_center(rho) #(np.array(rho.shape)-1.)/2.
     if maxfirst:
         #sometimes the density crosses the box boundary, meaning
         #the center of mass calculation becomes an issue
@@ -1859,6 +1865,15 @@ def center_rho_roll(rho, recenter_mode="com", maxfirst=True, return_shift=False)
     else:
         return rho
 
+def spherical_to_euler(phi, theta):
+    """
+    Convert spherical coordinates (phi, theta) to Euler angles (alpha, beta, gamma).
+    """
+    alpha = theta
+    beta = phi
+    gamma = 0  # We set gamma to 0, but it could be set to any value or made random
+    return alpha, beta, gamma
+
 def euler_grid_search(refrho, movrho, topn=1, abort_event=None):
     """Simple grid search on uniformly sampled sphere to optimize alignment.
         Return the topn candidate maps (default=1, i.e. the best candidate)."""
@@ -1868,19 +1883,9 @@ def euler_grid_search(refrho, movrho, topn=1, abort_event=None):
     #at the center of the grid, which may not be the case
     #first translate both refrho and movrho to center of grid, then
     #calculate optimal coarse rotations, the translate back
-    gridcenter = (np.array(refrho.shape)-1.)/2.
-    refrhocom = np.array(ndimage.measurements.center_of_mass(np.abs(refrho)))
-    movrhocom = np.array(ndimage.measurements.center_of_mass(np.abs(movrho)))
-    refshift = gridcenter-refrhocom
-    movshift = gridcenter-movrhocom
-    refrhocen = ndimage.interpolation.shift(refrho,refshift,order=3,mode='wrap')
-    movrhocen = ndimage.interpolation.shift(movrho,movshift,order=3,mode='wrap')
+    refrhocen, refshift = center_rho_roll(refrho, return_shift=True)
+    movrhocen, movshift = center_rho_roll(movrho, return_shift=True)
 
-    num_pts = 100 #~20 degrees between points
-    indices = np.arange(0, num_pts, dtype=float) + 0.5
-    phi = np.arccos(1 - 2*indices/num_pts)
-    theta = np.pi * (1 + 5**0.5) * indices
-    scores = np.zeros(num_pts)
     refrho2 = ndimage.gaussian_filter(refrhocen, sigma=1.0, mode='wrap')
     movrho2 = ndimage.gaussian_filter(movrhocen, sigma=1.0, mode='wrap')
     n = refrho2.shape[0]
@@ -1888,11 +1893,35 @@ def euler_grid_search(refrho, movrho, topn=1, abort_event=None):
     refrho3 = refrho2[b:e,b:e,b:e]
     movrho3 = movrho2[b:e,b:e,b:e]
 
-    for i in range(num_pts):
-        scores[i] = -minimize_rho_score(T=[phi[i],theta[i],0,0,0,0],
-                                        refrho=refrho3,movrho=movrho3
-                                        )
+    # Sample about 100 rotations total
+    n_samples = 99  # 33 * 3
+    n_gamma = 3  # 3 roll samples
+    num_sphere = n_samples // n_gamma  # number of points on the unit sphere
 
+    # Fibonacci sphere sampling
+    indices = np.arange(num_sphere, dtype=float)
+    phi = np.arccos(1 - 2 * indices / (num_sphere - 1))
+    theta = (np.pi * (1 + 5 ** 0.5) * indices) % (2 * np.pi)  # Normalize theta to [0, 2π)
+
+    # Ensure the last phi is pi (or very close to it)
+    phi[-1] = np.pi
+
+    # Convert to Euler angles
+    alpha, beta, gamma = spherical_to_euler(phi, theta)
+    # Generate gamma values
+    gamma = np.linspace(0, 2 * np.pi, n_gamma, endpoint=False)
+    # Create all combinations
+    euler_angles = np.array([(a % (2 * np.pi), b, g) for a, b in zip(alpha, beta) for g in gamma])
+    alpha = euler_angles[:, 0]
+    beta = euler_angles[:, 1]
+    gamma = euler_angles[:, 2]
+
+    scores = np.zeros(n_samples)
+
+    for i in range(n_samples):
+        T = np.array([alpha[i], beta[i], gamma[i],0, 0, 0])
+        tmp = transform_rho(T=T,rho=movrho3)
+        scores[i] = real_space_correlation_coefficient(refrho3,tmp)
         if abort_event is not None:
             if abort_event.is_set():
                 return None, None
@@ -1902,10 +1931,12 @@ def euler_grid_search(refrho, movrho, topn=1, abort_event=None):
     movrhos = np.zeros((topn,movrho.shape[0],movrho.shape[1],movrho.shape[2]))
 
     for i in range(topn):
-        movrhos[i] = transform_rho(movrho, T=[phi[best_pt[0][i]],theta[best_pt[0][i]],0,0,0,0])
+        T = [alpha[best_pt[0][i]],beta[best_pt[0][i]],gamma[best_pt[0][i]],0,0,0]
+        movrhos[i] = transform_rho(movrho, T=T)
         #now that the top five rotations are calculated, move each one back
         #to the same center of mass as the original refrho, i.e. by -refrhoshift
-        movrhos[i] = ndimage.interpolation.shift(movrhos[i],-refshift,order=3,mode='wrap')
+        #movrhos[i] = ndimage.interpolation.shift(movrhos[i],-refshift,order=3,mode='wrap')
+        movrhos[i] = np.roll(np.roll(np.roll(movrho, -refshift[0], axis=0), -refshift[1], axis=1), -refshift[2], axis=2)
 
         if abort_event is not None:
             if abort_event.is_set():
@@ -1931,6 +1962,7 @@ def coarse_then_fine_alignment(refrho, movrho, coarse=True, topn=1,
             abort_event=abort_event)
     else:
         movrhos = movrho[np.newaxis,...]
+        scores = np.zeros(topn)
 
     if abort_event is not None:
         if abort_event.is_set():
@@ -1946,6 +1978,7 @@ def coarse_then_fine_alignment(refrho, movrho, coarse=True, topn=1,
     best_i = np.argmax(scores)
     movrho = movrhos[best_i]
     score = scores[best_i]
+
     return movrho, score
 
 def minimize_rho(refrho, movrho, T = np.zeros(6)):
@@ -1960,17 +1993,13 @@ def minimize_rho(refrho, movrho, T = np.zeros(6)):
 
     #first translate both to center
     #then afterwards translate back by -refshift
-    gridcenter = (np.array(refrho.shape)-1.)/2.
-    refrhocom = np.array(ndimage.measurements.center_of_mass(np.abs(refrho)))
-    movrhocom = np.array(ndimage.measurements.center_of_mass(np.abs(movrho)))
-    refshift = gridcenter-refrhocom
-    movshift = gridcenter-movrhocom
-    refrho = ndimage.interpolation.shift(refrho,refshift,order=3,mode='wrap')
-    movrho = ndimage.interpolation.shift(movrho,movshift,order=3,mode='wrap')
+    refrho, refshift = center_rho_roll(refrho, return_shift=True)
+    movrho, movshift = center_rho_roll(movrho, return_shift=True)
 
     #for alignment only, run a low-pass filter to remove noise
-    refrho2 = ndimage.gaussian_filter(refrho, sigma=1.0, mode='wrap')
-    movrho2 = ndimage.gaussian_filter(movrho, sigma=1.0, mode='wrap')
+    sigma = 1.0
+    refrho2 = ndimage.gaussian_filter(refrho, sigma=sigma, mode='wrap')
+    movrho2 = ndimage.gaussian_filter(movrho, sigma=sigma, mode='wrap')
     n = refrho2.shape[0]
     #to speed it up crop out the solvent
     b,e = (int(n/4),int(3*n/4))
@@ -1981,8 +2010,9 @@ def minimize_rho(refrho, movrho, T = np.zeros(6)):
         args=(refrho3,movrho3), approx_grad=True)
     Topt = result[0]
     newrho = transform_rho(movrho, Topt)
+    rscc = real_space_correlation_coefficient(newrho, refrho)
     #now move newrho back by -refshift
-    newrho = ndimage.interpolation.shift(newrho,-refshift,order=3,mode='wrap')
+    newrho = np.roll(np.roll(np.roll(newrho, -refshift[0], axis=0), -refshift[1], axis=1), -refshift[2], axis=2)
     finalscore = -1.*rho_overlap_score(save_refrho,newrho)
     return newrho, finalscore
 
@@ -1998,36 +2028,48 @@ def minimize_rho_score(T, refrho, movrho):
     score = rho_overlap_score(refrho,newrho)
     return score
 
-def rho_overlap_score(rho1,rho2, threshold=None):
-    """Scoring function for superposition of electron density maps."""
+def real_space_correlation_coefficient(rho1,rho2, threshold=None):
+    """Real space correlation coefficient between two density maps.
+
+    threshold - fraction of max(rho1)"""
     if threshold is None:
-        n=np.sum(rho1*rho2)
-        d=np.sum(rho1**2)**0.5*np.sum(rho2**2)**0.5
+        rho1_norm = rho1-rho1.mean()
+        rho2_norm = rho2-rho1.mean()
+        n=np.sum(rho1_norm*rho2_norm)
+        d=(np.sum(rho1_norm**2)*np.sum(rho2_norm**2))**0.5
     else:
         #if there's a threshold, base it on only one map, then use
         #those indices for both maps to ensure the same pixels are compared
         idx = np.where(np.abs(rho1)>threshold*np.abs(rho1).max())
-        n=np.sum(rho1[idx]*rho2[idx])
-        d=np.sum(rho1[idx]**2)**0.5*np.sum(rho2[idx]**2)**0.5
-    score = n/d
-    #-score for least squares minimization, i.e. want to minimize, not maximize score
-    return -score
+        rho1_norm = rho1-rho1.mean()
+        rho2_norm = rho2-rho1.mean()
+        n=np.sum(rho1_norm[idx]*rho2_norm[idx])
+        d=(np.sum(rho1_norm[idx]**2)*np.sum(rho2_norm[idx]**2))**0.5
+    rscc = n/d
+    return rscc
+
+def rho_overlap_score(rho1,rho2, threshold=None):
+    """Scoring function for superposition of electron density maps."""
+    rscc = real_space_correlation_coefficient(rho1,rho2, threshold=threshold)
+    #-score for optimization, i.e. want to minimize, not maximize score
+    return -rscc
 
 def transform_rho(rho, T, order=1):
     """ Rotate and translate electron density map by T vector.
-
         T = [alpha, beta, gamma, x, y, z], angles in radians
         order = interpolation order (0-5)
     """
-    ne_rho= np.sum((rho))
-    R = euler2matrix(T[0],T[1],T[2])
-    c_in = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
-    c_out = (np.array(rho.shape)-1.)/2.
-    offset = c_in-c_out.dot(R)
+    ne_rho = np.sum(rho)
+    R = euler2matrix(T[0], T[1], T[2])
+
+    # Use the geometric center instead of center of mass
+    c_out = np.array(rho.shape) / 2.0
+    offset = c_out - R.dot(c_out)
     offset += T[3:]
-    rho = ndimage.interpolation.affine_transform(rho,R.T, order=order,
-        offset=offset, output=np.float64, mode='wrap')
-    rho *= ne_rho/np.sum(rho)
+
+    rho = ndimage.interpolation.affine_transform(rho, R, order=order,
+            offset=offset, output=np.float64, mode='wrap')
+    rho *= ne_rho / np.sum(rho)
     return rho
 
 def euler2matrix(alpha=0.0,beta=0.0,gamma=0.0):
@@ -2088,7 +2130,7 @@ def principal_axis_alignment(refrho,movrho):
     ne_movrho = np.sum((movrho))
     #first center refrho and movrho, save refrho shift
     rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(refrho)))
-    gridcenter = (np.array(refrho.shape)-1.)/2.
+    gridcenter = grid_center(refrho) #(np.array(refrho.shape)-1.)/2.
     shift = gridcenter-rhocom
     refrho = ndimage.interpolation.shift(refrho,shift,order=3,mode='wrap')
     #calculate, save and perform rotation of refrho to xyz for later
@@ -2121,7 +2163,7 @@ def align2xyz(rho, return_transform=False):
     ne_rho = np.sum(rho)
     #shift refrho to the center
     rhocom = np.array(ndimage.measurements.center_of_mass(np.abs(rho)))
-    gridcenter = (np.array(rho.shape)-1.)/2.
+    gridcenter = grid_center(rho) #(np.array(rho.shape)-1.)/2.
     shift = gridcenter-rhocom
     rho = ndimage.interpolation.shift(rho,shift,order=3,mode='wrap')
     #calculate, save and perform rotation of refrho to xyz for later
@@ -2580,31 +2622,13 @@ class Sasrec(object):
             b = min(chi2)
             x0_guess = al_mid
             k_guess = np.median(al)
-            p0 = [x0_guess, k_guess] #, b, L]
-            # bounds = (  ((1-1e-8)*L,-np.inf,-np.inf, b),
-            #             (L,np.inf,np.inf,(1+1e-8)*b)
-            #         )
-            # popt, pcov = optimize.curve_fit(sigmoid, al, chi2, p0, bounds=bounds,method='dogbox')
+            p0 = [x0_guess, k_guess]
             #constrain b and L, only fit x0 and k
             popt, pcov = optimize.curve_fit(lambda x, x0, k : sigmoid(x, x0, k, b, L), al, chi2, p0, method='dogbox')
             fit = sigmoid(x, popt[0], popt[1], b, L)
             #find the value of the sigmoid closest to 1.1*ideal_chi2
             #minimum of the sigmoid is b parameter, which can be taken from popt
-            # b = popt[-1]
-            # L = popt[0]
-            # print((L-b)*(chif-1)+b)
-            # print(chif*b)
             opt_alpha_exponent = sigmoid_find_x_value_given_y(chif*b, popt[0], popt[1], b, L)
-            # print(opt_alpha_exponent)
-            # import matplotlib.pyplot as plt
-            # plt.plot(al,chi2,'k.')
-            # plt.plot(x,fit,'r-')
-            # plt.axvline(opt_alpha_exponent)
-            # plt.plot(x,x*0+sigmoid(opt_alpha_exponent, popt[0], popt[1], b, L),'k--')
-            # plt.xlabel("log(alpha)")
-            # plt.ylabel("chi2")
-            # plt.show()
-            # exit()
         else:
             chif = 1.1
             #take the maximum alpha value (x) where the chi2 just starts to rise above ideal
@@ -2996,9 +3020,9 @@ class PDB(object):
         if filename is not None:
             ext = os.path.splitext(filename)[1]
             if ext == ".cif":
-                # self.read_cif(filename, ignore_waters=ignore_waters)
-                print("ERROR: Cannot parse .cif files (yet).")
-                exit()
+                self.read_cif(filename, ignore_waters=ignore_waters)
+                # print("ERROR: Cannot parse .cif files (yet).")
+                # exit()
             else:
                 #if it's not a cif file, default to a pdb file. This allows
                 #for extensions that are not .pdb, such as .pdb1 which exists.
@@ -3112,66 +3136,102 @@ class PDB(object):
                 atom += 1
 
     def read_cif(self, filename, ignore_waters=True):
+        """
+        Read a CIF file and load atom information.
+
+        :param filename: Path to the CIF file
+        :param chain_id: Optional chain ID to filter atoms (default: None, read all chains)
+        :param ignore_waters: Whether to ignore water molecules (default: True)
+        """
         self.filename = filename
         self.natoms = 0
-        atom_data = []
-        with open(filename) as f:
-            lines = f.readlines()
-            in_atom_site = False
-            for line in lines:
-                if line.startswith("data_"):
-                    continue
-                if "_atom_site." in line:
-                    in_atom_site = True
-                elif in_atom_site and line.strip() == "":
-                    in_atom_site = False
-                if in_atom_site:
-                    atom_data.append(line.strip().split())
-        
-        atom_site_columns = [col for col in atom_data if col[0].startswith("_atom_site.")]
-        atom_site_indices = {col[0]: idx for idx, col in enumerate(atom_site_columns)}
-        atom_data = [data for data in atom_data if not data[0].startswith("_atom_site.")]
+        atoms = []
 
-        self.natoms = len(atom_data)
-        self.atomnum = np.zeros((self.natoms), dtype=int)
-        self.atomname = np.zeros((self.natoms), dtype=np.dtype((str, 3)))
-        self.atomalt = np.zeros((self.natoms), dtype=np.dtype((str, 1)))
-        self.resname = np.zeros((self.natoms), dtype=np.dtype((str, 3)))
-        self.resnum = np.zeros((self.natoms), dtype=int)
-        self.chain = np.zeros((self.natoms), dtype=np.dtype((str, 1)))
+        with open(filename, 'r') as f:
+            reading_atoms = False
+            for line in f:
+                if line.startswith('_atom_site.'):
+                    reading_atoms = True
+                    continue
+                if reading_atoms and line.startswith('#'):
+                    break
+                if reading_atoms and not line.strip():
+                    continue
+                if reading_atoms:
+                    fields = line.split()
+                    if len(fields) < 20:  # Ensure we have enough fields
+                        continue
+
+                    atom_chain = fields[16]
+
+                    resname = fields[5]
+                    if ignore_waters and resname in ['HOH', 'WAT']:
+                        continue
+
+                    atoms.append({
+                        'atomnum': int(fields[1]),
+                        'atomname': fields[3],
+                        'atomalt': fields[4],
+                        'resname': resname,
+                        'chain': atom_chain,
+                        'resnum': int(fields[8]),
+                        'x': float(fields[10]),
+                        'y': float(fields[11]),
+                        'z': float(fields[12]),
+                        'occupancy': float(fields[13]),
+                        'b': float(fields[14]),
+                        'atomtype': fields[2],
+                        'charge': fields[17] if len(fields) > 17 else ''
+                    })
+
+        self.natoms = len(atoms)
+
+        # Initialize numpy arrays
+        self.atomnum = np.zeros(self.natoms, dtype=int)
+        self.atomname = np.zeros(self.natoms, dtype='U4')
+        self.atomalt = np.zeros(self.natoms, dtype='U1')
+        self.resname = np.zeros(self.natoms, dtype='U3')
+        self.resnum = np.zeros(self.natoms, dtype=int)
+        self.chain = np.zeros(self.natoms, dtype='U1')
         self.coords = np.zeros((self.natoms, 3))
-        self.occupancy = np.zeros((self.natoms))
-        self.b = np.zeros((self.natoms))
-        self.atomtype = np.zeros((self.natoms), dtype=np.dtype((str, 2)))
-        self.charge = np.zeros((self.natoms), dtype=np.dtype((str, 2)))
-        self.nelectrons = np.zeros((self.natoms), dtype=int)
+        self.occupancy = np.zeros(self.natoms)
+        self.b = np.zeros(self.natoms)
+        self.atomtype = np.zeros(self.natoms, dtype='U2')
+        self.charge = np.zeros(self.natoms, dtype='U2')
+        self.nelectrons = np.zeros(self.natoms, dtype=int)
         self.vdW = np.zeros(self.natoms)
         self.numH = np.zeros(self.natoms)
         self.unique_exvolHradius = np.zeros(self.natoms)
         self.exvolHradius = np.zeros(self.natoms)
 
-        for atom, data in enumerate(atom_data):
+        # Fill numpy arrays with data
+        for i, atom in enumerate(atoms):
+            self.atomnum[i] = atom['atomnum']
+            self.atomname[i] = atom['atomname']
+            self.atomalt[i] = atom['atomalt']
+            self.resname[i] = atom['resname']
+            self.resnum[i] = atom['resnum']
+            self.chain[i] = atom['chain']
+            self.coords[i] = [atom['x'], atom['y'], atom['z']]
+            self.occupancy[i] = atom['occupancy']
+            self.b[i] = atom['b']
+            self.atomtype[i] = atom['atomtype']
+            self.charge[i] = atom['charge']
+            self.nelectrons[i] = electrons.get(self.atomtype[i].upper(), 6)
+
+            if len(self.atomtype[i]) == 1:
+                atomtype = self.atomtype[i][0].upper()
+            else:
+                atomtype = self.atomtype[i][0].upper() + self.atomtype[i][1].lower()
             try:
-                self.atomnum[atom] = int(data[atom_site_indices["_atom_site.id"]])
-                self.atomname[atom] = data[atom_site_indices["_atom_site.label_atom_id"]]
-                self.resname[atom] = data[atom_site_indices["_atom_site.label_comp_id"]]
-                self.resnum[atom] = int(data[atom_site_indices["_atom_site.label_seq_id"]])
-                self.chain[atom] = data[atom_site_indices["_atom_site.label_asym_id"]]
-                self.coords[atom, 0] = float(data[atom_site_indices["_atom_site.Cartn_x"]])
-                self.coords[atom, 1] = float(data[atom_site_indices["_atom_site.Cartn_y"]])
-                self.coords[atom, 2] = float(data[atom_site_indices["_atom_site.Cartn_z"]])
-                self.occupancy[atom] = float(data[atom_site_indices["_atom_site.occupancy"]])
-                self.b[atom] = float(data[atom_site_indices["_atom_site.B_iso_or_equiv"]])
-                self.atomtype[atom] = data[atom_site_indices["_atom_site.type_symbol"]]
-                self.charge[atom] = data[atom_site_indices["_atom_site.pdbx_formal_charge"]]
-                self.nelectrons[atom] = electrons.get(self.atomtype[atom].upper(), 6)
-                try:
-                    dr = vdW[self.atomtype[atom]]
-                except KeyError:
-                    dr = vdW['C']
-                self.vdW[atom] = dr
+                dr = vdW[i]
             except:
-                print("ERROR: Cannot parse atom %i. Atom skipped." % atom)
+                try:
+                    dr = vdW[i[0]]
+                except:
+                    # default to carbon
+                    dr = vdW['C']
+            self.vdW[i] = dr
 
     def generate_pdb_from_defaults(self, natoms):
         self.natoms = natoms
@@ -3216,6 +3276,12 @@ class PDB(object):
         self.cellalpha = 90.0
         self.cellbeta = 90.0
         self.cellgamma = 90.0
+
+    def calculate_distance_matrix(self, return_squareform = False):
+        if return_squareform:
+            self.rij = spatial.distance.squareform(spatial.distance.pdist(self.coords))
+        else:
+            self.rij = spatial.distance.pdist(self.coords)
 
     def calculate_unique_volume(self,n=16,use_b=False,atomidx=None):
         """Generate volumes and radii for each atom of a pdb by accounting for overlapping sphere volumes,
@@ -3816,7 +3882,8 @@ class PDB2MRC(object):
         if n%2==1: n += 1
         dx = side/n
         dV = dx**3
-        x_ = np.linspace(-halfside,halfside,n)
+        # x_ = np.linspace(-halfside,halfside,n)
+        x_ = np.linspace(-(n//2)*dx,(n//2-1)*dx,n)
         x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
         xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
 
@@ -4333,7 +4400,7 @@ class PDB2SAS(object):
             #if natoms is too large, sinc lookup table has huge memory requirements
         else:
             if self.pdb.rij is None:
-                self.pdb.rij = spatial.distance.squareform(spatial.distance.pdist(self.pdb.coords[:,:3]))
+                self.pdb.rij = c
             s = np.sinc(self.q * self.pdb.rij[...,None]/np.pi)
             self.I = np.einsum('iq,jq,ijq->q',self.ff,self.ff,s)
 
@@ -4411,7 +4478,7 @@ def pdb2map_simple_gauss_by_radius(pdb,x,y,z,cutoff=3.0,global_B=None,rho0=0.334
     dV = dx**3
     V = side**3
     x_ = x[:,0,0]
-    shift = np.ones(3)*dx/2.
+    shift = 0 #np.ones(3)*dx/2.
     # print("\n Calculate density map from PDB... ")
     values = np.zeros(x.shape)
     support = np.zeros(x.shape,dtype=bool)
@@ -4506,7 +4573,7 @@ def pdb2map_multigauss(pdb,x,y,z,cutoff=3.0,global_B=None,use_b=False,ignore_wat
     dV = dx**3
     V = side**3
     x_ = x[:,0,0]
-    shift = np.ones(3)*dx/2.
+    shift = 0 #np.ones(3)*dx/2.
     # print("\n Calculate density map from PDB... ")
     values = np.zeros(x.shape)
     support = np.zeros(x.shape,dtype=bool)
@@ -4786,6 +4853,123 @@ def pdb2support_fast(pdb,x,y,z,radius=None,probe=0.0):
         support[slc] += tmpenv
     return support
 
+def pdb2support_vdW(pdb,x,y,z,radius=None,probe=0.0):
+    """Return a boolean 3D density map with support from PDB coordinates"""
+
+    support = np.zeros(x.shape,dtype=np.bool_)
+    n = x.shape[0]
+    side = x.max()-x.min()
+    dx = side/(n-1)
+
+    if radius is None:
+        radius = pdb.vdW
+
+    radius = np.atleast_1d(radius)
+    if len(radius) != pdb.natoms:
+        print("Error: radius argument does not have same length as pdb.")
+        exit()
+
+    dr = radius + probe
+
+    natoms = pdb.natoms
+    for i in range(natoms):
+        #sys.stdout.write("\r% 5i / % 5i atoms" % (i+1,pdb.coords.shape[0]))
+        #sys.stdout.flush()
+        #if a grid point of env is within the desired distance, dr, of
+        #the atom coordinate, add it to env
+        #to save memory, only run the distance matrix one atom at a time
+        #and will only look at grid points within a box of size dr near the atom
+        #this will cut out the grid points that are near the atom
+        #first, get the min and max distances for each dimension
+        #also, convert those distances to indices by dividing by dx
+        xa, ya, za = pdb.coords[i] # for convenience, store up x,y,z coordinates of atom
+        xmin = int(np.floor((xa-dr[i])/dx)) + n//2 # - 1
+        xmax = int(np.ceil((xa+dr[i])/dx)) + n//2 #- 1
+        ymin = int(np.floor((ya-dr[i])/dx)) + n//2 #- 1
+        ymax = int(np.ceil((ya+dr[i])/dx)) + n//2 #- 1
+        zmin = int(np.floor((za-dr[i])/dx)) + n//2 #- 1
+        zmax = int(np.ceil((za+dr[i])/dx)) + n//2 #- 1
+        #handle edges
+        xmin = max([xmin,0])
+        xmax = min([xmax,n])
+        ymin = max([ymin,0])
+        ymax = min([ymax,n])
+        zmin = max([zmin,0])
+        zmax = min([zmax,n])
+        #now lets create a slice object for convenience
+        slc = np.s_[xmin:xmax,ymin:ymax,zmin:zmax]
+        nx = xmax-xmin
+        ny = ymax-ymin
+        nz = zmax-zmin
+        #now lets create a column stack of coordinates for the cropped grid
+        xyz = np.column_stack((x[slc].ravel(),y[slc].ravel(),z[slc].ravel()))
+        #now calculate all distances from the atom to the minigrid points
+        dist = spatial.distance.cdist(pdb.coords[None,i], xyz)
+        #now, add any grid points within dr of atom to the env grid
+        #first, create a dummy array to hold booleans of size dist.size
+        tmpenv = np.zeros(dist.shape,dtype=np.bool_)
+        #now, any elements that have a dist less than dr make true
+        tmpenv[dist<=dr[i]] = True
+        #now reshape for inserting into env
+        tmpenv = tmpenv.reshape(nx,ny,nz)
+        support[slc] += tmpenv
+    return support
+
+#Solvent excluded surface function
+def pdb2support_SES(pdb,x,y,z,radius=None,probe=1.4):
+    """Return a 3D Boolean array of the Solvent Excluded Surface from a set of coordinates.
+
+    pdb - instance of PDB() class
+    x,y,z - meshgrid arrays containing x, y, and z coordinates for all voxels of 3D support space
+    probe - probe radius for ses determination (defaults to 1.4 for water)
+    """
+
+    n = x.shape[0]
+    side = x.max()-x.min()
+    dx = side/(n-1)
+
+    if radius is None:
+        radius = pdb.vdW
+
+    xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
+    support = np.zeros(x.shape,dtype=bool)
+
+    vdw_support = pdb2support_vdW(pdb,x,y,z,probe=0.0,radius=radius)
+    vdw_probe_support = pdb2support_vdW(pdb,x,y,z,probe=probe,radius=radius)
+    big_support = pdb2support_vdW(pdb,x,y,z,probe=probe+dx*1.01,radius=radius)
+
+    #all voxels inside the vdw_support will be true. But first
+    #we need to find voxels not inside the vdw support
+    #but that _are_ inside the ses. So first make a search region
+    #which contains voxels inside big_support that are not inside vdw_support,
+    #kind of like a shell (but with gaps in between atoms included)
+    #this will contain the voxels where a water molecule can be 
+    #centered while not overlapping the protein. Then remove the voxels
+    #far from that surface to be left with the voxels at the edge where
+    #a water molecule can be placed.
+    #this is called the solvent accessible surface
+    sas = np.copy(big_support)
+    sas[vdw_probe_support] = False
+    sas_xyz = xyz[sas.ravel()]
+
+    #Take the surface voxels (sas_xyz), and run pdb2support_vdW, but set the radius
+    #to zero and the probe to the water. That will create a support quickly around each
+    #surface voxel that excludes the reentrant surface. Then, grab all the reentrant 
+    #voxels that fall within the vdw_probe_shell.
+    #first make a pdb file from the surface voxels
+    sas_xyz_pdb = PDB(len(sas_xyz))
+    sas_xyz_pdb.coords = sas_xyz
+    reentrant = pdb2support_vdW(sas_xyz_pdb, x, y, z, radius=np.zeros(sas_xyz_pdb.natoms), probe=probe)
+    #this is inverted, so flip it
+    reentrant = ~reentrant
+    #now set everything outside of the vdw_probe support to be false, to remove outside voxels
+    reentrant[~vdw_probe_support] = False
+
+    ses = reentrant
+    ses[vdw_support] = True
+
+    return ses
+
 def u2B(u):
     """Calculate B-factor from atomic displacement, u"""
     return np.sign(u) * 8 * np.pi**2 * u**2
@@ -4867,16 +5051,24 @@ def realspace_gaussian_formfactor(r=np.linspace(-3,3,101), rho0=0.334, V=None, r
         ff = 8 * rho0 * np.pi**(3./2) * V / (B + 4*np.pi*V**(2./3))**(3./2) * np.exp(-4*np.pi**2 * r**2 / (B + 4*np.pi*V**(2./3)) )
     return ff
 
-def estimate_side_from_pdb(pdb):
+def estimate_side_from_pdb(pdb, use_convex_hull=False):
     #roughly estimate maximum dimension
     #calculate max distance along x, y, z
     #take the maximum of the three
     #triple that value to set the default side
     #i.e. set oversampling to 3, like in denss
+    #use_convex_hull is a bit more accurate
     if pdb.rij is not None:
         #if pdb.rij has already been calculated
         #then just take the Dmax from that
         D = np.max(pdb.rij)
+    elif use_convex_hull:
+        print("using convex hull")
+        hull = spatial.ConvexHull(pdb.coords)
+        hull_points = pdb.coords[hull.vertices]
+        # Compute the pairwise distances between points on the convex hull
+        distances = spatial.distance.pdist(hull_points, 'euclidean')
+        D = np.max(distances)
     else:
         #if pdb.rij has not been calculated,
         #rather than calculating the whole distance
