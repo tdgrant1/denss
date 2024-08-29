@@ -293,7 +293,7 @@ if __name__ == "__main__":
         I_l1, = axI.plot(sasrec.q_data, sasrec.I_data, 'k.', ms=3, label='test')
         I_l2, = axI.plot(sasrec.qc, sasrec.Ic, 'r-', lw=2)
         I_l3, = axI.plot(sasrec.qn, sasrec.In, 'bo', mec='b', mfc='none', mew=2)
-        chi2_text = axI.text(0.75,0.9,"$\chi^2$ = %.3f"%sasrec.chi2,transform=axI.transAxes,fontsize='large')
+        chi2_text = axI.text(0.75,0.9,r"$\chi^2$ = %.3f"%sasrec.chi2,transform=axI.transAxes,fontsize='large')
         if args.log: axI.semilogy()
         axI.set_ylabel('I(q)')
         axI.set_xlabel('q')
@@ -349,12 +349,12 @@ if __name__ == "__main__":
         axalpha = plt.axes([0.05, 0.075, 0.4, 0.03], facecolor=axcolor)
         #axnes = plt.axes([0.05, 0.025, 0.4, 0.03], facecolor=axcolor)
 
-        axI0 = plt.figtext(.57, .125,   "$I(0)$  = %.2e $\pm$ %.2e"%(sasrec.I0,sasrec.I0err),family='monospace')
-        axrg = plt.figtext(.57, .075,   "$R_g$   = %.2e $\pm$ %.2e"%(sasrec.rg,sasrec.rgerr),family='monospace')
-        axrav = plt.figtext(.57, .025,  "$\overline{r}$    = %.2e $\pm$ %.2e"%(sasrec.avgr,sasrec.avgrerr),family='monospace')
-        axVp = plt.figtext(.77, .125,   "$V_p$ = %.2e $\pm$ %.2e"%(sasrec.Vp,sasrec.Vperr),family='monospace')
-        axVc = plt.figtext(.77, .075,   "$V_c$ = %.2e $\pm$ %.2e"%(sasrec.Vc,sasrec.Vcerr),family='monospace')
-        axlc = plt.figtext(.77, .025,   "$\ell_c$ = %.2e $\pm$ %.2e"%(sasrec.lc,sasrec.lcerr),family='monospace')
+        axI0 = plt.figtext(.57, .125,   r"$I(0)$  = %.2e $\pm$ %.2e"%(sasrec.I0,sasrec.I0err),family='monospace')
+        axrg = plt.figtext(.57, .075,   r"$R_g$   = %.2e $\pm$ %.2e"%(sasrec.rg,sasrec.rgerr),family='monospace')
+        axrav = plt.figtext(.57, .025,  r"$\overline{r}$    = %.2e $\pm$ %.2e"%(sasrec.avgr,sasrec.avgrerr),family='monospace')
+        axVp = plt.figtext(.77, .125,   r"$V_p$ = %.2e $\pm$ %.2e"%(sasrec.Vp,sasrec.Vperr),family='monospace')
+        axVc = plt.figtext(.77, .075,   r"$V_c$ = %.2e $\pm$ %.2e"%(sasrec.Vc,sasrec.Vcerr),family='monospace')
+        axlc = plt.figtext(.77, .025,   r"$\ell_c$ = %.2e $\pm$ %.2e"%(sasrec.lc,sasrec.lcerr),family='monospace')
         #axVpmw = plt.figtext(.55, .075, "Vp MW = %.2e $\pm$ %.2e"%(sasrec.mwVp,sasrec.mwVperr),family='monospace')
         #axVcmw = plt.figtext(.55, .025, "Vc MW = %.2e $\pm$ %.2e"%(sasrec.mwVc,sasrec.mwVcerr),family='monospace')
 
@@ -365,7 +365,7 @@ if __name__ == "__main__":
         sdmax = Slider(axdmax, 'Dmax', 0.0, args.max_dmax, valinit=D)
         sdmax.valtext.set_visible(False)
         # set up ticks marks on the slider to denote the change in interaction
-        axdmax.set_xticks([0.9 * sdmax.valmax, 0.1 * sdmax.valmax]) 
+        axdmax.set_xticks([0.9 * sdmax.valmax, 0.1 * sdmax.valmax])
         #axdmax.xaxis.tick_top()
         axdmax.tick_params(labelbottom=False)
 
@@ -404,15 +404,15 @@ if __name__ == "__main__":
             I_l1.set_data(sasrec.q_data, sasrec.I_data)
             I_l2.set_data(sasrec.qc, sasrec.Ic)
             I_l3.set_data(sasrec.qn, sasrec.In)
-            chi2_text.set_text("$\chi^2$ = %.3f"%sasrec.chi2)
+            chi2_text.set_text(r"$\chi^2$ = %.3f"%sasrec.chi2)
             Ires_l1.set_data(sasrec.q_data, res)
             P_l2.set_data(sasrec.r, sasrec.P)
-            axI0.set_text("$I(0)$  = %.2e $\pm$ %.2e"%(sasrec.I0,sasrec.I0err))
-            axrg.set_text("$R_g$   = %.2e $\pm$ %.2e"%(sasrec.rg,sasrec.rgerr))
-            axrav.set_text("$\overline{r}$    = %.2e $\pm$ %.2e"%(sasrec.avgr,sasrec.avgrerr))
-            axVp.set_text("$V_p$ = %.2e $\pm$ %.2e"%(sasrec.Vp,sasrec.Vperr))
-            axVc.set_text("$V_c$ = %.2e $\pm$ %.2e"%(sasrec.Vc,sasrec.Vcerr))
-            axlc.set_text("$\ell_c$ = %.2e $\pm$ %.2e"%(sasrec.lc,sasrec.lcerr))
+            axI0.set_text(r"$I(0)$  = %.2e $\pm$ %.2e"%(sasrec.I0,sasrec.I0err))
+            axrg.set_text(r"$R_g$   = %.2e $\pm$ %.2e"%(sasrec.rg,sasrec.rgerr))
+            axrav.set_text(r"$\overline{r}$    = %.2e $\pm$ %.2e"%(sasrec.avgr,sasrec.avgrerr))
+            axVp.set_text(r"$V_p$ = %.2e $\pm$ %.2e"%(sasrec.Vp,sasrec.Vperr))
+            axVc.set_text(r"$V_c$ = %.2e $\pm$ %.2e"%(sasrec.Vc,sasrec.Vcerr))
+            axlc.set_text(r"$\ell_c$ = %.2e $\pm$ %.2e"%(sasrec.lc,sasrec.lcerr))
             #axVpmw.set_text("Vp MW = %.2e $\pm$ %.2e"%(sasrec.mwVp,sasrec.mwVperr))
             #axVcmw.set_text("Vc MW = %.2e $\pm$ %.2e"%(sasrec.mwVc,sasrec.mwVcerr))
             # j = 0
@@ -518,7 +518,7 @@ if __name__ == "__main__":
                 sdmax.valmax = 2 * dmax
                 sdmax.ax.set_xlim(sdmax.valmin, sdmax.valmax)
                 axdmax.set_xticks([0.9 * sdmax.valmax, 0.1 * sdmax.valmax])
-            # partions slider as well
+            # partitions slider as well
             if (alpha > 0.9 * salpha.valmax) or (alpha < 0.1 * salpha.valmax):
                 salpha.valmax = 2 * alpha
                 # alpha starting at zero makes initial adjustment additive not multiplicative
@@ -574,38 +574,46 @@ if __name__ == "__main__":
         # create a checkbox for extrapolation
         axExtrap = plt.axes([0.37, 0.170, 0.015, 0.03], frameon=True)
         axExtrap.margins(0.0)
+
+
         extrapolate_check = CheckButtons(axExtrap, ["Extrapolate"], [args.extrapolate])
-        #the axes object for the checkbutton is crazy large, and actually
-        #blocks the sliders underneath even when frameon=False
-        #so we have to manually set the size and location of each of the
-        #elements of the checkbox after setting the axes margins to zero above
-        #including the rectangle checkbox, the lines for the X, and the label
         check = extrapolate_check
-        size =  1.0 #size relative to axes axExtrap
-        for rect in extrapolate_check.rectangles:
-            rect.set_x(0.)
-            rect.set_y(0.)
-            rect.set_width(size)
-            rect.set_height(size)
-        first = True
-        for l in check.lines:
-            for ll in l:
-                llx = ll.get_xdata()
-                lly = ll.get_ydata()
-                #print(llx)
-                #print(lly)
-                ll.set_xdata([0.0,size])
-                if first:
-                    #there's two lines making
-                    #up the checkbox, so need
-                    #to set the y values separately
-                    #one going from bottom left to 
-                    #upper right, the other opposite
-                    ll.set_ydata([size,0.0])
-                    first = False
-                else:
-                    ll.set_ydata([0.0, size])
+        try:
+            #the axes object for the checkbutton is crazy large, and actually
+            #blocks the sliders underneath even when frameon=False
+            #so we have to manually set the size and location of each of the
+            #elements of the checkbox after setting the axes margins to zero above
+            #including the rectangle checkbox, the lines for the X, and the label
+            size =  1.0 #size relative to axes axExtrap
+            for rect in extrapolate_check.rectangles:
+                rect.set_x(0.)
+                rect.set_y(0.)
+                rect.set_width(size)
+                rect.set_height(size)
+            first = True
+            for l in check.lines:
+                for ll in l:
+                    llx = ll.get_xdata()
+                    lly = ll.get_ydata()
+                    #print(llx)
+                    #print(lly)
+                    ll.set_xdata([0.0,size])
+                    if first:
+                        #there's two lines making
+                        #up the checkbox, so need
+                        #to set the y values separately
+                        #one going from bottom left to
+                        #upper right, the other opposite
+                        ll.set_ydata([size,0.0])
+                        first = False
+                    else:
+                        ll.set_ydata([0.0, size])
+        except:
+            #newer versions of matplotlib don't have the check.rectangles attribute. so for now they get a small box.
+            pass
+
         check.labels[0].set_position((1.5,.5))
+
 
         #here is the slider updating
         sdmax.on_changed(update)
