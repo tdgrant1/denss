@@ -39,8 +39,7 @@ parser = argparse.ArgumentParser(description="Print some basic information about
 parser.add_argument("-f", "--file", type=str, help="MRC filename.")
 args = parser.parse_args()
 
-if __name__ == "__main__":
-
+def main():
 
     rho, (a,b,c) = saxs.read_mrc(args.file, returnABC=True)
     vx, vy, vz = np.array((a,b,c))/np.array(rho.shape)
@@ -63,7 +62,8 @@ if __name__ == "__main__":
     print(" Modified Std. Dev. of Density (voxels >0.01*max): %3.5f" % np.std(rho[idx]))
     print(" Modified RMSD of Density (voxels >0.01*max): %3.5f" % np.sqrt(np.mean(np.square(rho[idx]))))
 
-
+if __name__ == "__main__":
+    main()
 
 
 

@@ -67,7 +67,8 @@ parser.set_defaults(write_shannon=False)
 parser.set_defaults(ignore_errors=False)
 args = parser.parse_args()
 
-if __name__ == "__main__":
+
+def main():
 
     alpha = args.alpha
 
@@ -643,3 +644,6 @@ if __name__ == "__main__":
 
     print_values()
     save_file()
+
+if __name__ == "__main__":
+    main()

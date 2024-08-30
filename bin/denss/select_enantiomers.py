@@ -30,20 +30,21 @@
 from __future__ import print_function
 import sys, os, argparse, logging
 import numpy as np
-from scipy import ndimage
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 
-parser = argparse.ArgumentParser(description="A tool for generating a reference from multiple electron density maps.", formatter_class=argparse.RawTextHelpFormatter)
+parser = argparse.ArgumentParser(description="A tool for checking a set of electron density maps for the same handedness.", formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
 parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files")
+parser.add_argument("-ref", "--ref", default = None, type=str, help="Reference filename (.mrc file, optional)")
 parser.add_argument("-o", "--output", type=str, help="output filename prefix")
 parser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
 parser.set_defaults(enan = True)
 parser.set_defaults(center = True)
 args = parser.parse_args()
 
-if __name__ == "__main__":
+
+def main():
 
     if args.output is None:
         fname_nopath = os.path.basename(args.files[0])
@@ -63,17 +64,31 @@ if __name__ == "__main__":
     allrhos = np.array(allrhos)
     sides = np.array(sides)
 
-    if nmaps<2:
-        print("Not enough maps to generate reference. Please input more maps again...")
-        sys.exit(1)
+    if args.ref is not None:
+        #allow input of reference for enantiomer selection
+        if args.ref.endswith('.mrc'):
+            refrho, refside = saxs.read_mrc(args.ref)
+        if (not args.ref.endswith('.mrc')):
+            print("Invalid reference filename given. .mrc file required")
+            sys.exit(1)
 
-    print(" Generating reference...")
+    print(" Selecting best enantiomers...")
     try:
-        refrho = saxs.binary_average(allrhos, args.cores)
-        saxs.write_mrc(refrho, sides[0], output+"_reference.mrc")
+        if args.ref:
+            allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
+        else:
+            allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=allrhos[0], cores=args.cores)
     except KeyboardInterrupt:
         sys.exit(1)
 
+    #save each selected enantiomer
+    for i in range(nmaps):
+        fname_nopath = os.path.basename(args.files[i])
+        basename, ext = os.path.splitext(fname_nopath)
+        ioutput = basename+"_enan"
+        saxs.write_mrc(allrhos[i], sides[0], ioutput+'.mrc')
 
+if __name__ == "__main__":
+    main()
 
 
