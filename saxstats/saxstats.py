@@ -1210,6 +1210,21 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
         steps = np.int(steps)
 
     Imean = np.zeros((len(qbins)))
+
+    if qraw is None:
+        qraw = q
+    if Iraw is None:
+        Iraw = I
+    if sigqraw is None:
+        sigqraw = sigq
+    Iq_exp = np.vstack((qraw, Iraw, sigqraw)).T
+    Iq_calc = np.vstack((qbinsc, Imean, Imean)).T
+    idx = np.where(Iraw > 0)
+    Iq_exp = Iq_exp[idx]
+    qmax = np.min([Iq_exp[:, 0].max(), Iq_calc[:, 0].max()])
+    Iq_exp = Iq_exp[Iq_exp[:, 0] <= qmax]
+    Iq_calc = Iq_calc[Iq_calc[:, 0] <= qmax]
+
     chi = np.zeros((steps+1))
     rg = np.zeros((steps+1))
     supportV = np.zeros((steps+1))
@@ -1260,7 +1275,7 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
     else:
         erode = True
         erosion_width = int(20/dx) #this is in pixels
-        if erosion_width ==0:
+        if erosion_width == 0:
             #make minimum of one pixel
             erosion_width = 1
 
@@ -1381,7 +1396,12 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
         factors[~qba] = 1.0
         F *= factors[qbin_labels]
 
-        chi[j] = mysum(((Imean[qba]-Idata[qba])/sigqdata[qba])**2, DENSS_GPU=DENSS_GPU)/Idata[qba].size
+        try:
+            Iq_calc[:,1] = Imean[qbinsc <= qmax]
+            chi[j] = calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True, return_sf=False, return_fit=False)
+        except:
+            #in case the interpolation fails for whatever reason, like the GPU status or something
+            chi[j] = mysum(((Imean[qba]-Idata[qba])/sigqdata[qba])**2, DENSS_GPU=DENSS_GPU)/Idata[qba].size
 
         #APPLY REAL SPACE RESTRAINTS
         # rhoprime = myifftn(F, DENSS_GPU=DENSS_GPU).real
@@ -1594,7 +1614,7 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
             if gui:
                 my_logger.info("% 5i % 4.2e % 3.2f       % 5i          ", j, chi[j], rg[j], supportV[j])
             else:
-                sys.stdout.write("\r% 5i % 4.2e % 3.2f       % 5i          " % (j, chi[j], rg[j], supportV[j]))
+                sys.stdout.write("\r% 5i  % 4.2e % 3.2f       % 5i          " % (j, chi[j], rg[j], supportV[j]))
                 sys.stdout.flush()
 
         #occasionally report progress in logger
@@ -1706,12 +1726,6 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
     sigq /= scale_factor
 
     #Write some more output files
-    if qraw is None:
-        qraw = q
-    if Iraw is None:
-        Iraw = I
-    if sigqraw is None:
-        sigqraw = sigq
     Iq_exp = np.vstack((qraw,Iraw,sigqraw)).T
     Iq_calc = np.vstack((qbinsc, Imean, Imean*0.01)).T
     idx = np.where(Iraw>0)
