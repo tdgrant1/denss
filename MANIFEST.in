@@ -1,4 +1,6 @@
 include LICENSE
 include README.md
-recursive-include lib/resources *
+include bin/best_enantiomers.sh
+include bin/superdenss
+recursive-include resources *
 
