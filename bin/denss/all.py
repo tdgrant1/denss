@@ -117,7 +117,8 @@ def multi_denss(niter, **kwargs):
         pass
 
 
-if __name__ == "__main__":
+def main():
+
     __spec__ = None
 
     if superargs.nmaps<2:
@@ -373,3 +374,7 @@ if __name__ == "__main__":
         print(pltoutput)
         plt.savefig(pltoutput+'_fsc.png',dpi=150)
         plt.close()
+
+
+if __name__ == "__main__":
+    main()

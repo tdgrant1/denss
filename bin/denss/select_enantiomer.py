@@ -43,7 +43,8 @@ parser.set_defaults(enan = True)
 parser.set_defaults(center = True)
 args = parser.parse_args()
 
-if __name__ == "__main__":
+
+def main():
 
     if args.output is None:
         fname_nopath = os.path.basename(args.file)
@@ -83,6 +84,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         sys.exit(1)
 
-
+if __name__ == "__main__":
+    main()
 
 

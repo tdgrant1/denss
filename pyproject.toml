@@ -1,0 +1,65 @@
+[build-system]
+requires = [
+  "setuptools >= 40.9.0",
+#  "setuptools-scm",
+  "wheel",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "DENSS"
+dynamic = ["version"]
+description = "Calculate electron density from solution scattering data."
+readme = "README.md"
+requires-python = ">=3.8"
+keywords = ["denss", "saxs", "ab-initio"]
+license = {text = "GNU GPL 3"}
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: GNU GPL v3",
+  "Operating System :: Linux"
+]
+dependencies = [
+  "scipy",
+  "numpy>=2.1",
+]
+
+[project.optional-dependencies]
+  plot = ["matplotlib"]
+
+[tool.setuptools]
+#packages = ["saxstats"]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["bin", "lib"]
+
+[tool.setuptools.dynamic]
+version = {attr = "saxstats.__version__"}
+
+[project.scripts]
+  'denss' = 'denss.__main__:main'
+  'denss.align' ='denss.align:main'
+  'denss.align2xyz' = 'denss.align2xyz:main'
+  'denss.align_by_principal_axes' = 'denss.align_by_principal_axes:main'
+  'denss.average' ='denss.average:main'
+  'denss.align_and_average' =  'denss.align_and_average:main'
+  'denss.all' = 'denss.all:main'
+  'denss.refine' = 'denss.refine:main'
+  'denss.fit_data' ='denss.fit_data:main'
+  'denss.calcfsc' = 'denss.calcfsc:main'
+  'denss.fsc2res' = 'denss.fsc2res:main'
+  'denss.rho2dat' = 'denss.rho2dat:main'
+  'denss.pdb2mrc' = 'denss.pdb2mrc:main'
+  'denss.pdb2support' = 'denss.pdb2support:main'
+  'denss.hypred2mrc' = 'denss.hypred2mrc:main'
+  'denss.get_info' = 'denss.get_info:main'
+  'denss.mrcops' = 'denss.mrcops:main'
+  'denss.mrc2sas' = 'denss.mrc2sas:main'
+  'denss.regrid' = 'denss.regrid:main'
+  'denss.generate_reference' = 'denss.generate_reference:main'
+  'denss.select_enantiomers' = 'denss.select_enantiomers:main'
+  'denss.select_enantiomer' = 'denss.select_enantiomer:main'
+  'fsc2res' = 'fsc2res:main'
+  #'superdenss' = 'superdenss'
+  #'best_enantiomers.sh'

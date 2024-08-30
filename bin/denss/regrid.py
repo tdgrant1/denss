@@ -63,7 +63,7 @@ if args.plot:
         print("matplotlib import failed.")
         args.plot = False
 
-if __name__ == "__main__":
+def main():
 
     scriptname = os.path.basename(sys.argv[0])
     command = scriptname + ' ' + ' '.join(sys.argv[1:])
@@ -118,7 +118,8 @@ if __name__ == "__main__":
 
     np.savetxt(basename+'.regrid.dat', Iq_calc, delimiter=' ', fmt='%.5e'.encode('ascii'))
 
-
+if __name__ == "__main__":
+    main()
 
 
 

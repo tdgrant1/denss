@@ -53,8 +53,7 @@ if args.plot:
     except ImportError:
         args.plot = False
 
-if __name__ == "__main__":
-
+def main():
     if args.output is None:
         fname_nopath = os.path.basename(args.file)
         basename, ext = os.path.splitext(fname_nopath)
@@ -95,7 +94,8 @@ if __name__ == "__main__":
         plt.close()
 
 
-
+if __name__ == "__main__":
+    main()
 
 
 

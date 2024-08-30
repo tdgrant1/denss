@@ -136,7 +136,8 @@ if args.plot:
 t.append(time.time())
 fs.append("import matplotlib")
 
-if __name__ == "__main__":
+
+def main():
     start = time.time()
 
     scriptname = os.path.basename(sys.argv[0])
@@ -404,7 +405,8 @@ if __name__ == "__main__":
         for i in range(1,len(t)):
             print("%40s: %7.3f %7.3f"%(fs[i],t[i]-t[i-1],t[i]-t[0]))
 
-
+if __name__ == "__main__":
+    main()
 
 
 

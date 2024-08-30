@@ -54,7 +54,7 @@ parser.add_argument("-u", "--units", default=None, type=str, help="Change units 
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
 args = parser.parse_args()
 
-if __name__ == "__main__":
+def main():
 
     if args.output is None:
         fname_nopath = os.path.basename(args.file)
@@ -190,7 +190,8 @@ if __name__ == "__main__":
 
     saxs.write_mrc(rho,(a,b,c),filename=output+'.mrc')
 
-
+if __name__ == "__main__":
+    main()
 
 
 

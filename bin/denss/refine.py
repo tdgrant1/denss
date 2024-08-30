@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 #
-#    denss.py
+#    denss.refine.py
+#    A tool for refining an electron density map from solution scattering data
+#
+#    Part of DENSS
 #    DENSS: DENsity from Solution Scattering
 #    A tool for calculating an electron density map from solution scattering data
 #
@@ -35,8 +38,13 @@ import logging
 parser = argparse.ArgumentParser(description="DENSS: DENsity from Solution Scattering.\n A tool for calculating an electron density map from solution scattering data", formatter_class=argparse.RawTextHelpFormatter)
 args = dopts.parse_arguments(parser)
 
-if __name__ == "__main__":
-    __spec__ = None
+if args.rho_start is None:
+    print(" denss.refine.py requires a .mrc file to be given to the --rho_start option.")
+    sys.exit()
+
+
+def main():
+
     my_logger = logging.getLogger()
     my_logger.setLevel(logging.DEBUG)
 
@@ -71,6 +79,9 @@ if __name__ == "__main__":
         ne=args.ne,
         voxel=args.voxel,
         oversampling=args.oversampling,
+        rho_start=args.rho_start,
+        support_start=args.support_start,
+        add_noise=args.add_noise,
         recenter=args.recenter,
         recenter_steps=args.recenter_steps,
         recenter_mode=args.recenter_mode,
@@ -84,7 +95,6 @@ if __name__ == "__main__":
         ncs_axis=args.ncs_axis,
         ncs_type=args.ncs_type,
         seed=args.seed,
-        support_start=args.support_start,
         shrinkwrap=args.shrinkwrap,
         shrinkwrap_old_method=args.shrinkwrap_old_method,
         shrinkwrap_sigma_start=args.shrinkwrap_sigma_start,
@@ -105,6 +115,7 @@ if __name__ == "__main__":
         my_logger=my_logger)
 
     print("\n%s"%args.output)
+
 
     if args.plot:
         import matplotlib.pyplot as plt
@@ -184,4 +195,5 @@ if __name__ == "__main__":
 
     logging.info('END')
 
-
+if __name__ == "__main__":
+    main()

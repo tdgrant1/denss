@@ -59,7 +59,8 @@ parser.set_defaults(use_b=False)
 args = parser.parse_args()
 
 
-if __name__ == "__main__":
+
+def main():
     start = time.time()
 
     command = ' '.join(sys.argv)
@@ -214,7 +215,8 @@ if __name__ == "__main__":
     #write output
     saxs.write_mrc(support*1.0,side,output+"_support.mrc")
 
-
+if __name__ == "__main__":
+    main()
 
 
 

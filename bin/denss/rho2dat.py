@@ -58,7 +58,8 @@ if args.plot:
     except ImportError:
         args.plot = False
 
-if __name__ == "__main__":
+
+def main():
 
     if args.output is None:
         fname_nopath = os.path.basename(args.file)
@@ -196,7 +197,8 @@ if __name__ == "__main__":
         plt.legend()
         plt.show()
 
-
+if __name__ == "__main__":
+    main()
 
 
 

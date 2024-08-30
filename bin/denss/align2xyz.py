@@ -41,7 +41,8 @@ parser.add_argument("-f", "--file", type=str, help="List of MRC files for alignm
 parser.add_argument("-o", "--output", default = None, type=str, help="output filename prefix")
 args = parser.parse_args()
 
-if __name__ == "__main__":
+
+def main():
 
     if args.output is None:
         fname_nopath = os.path.basename(args.file)
@@ -68,7 +69,8 @@ if __name__ == "__main__":
     logging.info('END')
 
 
-
+if __name__ == "__main__":
+    main()
 
 
 

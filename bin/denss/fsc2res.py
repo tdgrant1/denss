@@ -5,8 +5,8 @@ import numpy as np
 import os, sys, argparse
 import saxstats.saxstats as saxs
 
-
 def main():
+
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--files", type=str, nargs='+', help="FSC (Fourier Shell Correlation) filename(s) (multiple FSCs will be averaged)")
     parser.add_argument("--plot_on", dest="plot", action="store_true", help="Create simple plots of results (requires Matplotlib, default if module exists).")
@@ -26,7 +26,7 @@ def main():
     if args.output is None:
         fname_nopath = os.path.basename(args.files[0])
         basename, ext = os.path.splitext(fname_nopath)
-        output = basename+'_fsc.dat'
+        output = basename+" "
     else:
         output = args.output
 
@@ -47,7 +47,7 @@ def main():
     else:
         print("Resolution: %.1f A" % resn)
 
-    np.savetxt(output,fsc,delimiter=' ',fmt='%.5e',header="1/resolution, FSC")
+    np.savetxt(output+'.dat',fsc,delimiter=' ',fmt='%.5e',header="1/resolution, FSC")
 
     if args.plot:
         import matplotlib.pyplot as plt
@@ -60,11 +60,9 @@ def main():
         plt.legend()
         plt.xlabel('Resolution (1/$\mathrm{\AA}$)')
         plt.ylabel('Fourier Shell Correlation')
-        pltoutput = os.path.splitext(output)[0]
-        print(pltoutput)
-        plt.savefig(pltoutput+'.png',dpi=150)
+        print(output)
+        plt.savefig(output+'.png',dpi=150)
         plt.close()
-
 
 if __name__ == "__main__":
     main()

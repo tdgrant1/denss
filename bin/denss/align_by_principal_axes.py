@@ -48,7 +48,7 @@ parser.set_defaults(center = True)
 parser.set_defaults(ignore_waters = False)
 args = parser.parse_args()
 
-if __name__ == "__main__":
+def main():
 
     if args.output is None:
         fname_nopath = os.path.basename(args.file)
@@ -123,7 +123,8 @@ if __name__ == "__main__":
     logging.info('END')
 
 
-
+if __name__ == "__main__":
+    main()
 
 
 

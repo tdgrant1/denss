@@ -30,7 +30,6 @@
 
 from __future__ import print_function
 import os, argparse, sys
-import logging
 import numpy as np
 from scipy import interpolate
 from saxstats._version import __version__
@@ -69,7 +68,8 @@ if args.plot:
         print("matplotlib import failed.")
         args.plot = False
 
-if __name__ == "__main__":
+
+def main():
 
     scriptname = os.path.basename(sys.argv[0])
     command = scriptname + ' ' + ' '.join(sys.argv[1:])
@@ -195,7 +195,8 @@ if __name__ == "__main__":
         # plt.show()
         plt.close()
 
-
+if __name__ == "__main__":
+    main()
 
 
 

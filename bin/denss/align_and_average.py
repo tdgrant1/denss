@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
-#    denss.align.py
-#    A tool for aligning electron density maps.
+#    denss.align_and_average.py
+#    A tool for aligning and averaging multiple electron density maps.
 #
 #    Part of DENSS
 #    DENSS: DENsity from Solution Scattering
@@ -28,40 +28,40 @@
 #
 
 from __future__ import print_function
-import os, sys, logging
+import sys, os, argparse, logging
 import numpy as np
-import argparse
 from saxstats._version import __version__
 import saxstats.saxstats as saxs
 
-parser = argparse.ArgumentParser(description="A tool for aligning electron density maps.", formatter_class=argparse.RawTextHelpFormatter)
+parser = argparse.ArgumentParser(description="A tool for aligning and averaging multiple electron density maps.", formatter_class=argparse.RawTextHelpFormatter)
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
-parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files for alignment to reference.")
-parser.add_argument("-ref", "--ref", default = None, type=str, help="Reference (.mrc or .pdb file (map will be calculated from PDB))")
-parser.add_argument("-o", "--output", default = None, type=str, help="output filename prefix")
-parser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
+parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files")
+parser.add_argument("-ref", "--ref",default = None, type=str, help="Reference filename (.mrc or .pdb file, optional)")
+parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB (default).")
+parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB.")
 parser.add_argument("-en_on", "--enantiomer_on", action = "store_true", dest="enan", help="Generate and select best enantiomers (default). ")
 parser.add_argument("-en_off", "--enantiomer_off", action = "store_false", dest="enan", help="Do not generate and select best enantiomers.")
-parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB reference (default).")
-parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB reference.")
 parser.add_argument("-r", "--resolution", default=15.0, type=float, help="Desired resolution (i.e. Gaussian width sigma) of map calculated from PDB file.")
 parser.add_argument("--ignore_pdb_waters", dest="ignore_waters", action="store_true", help="Ignore waters if PDB file given.")
+parser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
+parser.add_argument("-o", "--output", type=str, help="output filename prefix")
 parser.set_defaults(enan = True)
 parser.set_defaults(center = True)
 parser.set_defaults(ignore_waters = False)
 args = parser.parse_args()
 
-if __name__ == "__main__":
+
+def main():
     __spec__ = None
 
     if args.output is None:
         fname_nopath = os.path.basename(args.files[0])
         basename, ext = os.path.splitext(fname_nopath)
-        output = basename+"_aligned"
+        output = basename
     else:
         output = args.output
 
-    logging.basicConfig(filename=output+'.log',level=logging.INFO,filemode='w',
+    logging.basicConfig(filename=output+'_final.log',level=logging.INFO,filemode='w',
                         format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
     logging.info('BEGIN')
     logging.info('Command: %s', ' '.join(sys.argv))
@@ -72,20 +72,22 @@ if __name__ == "__main__":
     logging.info('Enantiomer selection: %s', args.enan)
 
     nmaps = len(args.files)
+
     allrhos = []
     sides = []
     for file in args.files:
         rho, side = saxs.read_mrc(file)
         allrhos.append(rho)
         sides.append(side)
-
     allrhos = np.array(allrhos)
     sides = np.array(sides)
 
-    if args.ref is None:
-        print("Need reference file (.mrc or .pdb)")
+    if nmaps<2:
+        print("Not enough maps to align. Please input more maps again...")
         sys.exit(1)
-    else:
+
+    if args.ref is not None:
+        #allow input of reference structure
         if args.ref.endswith('.pdb'):
             logging.info('Center PDB reference: %s', args.center)
             logging.info('PDB reference map resolution: %.2f', args.resolution)
@@ -130,7 +132,7 @@ if __name__ == "__main__":
             sys.exit(1)
 
     if args.enan:
-        print(" Selecting best enantiomer(s)...")
+        print(" Selecting best enantiomers...")
         try:
             if args.ref:
                 allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
@@ -139,33 +141,89 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             sys.exit(1)
 
-    print(" Aligning to reference...")
+    if args.ref is None:
+        print(" Generating reference...")
+        try:
+            refrho = saxs.binary_average(allrhos, args.cores)
+            saxs.write_mrc(refrho, sides[0], output+"_reference.mrc")
+        except KeyboardInterrupt:
+            sys.exit(1)
+
+    print(" Aligning all maps to reference...")
     try:
         aligned, scores = saxs.align_multiple(refrho, allrhos, args.cores)
     except KeyboardInterrupt:
         sys.exit(1)
 
+    #filter rhos with scores below the mean - 2*standard deviation.
+    mean = np.mean(scores)
+    std = np.std(scores)
+    threshold = mean - 2*std
+    filtered = np.empty(len(scores),dtype=str)
+    print()
+    print("Mean of correlation scores: %.3e" % mean)
+    print("Standard deviation of scores: %.3e" % std)
     for i in range(nmaps):
-        if nmaps > 1:
-            fname_nopath = os.path.basename(args.files[i])
-            basename, ext = os.path.splitext(fname_nopath)
-            reffname_nopath = os.path.basename(args.ref)
-            refbasename, refext = os.path.splitext(reffname_nopath)
-            ioutput = output+"_"+basename+"_to_"+refbasename
+        if scores[i] < threshold:
+            filtered[i] = 'Filtered'
         else:
-            ioutput = output
+            filtered[i] = ' '
+        fname_nopath = os.path.basename(args.files[i])
+        basename, ext = os.path.splitext(fname_nopath)
+        ioutput = basename+"_aligned"
         saxs.write_mrc(aligned[i], sides[0], ioutput+'.mrc')
-        print("%s.mrc written. Score = %0.3e" % (ioutput,scores[i]))
-        logging.info('Correlation score to reference: %s.mrc %.3e', ioutput, scores[i])
+        print("%s.mrc written. Score = %0.3e %s " % (ioutput,scores[i],filtered[i]))
+        logging.info('Correlation score to reference: %s.mrc %.3e %s', ioutput, scores[i], filtered[i])
 
+    idx_keep = np.where(scores>threshold)
+    kept_ids = np.arange(nmaps)[idx_keep]
+    aligned = aligned[idx_keep]
+    average_rho = np.mean(aligned,axis=0)
+
+    logging.info('Mean of correlation scores: %.3e', mean)
+    logging.info('Standard deviation of the scores: %.3e', std)
+    logging.info('Total number of input maps for alignment: %i',allrhos.shape[0])
+    logging.info('Number of aligned maps accepted: %i', aligned.shape[0])
+    logging.info('Correlation score between average and reference: %.3e', -saxs.rho_overlap_score(average_rho, refrho))
+    saxs.write_mrc(average_rho, sides[0], output+'_avg.mrc')
     logging.info('END')
 
 
+    #rather than compare two halves, average all fsc's to the reference
+    fscs = []
+    resns = []
+    for calc_map in range(len(aligned)):
+        fsc_map = saxs.calc_fsc(aligned[calc_map],refrho,sides[0])
+        fscs.append(fsc_map)
+        resn_map = saxs.fsc2res(fsc_map)
+        resns.append(resn_map)
+
+    fscs = np.array(fscs)
+
+    #save a file containing all fsc curves
+    fscs_header = ['res(1/A)']
+    for i in kept_ids:
+        ioutput = output+"_"+str(i)+"_aligned"
+        fscs_header.append(ioutput)
+    #add the resolution as the first column
+    fscs_for_file = np.vstack((fscs[0,:,0],fscs[:,:,1])).T
+    np.savetxt(output+'_allfscs.dat',fscs_for_file,delimiter=" ",fmt="%.5e",header=",".join(fscs_header))
+
+    resns = np.array(resns)
+    fsc = np.mean(fscs,axis=0)
+    resn, x, y, resx = saxs.fsc2res(fsc, return_plot=True)
+    resn_sd = np.std(resns)
+    if np.min(fsc[:,1]) > 0.5:
+        print("Resolution: < %.1f +- %.1f A (maximum possible)" % (resn,resn_sd))
+    else:
+        print("Resolution: %.1f +- %.1f A " % (resn,resn_sd))
+
+    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC; Resolution=%.1f +- %.1f A" % (resn,resn_sd))
+
+    logging.info('Resolution: %.1f A', resn )
+    logging.info('END')
 
 
-
-
-
-
-
+if __name__ == "__main__":
+    main()
 

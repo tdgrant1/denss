@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: Grant
+    given-names: Thomas D.
+#    orcid:
+title: DENSS
+version: 1.7.4
+doi: 10.1038/nmeth.4581
+date-released: 2024-08-28
+license: "GPL-3.0-or-later"
+#references:
+#  - authors:
+#    - family-names:
+#      given-names:
+#    title:
+#    type: software
