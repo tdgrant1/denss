@@ -1,7 +1,6 @@
 [build-system]
 requires = [
   "setuptools >= 40.9.0",
-#  "setuptools-scm",
   "wheel",
 ]
 build-backend = "setuptools.build_meta"
@@ -28,7 +27,6 @@ dependencies = [
   plot = ["matplotlib"]
 
 [tool.setuptools]
-#packages = ["saxstats"]
 include-package-data = true
 
 [tool.setuptools.packages.find]
