@@ -59,11 +59,12 @@ parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point
 parser.add_argument("-u", "--units", default="a", type=str, help="Angular units of experimental data (\"a\" [1/angstrom] or \"nm\" [1/nanometer]; default=\"a\"). If nm, will convert output to angstroms.")
 parser.add_argument("-qmin", "--qmin", default=None, type=float, help="Minimum q value to use for fitting experimental data.")
 parser.add_argument("-qmax", "--qmax", default=None, type=float, help="Maximum q value to use for fitting experimental data.")
+parser.add_argument("-nq", "--nq", default=None, type=int, help="Number of q values to include in final scattering profile (only relevant for prediction with no experimental data, uses interpolation).")
 parser.add_argument("-s", "--side", default=None, type=float, help="Desired side length of real space box (default=3*Dmax).")
 parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired voxel size (default=1.0)")
 parser.add_argument("-n", "--nsamples", default=None, type=int, help="Desired number of samples (i.e. voxels) per axis (default=variable)")
 parser.add_argument("-b", "--use_b", dest="use_b", action="store_true", help="Include B-factors from atomic model (optional, default=False)")
-parser.add_argument("-B", "--global_B", default=None, type=float, help="Desired global B-factor (added to any individual B-factors if enabled), used for improving sampling for large voxel sizes (varies by voxel size, default=~7 for default 1 angstrom voxel.)")
+parser.add_argument("-B", "--global_B", default=None, type=float, help="Desired global B-factor (added to any individual B-factors if enabled))")
 parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (after scattering profile calculation, blur map by this width using gaussian kernel, similar to Chimera Volume Filter function).")
 parser.add_argument("-exH","--explicitH", dest="explicitH", action="store_true", help="Use hydrogens in pdb file (optional, default=True if H exists)")
 parser.add_argument("-imH","--implicitH", dest="explicitH", action="store_false", help=argparse.SUPPRESS) #help="Use implicit hydrogens approximation (optional, EXPERIMENTAL)")
@@ -324,7 +325,7 @@ if __name__ == "__main__":
     end = time.time()
     print("Total calculation time: %.3f seconds" % (end-start))
 
-    pdb2mrc.save_Iq_calc(prefix=output)
+    pdb2mrc.save_Iq_calc(prefix=output, qmax=args.qmax, nq=args.nq)
 
     if args.data is not None:
         pdb2mrc.save_fit(prefix=output)

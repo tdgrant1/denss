@@ -3613,6 +3613,7 @@ class PDB2MRC(object):
         n2=None,
         qmin=None,
         qmax=None,
+        nq=None,
         penalty_weight=1.0,
         penalty_weights=[1.0,0.01],
         fit_rho0=True,
@@ -3705,6 +3706,7 @@ class PDB2MRC(object):
         self.n2 = n2
         self.qmin4fitting = qmin
         self.qmax4fitting = qmax
+        self.nq4prediction = nq
         self.penalty_weight = penalty_weight
         self.penalty_weights = penalty_weights
         self.fit_rho0 = fit_rho0
@@ -4349,14 +4351,20 @@ class PDB2MRC(object):
         self.Iq_calc_interp = Iq_calc_interp
         return Iq_calc_interp
 
-    def save_Iq_calc(self, prefix=None):
+    def save_Iq_calc(self, prefix=None, qmax=None, nq=None):
         """Save the calculated Iq curve to a .dat file."""
         header = ' '.join('%s: %.5e ; '%(self.param_names[i],self.params[i]) for i in range(len(self.params)))
         header_dat = header + "\n q_calc I_calc err_calc"
-        qmax = self.qx_.max()-1e-8
         if prefix is None:
             prefix = self.pdb_basename
-        np.savetxt(prefix+'.dat',self.Iq_calc[self.q_calc<=qmax],delimiter=' ',fmt='%.8e',header=header_dat)
+        if qmax is None:
+            qmax = self.qx_.max() - 1e-8
+        if nq is not None:
+            # only interpolate if nq is set
+            Iq_calc = self.regrid_Iq_calc(qmax=qmax, nq=nq)
+        else:
+            Iq_calc = self.Iq_calc[self.q_calc <= qmax]
+        np.savetxt(prefix+'.dat',Iq_calc,delimiter=' ',fmt='%.8e',header=header_dat)
 
     def save_fit(self, prefix=None):
         """Save the combined experimental and calculted Iq curve to a .fit file."""
