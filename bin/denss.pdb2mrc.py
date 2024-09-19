@@ -100,6 +100,8 @@ parser.add_argument("-min_options", "--min_options", "-minimization_options","--
 parser.add_argument("-write_on", "--write_on", action="store_true", dest="write_mrc_file", help="Write MRC file (default=True).")
 parser.add_argument("-write_off", "--write_off", action="store_false", dest="write_mrc_file", help="Do not write MRC file.")
 parser.add_argument("-write_extras", "--write_extras", action="store_true", default=False, help="Write out extra MRC files for invacuo, exvol, shell densities (default=False).")
+parser.add_argument("-write_pdb_on", "--write_pdb_on", action="store_true", dest="write_pdb", help="Write modified pdb file including recentering and atom radii to B-factor column (default=True).")
+parser.add_argument("-write_pdb_off", "--write_pdb_off", action="store_false", dest="write_pdb", help="Do not write modified pdb file.")
 parser.add_argument("-interp_on", "--interp_on", dest="Icalc_interpolation", action="store_true", help="Interpolate I_calc to experimental q grid (default).")
 parser.add_argument("-interp_off", "--interp_off", dest="Icalc_interpolation", action="store_false", help="Do not interpolate I_calc to experimental q grid .")
 parser.add_argument("--plot_on", dest="plot", action="store_true", help="Create simple plots of results (requires Matplotlib, default if module exists).")
@@ -122,6 +124,7 @@ parser.set_defaults(fit_scale=True)
 parser.set_defaults(fit_offset=False)
 parser.set_defaults(Icalc_interpolation=True)
 parser.set_defaults(write_mrc_file=None)
+parser.set_defaults(write_pdb=None)
 parser.set_defaults(write_shannon=False)
 args = parser.parse_args()
 
@@ -199,11 +202,15 @@ if __name__ == "__main__":
             args.shell_type = "uniform"
         if args.plot is None:
             args.plot = False
+        if args.write_pdb is None:
+            args.write_pdb = False
     else:
         if args.write_mrc_file is None:
             args.write_mrc_file = True
         if args.plot is None:
             args.plot = True
+        if args.write_pdb is None:
+            args.write_pdb = True
 
     pdb2mrc = saxs.PDB2MRC(
         pdb=pdb,
@@ -254,7 +261,8 @@ if __name__ == "__main__":
         pdboutput += '_out.pdb'
         pdbout = copy.deepcopy(pdb2mrc.pdb)
         pdbout.occupancy = pdb2mrc.pdb.unique_radius
-        pdbout.write(filename=pdboutput)
+        if args.write_pdb:
+            pdbout.write(filename=pdboutput)
 
     t.append(time.time())
     fs.append("log stuff")
