@@ -54,12 +54,14 @@ parser = argparse.ArgumentParser(description="A tool for calculating simple elec
 parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
 parser.add_argument("-f", "--file", type=str, help="Atomic model as a .pdb file for input (required).")
 parser.add_argument("-d", "--data", type=str, help="Experimental SAXS data file for input (3-column ASCII text file (q, I, err), optional).")
+parser.add_argument("--fast", dest="fast", action="store_true", help="Fast mode. Sets nsamples to 64 (increases voxel size), disables plotting, disables mrc writing, sets shell type to uniform.")
 parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use of experimental data")
 parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use of experimental data")
 parser.add_argument("-u", "--units", default="a", type=str, help="Angular units of experimental data (\"a\" [1/angstrom] or \"nm\" [1/nanometer]; default=\"a\"). If nm, will convert output to angstroms.")
 parser.add_argument("-qmin", "--qmin", default=None, type=float, help="Minimum q value to use for fitting experimental data.")
 parser.add_argument("-qmax", "--qmax", default=None, type=float, help="Maximum q value to use for fitting experimental data.")
 parser.add_argument("-nq", "--nq", default=None, type=int, help="Number of q values to include in final scattering profile (only relevant for prediction with no experimental data, uses interpolation).")
+parser.add_argument("-qfile", "--qfile", default=None, type=str, help="Filename of ASCII text file containing desired q values to write as the first column (only relevant for prediction with no experimental data, uses interpolation).")
 parser.add_argument("-s", "--side", default=None, type=float, help="Desired side length of real space box (default=3*Dmax).")
 parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired voxel size (default=1.0)")
 parser.add_argument("-n", "--nsamples", default=None, type=int, help="Desired number of samples (i.e. voxels) per axis (default=variable)")
@@ -82,7 +84,7 @@ parser.add_argument("-fit_rho0_off", "--fit_rho0_off", dest="fit_rho0", action="
 parser.add_argument("-fit_shell_on", "--fit_shell_on", dest="fit_shell", action="store_true", help="Fit hydration shell parameters (optional, default=True)")
 parser.add_argument("-fit_shell_off", "--fit_shell_off", dest="fit_shell", action="store_false", help="Do not fit hydration shell parameters (optional, default=True)")
 parser.add_argument("-drho","--drho","-shell","-shell_contrast", "--shell_contrast", dest="shell_contrast", default=0.011, type=float, help="Initial mean contrast of hydration shell in e-/A^3 (default=0.011)")
-parser.add_argument("-shell_type", "--shell_type", default="water", type=str, help="Type of hydration shell (water (default) or uniform)")
+parser.add_argument("-shell_type", "--shell_type", default=None, type=str, help="Type of hydration shell (water (default) or uniform)")
 parser.add_argument("-shell_mrcfile", "--shell_mrcfile", default=None, type=str, help=argparse.SUPPRESS) #help="Filename of hydration shell mrc file (default=None)")
 parser.add_argument("-fit_radii", "--fit_radii", dest="fit_radii", action="store_true", help=argparse.SUPPRESS) #help="Fit atomic radii for excluded volume calculation (optional, default=False)")
 parser.add_argument("--radii_sf", default=None, type=float, nargs='+', help=argparse.SUPPRESS) #help="Atomic radii scale factors for excluded volume calculation (optional, ordered as [H C N O])")
@@ -95,7 +97,8 @@ parser.add_argument("-p", "-penalty_weight", "--penalty_weight", default=None, t
 parser.add_argument("-ps", "-penalty_weights", "--penalty_weights", default=[1.0, 0.01], type=float, nargs='+', help="Individual penalty weights for each parameter (space separated listed of weights for [rho0,shell], default=1.0 0.01)")
 parser.add_argument("-min_method", "--min_method", "-minimization_method","--minimization_method", dest="method", default='Nelder-Mead', type=str, help="Minimization method (scipy.optimize method, default=Nelder-Mead).")
 parser.add_argument("-min_options", "--min_options", "-minimization_options","--minimization_options", dest="minopts", default='{"adaptive": True}', type=str, help="Minimization options (scipy.optimize options formatted as python dictionary, default=\"{'adaptive': True}\").")
-parser.add_argument("-write_off", "--write_off", action="store_false", dest="write_mrc_file", help="Do not write MRC file (default=False).")
+parser.add_argument("-write_on", "--write_on", action="store_true", dest="write_mrc_file", help="Write MRC file (default=True).")
+parser.add_argument("-write_off", "--write_off", action="store_false", dest="write_mrc_file", help="Do not write MRC file.")
 parser.add_argument("-write_extras", "--write_extras", action="store_true", default=False, help="Write out extra MRC files for invacuo, exvol, shell densities (default=False).")
 parser.add_argument("-interp_on", "--interp_on", dest="Icalc_interpolation", action="store_true", help="Interpolate I_calc to experimental q grid (default).")
 parser.add_argument("-interp_off", "--interp_off", dest="Icalc_interpolation", action="store_false", help="Do not interpolate I_calc to experimental q grid .")
@@ -103,9 +106,11 @@ parser.add_argument("--plot_on", dest="plot", action="store_true", help="Create 
 parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not create simple plots of results. (Default if Matplotlib does not exist)")
 parser.add_argument("--print_timings", default=False, action="store_true", help="Print timings for each step of the script.")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix (default=basename_pdb)")
+parser.add_argument("--write_shannon", dest="write_shannon", action="store_true", help=argparse.SUPPRESS) # help="Write a file containing only the Shannon intensities.")
+parser.set_defaults(fast = False)
 parser.set_defaults(ignore_waters = True)
 parser.set_defaults(center = True)
-parser.set_defaults(plot=True)
+parser.set_defaults(plot=None)
 parser.set_defaults(use_b=False)
 parser.set_defaults(explicitH=None)
 parser.set_defaults(recalculate_atomic_volumes=False)
@@ -116,7 +121,8 @@ parser.set_defaults(fit_radii=False)
 parser.set_defaults(fit_scale=True)
 parser.set_defaults(fit_offset=False)
 parser.set_defaults(Icalc_interpolation=True)
-parser.set_defaults(write_mrc_file=True)
+parser.set_defaults(write_mrc_file=None)
+parser.set_defaults(write_shannon=False)
 args = parser.parse_args()
 
 np.set_printoptions(linewidth=150,precision=10)
@@ -182,6 +188,22 @@ if __name__ == "__main__":
         print("#  WARNING: use of implicit hydrogens is an experimental feature.                        #")
         print("#  Recommend adding explicit hydrogens using a tool such as Reduce, CHARMM, PyMOL, etc.  #")
         print("#"*90)
+
+    if args.fast:
+        #only set these values in fast mode if they aren't explicitly set in the command line
+        if args.nsamples is None:
+            args.nsamples = 64
+        if args.write_mrc_file is None:
+            args.write_mrc_file = False
+        if args.shell_type is None:
+            args.shell_type = "uniform"
+        if args.plot is None:
+            args.plot = False
+    else:
+        if args.write_mrc_file is None:
+            args.write_mrc_file = True
+        if args.plot is None:
+            args.plot = True
 
     pdb2mrc = saxs.PDB2MRC(
         pdb=pdb,
@@ -325,7 +347,27 @@ if __name__ == "__main__":
     end = time.time()
     print("Total calculation time: %.3f seconds" % (end-start))
 
-    pdb2mrc.save_Iq_calc(prefix=output, qmax=args.qmax, nq=args.nq)
+    if args.qfile is not None:
+        Iq = np.genfromtxt(args.qfile)
+        qc = Iq[:,0]
+    else:
+        qc = None
+
+    pdb2mrc.save_Iq_calc(prefix=output, qmax=args.qmax, nq=args.nq, qc=qc)
+
+    if args.write_shannon:
+        # need an estimate of Dmax, but don't necessarily want to calculate
+        # an entire distance matrix, which is prohibitively slow and memory
+        # intensive for large models. Use this convex hull thing instead.
+        # this function returns the box length, which is 3 times the Dmax,
+        # so divide by three
+        D = saxs.estimate_side_from_pdb(pdb, use_convex_hull=True)/3
+        # do a quick comparison for testing:
+        qcalc_max = pdb2mrc.Iq_calc_interp[:,0].max()
+        wshannon = np.pi/D
+        nshannon = int(qcalc_max/wshannon)
+        qshannon = np.linspace(0,nshannon*wshannon,nshannon)
+        pdb2mrc.save_Iq_calc(prefix=output+'_Shannon', qc=qshannon)
 
     if args.data is not None:
         pdb2mrc.save_fit(prefix=output)
