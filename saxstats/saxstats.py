@@ -56,7 +56,7 @@ import warnings
 import pickle
 
 import numpy as np
-from scipy import ndimage, interpolate, spatial, special, optimize, signal, stats, fft
+from scipy import ndimage, interpolate, spatial, special, optimize, signal, stats, fft, linalg
 from functools import reduce
 
 # load some dictionaries
@@ -2608,7 +2608,7 @@ class Sasrec(object):
     def update(self):
         # self.r = np.linspace(0,self.D,self.nr)
         self.ri = np.arange(self.nr)
-        self.n = self.shannon_channels(self.qmax, self.D) + self.ne
+        self.n = self.shannon_channels(qmax=self.qmax, D=self.D) + self.ne
         self.Ni = np.arange(self.n)
         self.N = self.Ni + 1
         self.Mi = np.copy(self.Ni)
@@ -4488,7 +4488,8 @@ class PDB2MRC(object):
         errc = err_interpolator(qc)
         Iq_calc_interp = np.vstack((qc, Ic, errc)).T
         self.Iq_calc_interp = Iq_calc_interp
-        return Iq_calc_interp
+        self.Iq_calc_orig = np.copy(self.Iq_calc)
+        self.Iq_calc = Iq_calc_interp
 
     def save_Iq_calc(self, prefix=None, qmax=None, nq=None, qc=None):
         """Save the calculated Iq curve to a .dat file."""
@@ -4496,11 +4497,12 @@ class PDB2MRC(object):
         header_dat = header + "\n q_calc I_calc err_calc"
         if prefix is None:
             prefix = self.pdb_basename
-        Iq_calc = self.regrid_Iq_calc(qmax=qmax, nq=nq, qc=qc)
+        if qmax is not None or nq is not None or qc is not None:
+            self.regrid_Iq_calc(qmax=qmax, nq=nq, qc=qc)
         if qmax is None:
             qmax = self.qx_.max() - 1e-8
             # only write out values less than the edge of the box
-        Iq_calc = Iq_calc[Iq_calc[:,0] <= qmax]
+        Iq_calc = self.Iq_calc[self.Iq_calc[:,0] <= qmax]
         np.savetxt(prefix + '.dat', Iq_calc, delimiter=' ', fmt='%.8e', header=header_dat)
 
     def save_fit(self, prefix=None):
@@ -4527,7 +4529,7 @@ class PDB2SAS(object):
         if q is None:
             q = np.linspace(0, 0.5, 101)
         self.q = q
-        self.calc_I()
+        # self.calc_I()
 
     def calc_form_factors(self, B=0.0):
         """Calculate the scattering of an object from a set of 3D coordinates using the Debye formula.
@@ -4562,7 +4564,7 @@ class PDB2SAS(object):
             # if natoms is too large, sinc lookup table has huge memory requirements
         else:
             if self.pdb.rij is None:
-                self.pdb.rij = c
+                self.pdb.rij = self.pdb.calculate_distance_matrix()
             s = np.sinc(self.q * self.pdb.rij[..., None] / np.pi)
             self.I = np.einsum('iq,jq,ijq->q', self.ff, self.ff, s)
 
