@@ -3692,6 +3692,35 @@ def rotate_coordinates(coordinates, degrees_x=0, degrees_y=0, degrees_z=0):
     return rotated_coordinates
 
 
+def regrid_Iq(Iq, qmax=None, nq=None, qc=None, use_sasrec=False, D=None):
+    """ Interpolate Iq_calc to desired qgrid.
+    qmax - maximum desired q value (e.g. 0.5, optional)
+    nq   - number of q points desired (equispaced from 0 to qmax, e.g., 501, optional)
+    qc   - desired q grid (takes precedence over qmax/nq)
+    use_sasrec - rather than using simple scipy interpolation, use the more accurate (but slower) sasrec for interpolation
+    D    - maximum dimension of particle (useful for sasrec, if not given, estimated automatically from the data)
+    """
+    if qc is None:
+        # set some defaults
+        if qmax is None:
+            qmax = 0.5
+        if nq is None:
+            nq = 501
+        qc = np.linspace(0, qmax, nq)
+    if use_sasrec:
+        if D is None:
+            D = estimate_dmax(Iq)
+        sasrec = Sasrec(Iq, D=D, qc=qc, alpha=0.0, extrapolate=False)
+        Iq_calc_interp = np.vstack((sasrec.qc, sasrec.Ic, sasrec.Icerr)).T
+    else:
+        I_interpolator = interpolate.interp1d(Iq[:, 0], Iq[:, 1], kind='cubic', fill_value='extrapolate')
+        Ic = I_interpolator(qc)
+        err_interpolator = interpolate.interp1d(Iq[:, 0], Iq[:, 2], kind='cubic', fill_value='extrapolate')
+        Ic_err = err_interpolator(qc)
+        Iq_calc_interp = np.vstack((qc, Ic, Ic_err)).T
+    return Iq_calc_interp
+
+
 class PDB2MRC(object):
     def __init__(self,
                  pdb,
@@ -4468,7 +4497,7 @@ class PDB2MRC(object):
             sphere_volume_from_radius(self.pdb.exvolHradius) * self.pdb.numH)
         self.logger.info("Calculated excluded volume: %.2f" % (self.exvol_in_A3))
 
-    def regrid_Iq_calc(self, qmax=None, nq=None, qc=None):
+    def regrid_Iq_calc(self, qmax=None, nq=None, qc=None, use_sasrec=False, D=None):
         # interpolate Iq_calc to desired qgrid
         if qc is None:
             # set some defaults
@@ -4480,25 +4509,24 @@ class PDB2MRC(object):
             if nq is None:
                 nq = 501
             qc = np.linspace(0, qmax, nq)
-        I_interpolator = interpolate.interp1d(self.Iq_calc[:, 0], self.Iq_calc[:, 1], kind='cubic',
-                                              fill_value='extrapolate')
-        Ic = I_interpolator(qc)
-        err_interpolator = interpolate.interp1d(self.Iq_calc[:, 0], self.Iq_calc[:, 2], kind='cubic',
-                                                fill_value='extrapolate')
-        errc = err_interpolator(qc)
-        Iq_calc_interp = np.vstack((qc, Ic, errc)).T
+        Iq_calc_interp = regrid_Iq(self.Iq_calc, qmax=qmax, nq=nq, qc=qc, use_sasrec=use_sasrec, D=D)
         self.Iq_calc_interp = Iq_calc_interp
         self.Iq_calc_orig = np.copy(self.Iq_calc)
         self.Iq_calc = Iq_calc_interp
 
-    def save_Iq_calc(self, prefix=None, qmax=None, nq=None, qc=None):
+    def save_Iq_calc(self, prefix=None, qmax=None, nq=None, qc=None, use_sasrec=True, D=None):
         """Save the calculated Iq curve to a .dat file."""
         header = ' '.join('%s: %.5e ; ' % (self.param_names[i], self.params[i]) for i in range(len(self.params)))
         header_dat = header + "\n q_calc I_calc err_calc"
         if prefix is None:
             prefix = self.pdb_basename
-        if qmax is not None or nq is not None or qc is not None:
-            self.regrid_Iq_calc(qmax=qmax, nq=nq, qc=qc)
+        if qmax is not None or nq is not None or qc is not None or use_sasrec:
+            if use_sasrec:
+                # to use sasrec, we need a Dmax.
+                D = estimate_side_from_pdb(self.pdb, use_convex_hull=True)/3.0
+                # add a carbon radius on either side, plus a water shell on either side
+                D += 2 * (1.7 + 2.8)
+            self.regrid_Iq_calc(qmax=qmax, nq=nq, qc=qc, use_sasrec=use_sasrec, D=D)
         if qmax is None:
             qmax = self.qx_.max() - 1e-8
             # only write out values less than the edge of the box
