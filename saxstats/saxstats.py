@@ -56,7 +56,7 @@ import warnings
 import pickle
 
 import numpy as np
-from scipy import ndimage, interpolate, spatial, special, optimize, signal, stats, fft, linalg
+from scipy import ndimage, interpolate, spatial, special, optimize, signal, stats, fft
 from functools import reduce
 
 # load some dictionaries
@@ -1955,6 +1955,27 @@ def spherical_to_euler(phi, theta):
     return alpha, beta, gamma
 
 
+def fibonacci_sphere(n):
+    """
+    Generate points on a sphere using the Fibonacci spiral method.
+
+    Parameters:
+    n (int): Number of points
+
+    Returns:
+    theta (ndarray): Polar angles
+    phi (ndarray): Azimuthal angles
+    """
+    indices = np.arange(0, n, dtype=float) + 0.5
+
+    phi = np.arccos(1 - 2 * indices / n)
+    theta = np.pi * (1 + 5 ** 0.5) * indices
+
+    # Ensure the last phi is pi (or very close to it)
+    phi[-1] = np.pi
+
+    return theta, phi
+
 def euler_grid_search(refrho, movrho, topn=1, abort_event=None):
     """Simple grid search on uniformly sampled sphere to optimize alignment.
         Return the topn candidate maps (default=1, i.e. the best candidate)."""
@@ -3692,6 +3713,138 @@ def rotate_coordinates(coordinates, degrees_x=0, degrees_y=0, degrees_z=0):
     return rotated_coordinates
 
 
+def cartesian_to_spherical_interpolation(A, x, y, z, r, theta, phi):
+    """
+    Interpolate a 3D complex-valued array from a Cartesian grid to a spherical grid.
+
+    Parameters:
+    A (ndarray): Complex-valued 3D array on Cartesian grid
+    x, y, z (ndarray): 3D arrays representing the Cartesian coordinates (mesh grids)
+    r, theta, phi (ndarray): 3D arrays representing the spherical coordinates (mesh grids)
+
+    Returns:
+    A_spherical (ndarray): Interpolated complex-valued array on spherical grid
+    """
+
+    # Convert spherical coordinates to Cartesian
+    x_sph = r * np.sin(theta) * np.cos(phi)
+    y_sph = r * np.sin(theta) * np.sin(phi)
+    z_sph = r * np.cos(theta)
+
+    # Flatten the coordinates
+    points = np.vstack((x_sph.ravel(), y_sph.ravel(), z_sph.ravel())).T
+
+    # Get unique coordinate values for RegularGridInterpolator
+    x_unique = np.unique(x)
+    y_unique = np.unique(y)
+    z_unique = np.unique(z)
+
+    # Create interpolator for real and imaginary parts
+    interpolator_real = interpolate.RegularGridInterpolator((x_unique, y_unique, z_unique), A.real)
+    interpolator_imag = interpolate.RegularGridInterpolator((x_unique, y_unique, z_unique), A.imag)
+
+    # Perform interpolation
+    A_spherical_real = interpolator_real(points).reshape(r.shape)
+    A_spherical_imag = interpolator_imag(points).reshape(r.shape)
+
+    # Combine real and imaginary parts
+    A_spherical = A_spherical_real + 1j * A_spherical_imag
+
+    return A_spherical
+
+
+def generate_fibonacci_coordinates(qsh, n_points):
+    n_q = len(qsh)
+    theta, phi = fibonacci_sphere(n_points)
+
+    n_theta = int(np.sqrt(n_points))
+    n_phi = n_points // n_theta
+    theta_2d = theta[:n_theta * n_phi].reshape(n_theta, n_phi)
+    phi_2d = phi[:n_theta * n_phi].reshape(n_theta, n_phi)
+
+    qq = np.repeat(qsh[:, np.newaxis, np.newaxis], n_theta, axis=1)
+    qq = np.repeat(qq, n_phi, axis=2)
+    tt = np.tile(theta_2d, (n_q, 1, 1))
+    pp = np.tile(phi_2d, (n_q, 1, 1))
+
+    return qq, tt, pp
+
+
+def spherical_to_cartesian(q, theta, phi):
+    x = q * np.sin(phi) * np.cos(theta)
+    y = q * np.sin(phi) * np.sin(theta)
+    z = q * np.cos(phi)
+    return x, y, z
+
+
+def interpolate_to_fibonacci(A, qx, qy, qz, qx_fib, qy_fib, qz_fib):
+    # Ensure we're using the unique, sorted coordinate values
+    x_unique, y_unique, z_unique = map(np.unique, [qx, qy, qz])
+
+    # Create interpolation function
+    interp_func = interpolate.RegularGridInterpolator(
+        (x_unique, y_unique, z_unique),
+        A,
+        method='linear',
+        bounds_error=False,
+        fill_value=None
+    )
+
+    # Prepare points for interpolation
+    points = np.column_stack((qx_fib.ravel(), qy_fib.ravel(), qz_fib.ravel()))
+
+    # Perform interpolation
+    interpolated = interp_func(points)
+
+    return interpolated.reshape(qx_fib.shape)
+
+
+def cartesian_to_spherical_interpolation(x_mesh, y_mesh, z_mesh, density_cartesian):
+    # Ensure inputs are numpy arrays
+    x_mesh = np.asarray(x_mesh)
+    y_mesh = np.asarray(y_mesh)
+    z_mesh = np.asarray(z_mesh)
+    density_cartesian = np.asarray(density_cartesian)
+
+    # Get the unique values along each axis
+    x_unique = np.unique(x_mesh)
+    y_unique = np.unique(y_mesh)
+    z_unique = np.unique(z_mesh)
+
+    # Create RegularGridInterpolator
+    interpolator_real = interpolate.RegularGridInterpolator((x_unique, y_unique, z_unique),
+                                           density_cartesian.real,
+                                           method='linear',
+                                           bounds_error=False,
+                                           fill_value=None)
+    interpolator_imag = interpolate.RegularGridInterpolator((x_unique, y_unique, z_unique),
+                                           density_cartesian.imag,
+                                           method='linear',
+                                           bounds_error=False,
+                                           fill_value=None)
+
+    def rtp2xyz(r, theta, phi):
+        x = r * np.sin(theta) * np.cos(phi)
+        y = r * np.sin(theta) * np.sin(phi)
+        z = r * np.cos(theta)
+        return x, y, z
+
+    def get_interpolated_values(r, theta, phi):
+        x, y, z = rtp2xyz(r, theta, phi)
+
+        # Prepare points for interpolation
+        points = np.array([x, y, z]).T.reshape(-1, 3)
+
+        # Perform interpolation
+        result_real = interpolator_real(points)
+        result_imag = interpolator_imag(points)
+        result = result_real + 1j * result_imag
+
+        # Reshape result to match input shape
+        return result.reshape(r.shape)
+
+    return get_interpolated_values
+
 class PDB2MRC(object):
     def __init__(self,
                  pdb,
@@ -4062,6 +4215,34 @@ class PDB2MRC(object):
         self.qblravel = qblravel
         self.xcount = xcount
 
+        # Create spherical grid
+        n_theta_phi = 1000  # number of points in spherical angular grid
+        theta, phi = fibonacci_sphere(n_theta_phi)
+
+        # We want a spherical grid where each radial shell is a Shannon channel
+        D = estimate_side_from_pdb(self.pdb, use_convex_hull=True)/3.0
+        wsh = np.pi/D
+        nsh = int(qx_.max() / wsh)
+        qsh = np.arange(nsh) * wsh
+        self.qsh = qsh
+
+        # Create meshgrid for spherical coordinates
+        # self.qq, self.tt, self.pp = np.meshgrid(qsh, theta, phi, indexing='ij')
+        # Create arrays for qq, tt, pp
+        # self.qq = np.repeat(qsh[:, np.newaxis], n_theta_phi, axis=1)
+        # self.tt = np.tile(theta, (len(qsh), 1))
+        # self.pp = np.tile(phi, (len(qsh), 1))
+        # self.qq, self.tt, self.pp, self.qx_sph, self.qy_sph, self.qz_sph = generate_coordinate_arrays(qsh, n_theta_phi, self.qx, self.qy, self.qz)
+        self.qq, self.tt, self.pp, = generate_fibonacci_coordinates(qsh, n_theta_phi)
+        print(self.qq.shape)
+        # exit()
+
+        # Convert spherical coordinates to Cartesian
+        # self.qx_sph = self.qq * np.cos(self.tt) * np.sin(self.pp)
+        # self.qy_sph = self.qq * np.sin(self.tt) * np.sin(self.pp)
+        # self.qz_sph = self.qq * np.cos(self.pp)
+        self.qx_sph, self.qy_sph, self.qz_sph = spherical_to_cartesian(self.qq, self.tt, self.pp)
+
         # save an array of indices containing only desired q range for speed
         qmax4calc = self.qx_.max() * 1.1
         self.qidx = np.where((self.qr <= qmax4calc))
@@ -4206,6 +4387,24 @@ class PDB2MRC(object):
 
         # shell invacuo F_shell
         self.F_shell = myfftn(self.rho_shell)
+
+        # interpolate each F to spherical grid
+        # self.F_invacuo_sph = interpolate_to_fibonacci(self.F_invacuo,
+        #                                               self.qx, self.qy, self.qz,
+        #                                               self.qq, self.tt, self.pp)
+        # self.F_exvol_sph = interpolate_to_fibonacci(self.F_exvol,
+        #                                             self.qx, self.qy, self.qz,
+        #                                             self.qq, self.tt, self.pp)
+        # self.F_shell_sph = interpolate_to_fibonacci(self.F_shell,
+        #                                             self.qx, self.qy, self.qz,
+        #                                             self.qq, self.tt, self.pp)
+        interpolator = cartesian_to_spherical_interpolation(self.qx, self.qy, self.qz, self.F_invacuo)
+        self.F_invacuo_sph = interpolator(self.qq, self.tt, self.pp)
+        interpolator = cartesian_to_spherical_interpolation(self.qx, self.qy, self.qz, self.F_exvol)
+        self.F_exvol_sph = interpolator(self.qq, self.tt, self.pp)
+        interpolator = cartesian_to_spherical_interpolation(self.qx, self.qy, self.qz, self.F_shell)
+        self.F_shell_sph = interpolator(self.qq, self.tt, self.pp)
+
         if not self.quiet: print('Finished structure factors.')
 
     def load_data(self, filename=None, units=None):
@@ -4430,6 +4629,7 @@ class PDB2MRC(object):
             # scale Fs only in the data range for fitting for speed
             self.F[self.qidx] = self.F_invacuo[self.qidx] - sf_ex * self.F_exvol[self.qidx] + sf_sh * self.F_shell[
                 self.qidx]
+        self.F_sph = self.F_invacuo_sph - sf_ex * self.F_exvol_sph + sf_sh * self.F_shell_sph
 
     def calc_I_with_modified_params(self, params):
         """Calculates intensity profile for optimization of parameters"""
@@ -4443,7 +4643,22 @@ class PDB2MRC(object):
             self.F_exvol = myfftn(self.rho_exvol)
         self.calc_F_with_modified_params(params)
         self.I3D = abs2(self.F)
-        self.I_calc = mybinmean(self.I3D.ravel(), self.qblravel, xcount=self.xcount)
+        self.I3D_sph = abs2(self.F_sph)
+        # self.I_calc = mybinmean(self.I3D.ravel(), self.qblravel, xcount=self.xcount)
+        print(self.I3D_sph.shape)
+        Ish = np.mean(self.I3D_sph, axis=(1,2))  # Shannon channel intensities directly from fourier space
+        import matplotlib.pyplot as plt
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        idx = np.where(self.qq==self.qsh[1])
+        ax.scatter(self.qx_sph[idx], self.qy_sph[idx], self.qz_sph[idx], c=self.I3D_sph[idx], cmap='viridis')
+        plt.show()
+        # exit()
+        self.I_calc = np.interp(self.qbinsc, self.qsh, Ish)  # for now interpolate to fill in missing values with zeros
+        import matplotlib.pyplot as plt
+        plt.plot(self.qsh, Ish)
+        plt.plot(self.qbinsc, self.I_calc)
+        plt.show()
         self.Iq_calc = np.vstack((self.qbinsc, self.I_calc, self.I_calc * .01 + self.I_calc[0] * 0.002)).T
         # calculate Rg and I0 and store it:
         self.Rg = calc_rg_by_guinier_first_2_points(self.q_calc, self.I_calc)
