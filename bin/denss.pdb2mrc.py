@@ -133,19 +133,6 @@ np.set_printoptions(linewidth=150,precision=10)
 t.append(time.time())
 fs.append("argparse")
 
-if args.plot:
-    #if plotting is enabled, try to import matplotlib
-    #if import fails, set plotting to false
-    try:
-        import matplotlib.pyplot as plt
-        from matplotlib import gridspec
-    except ImportError as e:
-        print("matplotlib import failed.")
-        args.plot = False
-
-t.append(time.time())
-fs.append("import matplotlib")
-
 if __name__ == "__main__":
     start = time.time()
 
@@ -193,7 +180,7 @@ if __name__ == "__main__":
         print("#"*90)
 
     if args.fast:
-        #only set these values in fast mode if they aren't explicitly set in the command line
+        # only set these values in fast mode if they aren't explicitly set in the command line
         if args.nsamples is None:
             args.nsamples = 64
         if args.write_mrc_file is None:
@@ -211,6 +198,19 @@ if __name__ == "__main__":
             args.plot = True
         if args.write_pdb is None:
             args.write_pdb = True
+
+    if args.plot:
+        # if plotting is enabled, try to import matplotlib
+        # if import fails, set plotting to false
+        try:
+            import matplotlib.pyplot as plt
+            from matplotlib import gridspec
+        except ImportError as e:
+            print("matplotlib import failed.")
+            args.plot = False
+
+    t.append(time.time())
+    fs.append("import matplotlib")
 
     pdb2mrc = saxs.PDB2MRC(
         pdb=pdb,
