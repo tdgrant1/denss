@@ -4221,8 +4221,10 @@ class PDB2MRC(object):
 
         # We want a spherical grid where each radial shell is a Shannon channel
         D = estimate_side_from_pdb(self.pdb, use_convex_hull=True)/3.0
+        D += 9.0 #adding carbon atom and two water diameters for shell
         wsh = np.pi/D
         nsh = int(qx_.max() / wsh)
+        self.wsh = wsh
         qsh = np.arange(nsh) * wsh
         self.qsh = qsh
 
@@ -4646,20 +4648,34 @@ class PDB2MRC(object):
         self.I3D_sph = abs2(self.F_sph)
         # self.I_calc = mybinmean(self.I3D.ravel(), self.qblravel, xcount=self.xcount)
         print(self.I3D_sph.shape)
-        Ish = np.mean(self.I3D_sph, axis=(1,2))  # Shannon channel intensities directly from fourier space
-        import matplotlib.pyplot as plt
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        idx = np.where(self.qq==self.qsh[1])
-        ax.scatter(self.qx_sph[idx], self.qy_sph[idx], self.qz_sph[idx], c=self.I3D_sph[idx], cmap='viridis')
-        plt.show()
+        Ish = np.zeros(self.I3D_sph.shape[0])
+        for i in range(Ish.shape[0]):
+            # idx = np.where(self.qq == self.qsh[i])
+            # Ish[i] = np.mean(self.I3D_sph[idx])  # Shannon channel intensities directly from fourier space
+            # print(Ish[i])
+            idx = np.where(np.abs(self.qr-self.qsh[i]) <= self.wsh/3)
+            Ish[i] = np.mean(self.I3D[idx])
+            # print(Ish[i])
+            # print()
+        # print(Ish)
         # exit()
-        self.I_calc = np.interp(self.qbinsc, self.qsh, Ish)  # for now interpolate to fill in missing values with zeros
-        import matplotlib.pyplot as plt
-        plt.plot(self.qsh, Ish)
-        plt.plot(self.qbinsc, self.I_calc)
-        plt.show()
-        self.Iq_calc = np.vstack((self.qbinsc, self.I_calc, self.I_calc * .01 + self.I_calc[0] * 0.002)).T
+        # import matplotlib.pyplot as plt
+        # fig = plt.figure()
+        # ax = fig.add_subplot(111, projection='3d')
+        # idx = np.where(self.qq==self.qsh[1])
+        # ax.scatter(self.qx_sph[idx], self.qy_sph[idx], self.qz_sph[idx], c=self.I3D_sph[idx], cmap='viridis')
+        # plt.show()
+        # exit()
+        self.Ish = Ish
+        self.q_calc = self.qsh
+        self.I_calc = Ish
+        # self.I_calc = np.interp(self.qbinsc, self.qsh, Ish)  # for now interpolate to fill in missing values with zeros
+        # import matplotlib.pyplot as plt
+        # plt.plot(self.qsh, Ish)
+        # plt.plot(self.qbinsc, self.I_calc)
+        # plt.show()
+        # self.Iq_calc = np.vstack((self.qbinsc, self.I_calc, self.I_calc * .01 + self.I_calc[0] * 0.002)).T
+        self.Iq_calc = np.vstack((self.qsh, self.Ish, self.Ish * .01 + self.Ish[0] * 0.002)).T
         # calculate Rg and I0 and store it:
         self.Rg = calc_rg_by_guinier_first_2_points(self.q_calc, self.I_calc)
         self.I0 = self.I_calc[0]
