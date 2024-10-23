@@ -3707,9 +3707,7 @@ def regrid_Iq(Iq, qmax=None, nq=None, qc=None, use_sasrec=False, D=None):
         if nq is None:
             nq = 501
         qc = np.linspace(0, qmax, nq)
-    if use_sasrec:
-        if D is None:
-            D = estimate_dmax(Iq)
+    if use_sasrec and D is not None:
         sasrec = Sasrec(Iq, D=D, qc=qc, alpha=0.0, extrapolate=False)
         Iq_calc_interp = np.vstack((sasrec.qc, sasrec.Ic, sasrec.Icerr)).T
     else:
@@ -3758,6 +3756,7 @@ class PDB2MRC(object):
                  fit_all=True,
                  min_method='Nelder-Mead',
                  min_opts='{"adaptive": True}',
+                 fast=False,
                  ignore_warnings=False,
                  quiet=False,
                  run_all_on_init=False,
@@ -3809,7 +3808,8 @@ class PDB2MRC(object):
         if not self.use_b:
             self.pdb.b *= 0
         # calculate some optimal grid values
-        self.optimal_side = estimate_side_from_pdb(self.pdb)
+        self.optimal_side = estimate_side_from_pdb(self.pdb, use_convex_hull=True)
+        self.D = self.optimal_side/3 + 2*(1.7+2.8)
         self.optimal_voxel = 1.0
         self.optimal_nsamples = np.ceil(self.optimal_side / self.optimal_voxel).astype(int)
         self.nsamples_limit = 256
@@ -3859,6 +3859,7 @@ class PDB2MRC(object):
         self.params = np.array([self.rho0, self.shell_contrast])
         self.params_target = np.copy(self.params)
         self.penalties_initialized = False
+        self.fast = fast
         self.ignore_warnings = ignore_warnings
         fname_nopath = os.path.basename(self.pdb.filename)
         self.pdb_basename, ext = os.path.splitext(fname_nopath)
@@ -4392,16 +4393,29 @@ class PDB2MRC(object):
                                                                                       interpolation=self.Icalc_interpolation,
                                                                                       scale=self.fit_scale,
                                                                                       offset=self.fit_offset,
-                                                                                      return_sf=True, return_fit=True)
+                                                                                      return_sf=True, return_fit=True,
+                                                                                      use_sasrec=True, D=self.D)
         self.logger.info("Scale factor: %.5e " % self.exp_scale_factor)
         self.logger.info("Offset: %.5e " % self.offset)
         self.logger.info("chi2 of fit:  %.5e " % self.optimized_chi2)
 
     def calc_score_with_modified_params(self, params):
         self.calc_I_with_modified_params(params)
-        self.chi2, self.exp_scale_factor = calc_chi2(self.Iq_exp, self.Iq_calc, scale=self.fit_scale,
-                                                     offset=self.fit_offset, interpolation=self.Icalc_interpolation,
-                                                     return_sf=True)
+        if self.fast:
+            # in fast mode, don't use sasrec for interpolation
+            self.chi2, self.exp_scale_factor = calc_chi2(self.Iq_exp, self.Iq_calc,
+                                                         scale=self.fit_scale,
+                                                         offset=self.fit_offset,
+                                                         interpolation=self.Icalc_interpolation,
+                                                         return_sf=True)
+        else:
+            # in regular mode, use sasrec for interpolation
+            self.chi2, self.exp_scale_factor = calc_chi2(self.Iq_exp, self.Iq_calc,
+                                                         scale=self.fit_scale,
+                                                         offset=self.fit_offset,
+                                                         interpolation=self.Icalc_interpolation,
+                                                         return_sf=True,
+                                                         use_sasrec=True, D=self.D)
         self.calc_penalty(params)
         self.score = self.chi2 + self.penalty
         if self.fit_params:
@@ -4481,15 +4495,18 @@ class PDB2MRC(object):
     def calc_rho_with_modified_params(self, params):
         """Calculates electron density map for protein in solution. Includes the excluded volume and
         hydration shell calculations."""
-        # sf_ex is ratio of params[0] to initial rho0
-        sf_ex = params[0] / self.rho0
-        # add hydration shell to density
-        sf_sh = params[1] / self.shell_contrast
+        if self.rho0 != 0:
+            sf_ex = params[0] / self.rho0
+        else:
+            sf_ex = 1.0
+        # sf_sh is ratio of params[1] to initial shell_contrast
+        if self.shell_contrast != 0:
+            sf_sh = params[1] / self.shell_contrast
+        else:
+            sf_sh = 1.0
         self.sf_ex = sf_ex
         self.sf_sh = sf_sh
-        self.rho_exvol *= sf_ex
-        self.rho_shell *= sf_sh
-        self.rho_insolvent = self.rho_invacuo - self.rho_exvol + self.rho_shell
+        self.rho_insolvent = self.rho_invacuo - sf_ex * self.rho_exvol + sf_sh * self.rho_shell
 
     def calculate_excluded_volume_in_A3(self):
         """Calculate the excluded volume of the particle in angstroms cubed."""
@@ -4497,36 +4514,14 @@ class PDB2MRC(object):
             sphere_volume_from_radius(self.pdb.exvolHradius) * self.pdb.numH)
         self.logger.info("Calculated excluded volume: %.2f" % (self.exvol_in_A3))
 
-    def regrid_Iq_calc(self, qmax=None, nq=None, qc=None, use_sasrec=False, D=None):
-        # interpolate Iq_calc to desired qgrid
-        if qc is None:
-            # set some defaults
-            if qmax is None:
-                if self.qmax is None:
-                    qmax = 0.5
-                else:
-                    qmax = self.qmax
-            if nq is None:
-                nq = 501
-            qc = np.linspace(0, qmax, nq)
-        Iq_calc_interp = regrid_Iq(self.Iq_calc, qmax=qmax, nq=nq, qc=qc, use_sasrec=use_sasrec, D=D)
-        self.Iq_calc_interp = Iq_calc_interp
-        self.Iq_calc_orig = np.copy(self.Iq_calc)
-        self.Iq_calc = Iq_calc_interp
-
-    def save_Iq_calc(self, prefix=None, qmax=None, nq=None, qc=None, use_sasrec=True, D=None):
+    def save_Iq_calc(self, prefix=None, qmax=None, nq=None, qc=None, use_sasrec=True):
         """Save the calculated Iq curve to a .dat file."""
         header = ' '.join('%s: %.5e ; ' % (self.param_names[i], self.params[i]) for i in range(len(self.params)))
         header_dat = header + "\n q_calc I_calc err_calc"
         if prefix is None:
             prefix = self.pdb_basename
         if qmax is not None or nq is not None or qc is not None or use_sasrec:
-            if use_sasrec:
-                # to use sasrec, we need a Dmax.
-                D = estimate_side_from_pdb(self.pdb, use_convex_hull=True)/3.0
-                # add a carbon radius on either side, plus a water shell on either side
-                D += 2 * (1.7 + 2.8)
-            self.regrid_Iq_calc(qmax=qmax, nq=nq, qc=qc, use_sasrec=use_sasrec, D=D)
+            self.Iq_calc = regrid_Iq(Iq=self.Iq_calc, qmax=qmax, nq=nq, qc=qc, use_sasrec=use_sasrec)
         if qmax is None:
             qmax = self.qx_.max() - 1e-8
             # only write out values less than the edge of the box

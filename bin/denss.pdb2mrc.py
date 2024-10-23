@@ -247,6 +247,7 @@ if __name__ == "__main__":
         fit_all=args.fit_all,
         min_method=args.method,
         min_opts=args.minopts,
+        fast=args.fast,
         )
 
     t.append(time.time())
@@ -327,8 +328,6 @@ if __name__ == "__main__":
     t.append(time.time())
     fs.append("calc_rho_with_modified_params")
 
-    # qmax = pdb2mrc.qr.max()-1e-8
-    # pdb2mrc.qidx = np.where((pdb2mrc.qr<qmax))
     pdb2mrc.calc_I_with_modified_params(pdb2mrc.params)
     t.append(time.time())
     fs.append("calc_I_with_modified_params")
@@ -361,18 +360,12 @@ if __name__ == "__main__":
     else:
         qc = None
 
-    pdb2mrc.save_Iq_calc(prefix=output, qmax=args.qmax, nq=args.nq, qc=qc)
+    # always use sasrec interpolation for final output calculated profile, since its more accurate
+    pdb2mrc.save_Iq_calc(prefix=output, qmax=args.qmax, nq=args.nq, qc=qc, use_sasrec=True)
 
     if args.write_shannon:
-        # need an estimate of Dmax, but don't necessarily want to calculate
-        # an entire distance matrix, which is prohibitively slow and memory
-        # intensive for large models. Use this convex hull thing instead.
-        # this function returns the box length, which is 3 times the Dmax,
-        # so divide by three
-        D = saxs.estimate_side_from_pdb(pdb, use_convex_hull=True)/3
-        # do a quick comparison for testing:
-        qcalc_max = pdb2mrc.Iq_calc_interp[:,0].max()
-        wshannon = np.pi/D
+        qcalc_max = pdb2mrc.Iq_calc[:,0].max()
+        wshannon = np.pi/pdb2mrc.D
         nshannon = int(qcalc_max/wshannon)
         qshannon = np.linspace(0,nshannon*wshannon,nshannon)
         pdb2mrc.save_Iq_calc(prefix=output+'_Shannon', qc=qshannon)
