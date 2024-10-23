@@ -327,8 +327,8 @@ if __name__ == "__main__":
     t.append(time.time())
     fs.append("calc_rho_with_modified_params")
 
-    qmax = pdb2mrc.qr.max()-1e-8
-    pdb2mrc.qidx = np.where((pdb2mrc.qr<qmax))
+    # qmax = pdb2mrc.qr.max()-1e-8
+    # pdb2mrc.qidx = np.where((pdb2mrc.qr<qmax))
     pdb2mrc.calc_I_with_modified_params(pdb2mrc.params)
     t.append(time.time())
     fs.append("calc_I_with_modified_params")
