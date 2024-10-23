@@ -5305,7 +5305,7 @@ def estimate_side_from_pdb(pdb, use_convex_hull=False):
     return side
 
 
-def calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True, return_sf=False, return_fit=False):
+def calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True, return_sf=False, return_fit=False, use_sasrec=True, D=None):
     """Calculates a chi2 comparing experimental vs calculated intensity profiles using interpolation.
 
     Iq_exp (ndarray) - Experimental data, q, I, sigq (required)
@@ -5322,15 +5322,13 @@ def calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True, ret
     q_calc = np.copy(Iq_calc[:, 0])
     I_calc = np.copy(Iq_calc[:, 1])
     if interpolation:
-        I_calc_interpolator = interpolate.interp1d(q_calc, I_calc, kind='cubic', fill_value='extrapolate')
-        I_calc_interp = I_calc_interpolator(q_exp)
-        I_calc = np.copy(I_calc_interp)
-
+        Iq_calc_interp = regrid_Iq(Iq_calc, qc=q_exp, use_sasrec=use_sasrec, D=D)
+        I_calc = Iq_calc_interp[:,1]
     else:
         # if interpolation of (coarse) calculated profile is disabled, we still need to at least
         # put the experimental data on the correct grid for comparison, so regrid the exp arrays
         # with simple 1D linear interpolation. Note, this interpolates the exp to calc, not calc to exp,
-        # becuase exp is finely sampled usually, whereas for denss in particular calc is coarse
+        # because exp is finely sampled usually, whereas for denss in particular calc is coarse
         I_exp = np.interp(q_calc, q_exp, I_exp)
         sigq_exp = np.interp(q_calc, q_exp, sigq_exp)
         q_exp = np.copy(q_calc)
