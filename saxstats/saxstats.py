@@ -3692,10 +3692,10 @@ def rotate_coordinates(coordinates, degrees_x=0, degrees_y=0, degrees_z=0):
     return rotated_coordinates
 
 
-def regrid_Iq(Iq, qmax=None, nq=None, qc=None, use_sasrec=False, D=None):
+def regrid_Iq(Iq, qmin=None, qmax=None, nq=None, qc=None, use_sasrec=False, D=None):
     """ Interpolate Iq_calc to desired qgrid.
     qmax - maximum desired q value (e.g. 0.5, optional)
-    nq   - number of q points desired (equispaced from 0 to qmax, e.g., 501, optional)
+    nq   - number of q points desired (equispaced from qmin to qmax, e.g., 501, optional)
     qc   - desired q grid (takes precedence over qmax/nq)
     use_sasrec - rather than using simple scipy interpolation, use the more accurate (but slower) sasrec for interpolation
     D    - maximum dimension of particle (useful for sasrec, if not given, estimated automatically from the data)
@@ -3703,10 +3703,14 @@ def regrid_Iq(Iq, qmax=None, nq=None, qc=None, use_sasrec=False, D=None):
     if qc is None:
         # set some defaults
         if qmax is None:
-            qmax = 0.5
+            qmax = Iq[:,0].max()
+        if qmin is None:
+            qmin = Iq[:,0].min()
         if nq is None:
             nq = 501
-        qc = np.linspace(0, qmax, nq)
+        if qmax > Iq[:,0].max():
+            print(f'WARNING: interpolated qmax ({qmax:0.2f}) outside range of input qmax ({Iq[:,0].max():0.2f})')
+        qc = np.linspace(qmin, qmax, nq)
     if use_sasrec and D is not None:
         sasrec = Sasrec(Iq, D=D, qc=qc, alpha=0.0, extrapolate=False)
         Iq_calc_interp = np.vstack((sasrec.qc, sasrec.Ic, sasrec.Icerr)).T
@@ -3757,6 +3761,7 @@ class PDB2MRC(object):
                  min_method='Nelder-Mead',
                  min_opts='{"adaptive": True}',
                  fast=False,
+                 use_sasrec_during_fitting=False,
                  ignore_warnings=False,
                  quiet=False,
                  run_all_on_init=False,
@@ -3860,6 +3865,7 @@ class PDB2MRC(object):
         self.params_target = np.copy(self.params)
         self.penalties_initialized = False
         self.fast = fast
+        self.use_sasrec_during_fitting = use_sasrec_during_fitting
         self.ignore_warnings = ignore_warnings
         fname_nopath = os.path.basename(self.pdb.filename)
         self.pdb_basename, ext = os.path.splitext(fname_nopath)
@@ -3893,7 +3899,6 @@ class PDB2MRC(object):
         self.calculate_excluded_volume()
         self.calculate_hydration_shell()
         self.calculate_structure_factors()
-        self.calc_F_with_modified_params(self.params, full_qr=True)
         self.calc_I_with_modified_params(self.params)
         self.calc_rho_with_modified_params(self.params)
 
@@ -4401,21 +4406,21 @@ class PDB2MRC(object):
 
     def calc_score_with_modified_params(self, params):
         self.calc_I_with_modified_params(params)
-        if self.fast:
-            # in fast mode, don't use sasrec for interpolation
-            self.chi2, self.exp_scale_factor = calc_chi2(self.Iq_exp, self.Iq_calc,
-                                                         scale=self.fit_scale,
-                                                         offset=self.fit_offset,
-                                                         interpolation=self.Icalc_interpolation,
-                                                         return_sf=True)
-        else:
-            # in regular mode, use sasrec for interpolation
+        # sasrec is slow, so don't use it for fitting by default, but allow it by the user
+        # but we will still use it for final output profile calculation
+        if self.use_sasrec_during_fitting:
             self.chi2, self.exp_scale_factor = calc_chi2(self.Iq_exp, self.Iq_calc,
                                                          scale=self.fit_scale,
                                                          offset=self.fit_offset,
                                                          interpolation=self.Icalc_interpolation,
                                                          return_sf=True,
                                                          use_sasrec=True, D=self.D)
+        else:
+            self.chi2, self.exp_scale_factor = calc_chi2(self.Iq_exp, self.Iq_calc,
+                                                         scale=self.fit_scale,
+                                                         offset=self.fit_offset,
+                                                         interpolation=self.Icalc_interpolation,
+                                                         return_sf=True)
         self.calc_penalty(params)
         self.score = self.chi2 + self.penalty
         if self.fit_params:
@@ -4523,7 +4528,7 @@ class PDB2MRC(object):
         if prefix is None:
             prefix = self.pdb_basename
         if qmax is not None or nq is not None or qc is not None or use_sasrec:
-            self.Iq_calc = regrid_Iq(Iq=self.Iq_calc, qmax=qmax, nq=nq, qc=qc, use_sasrec=use_sasrec)
+            self.Iq_calc = regrid_Iq(Iq=self.Iq_calc, qmax=qmax, nq=nq, qc=qc, use_sasrec=use_sasrec, D=self.D)
         if qmax is None:
             qmax = self.qx_.max() - 1e-8
             # only write out values less than the edge of the box
