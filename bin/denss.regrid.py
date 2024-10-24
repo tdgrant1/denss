@@ -92,25 +92,10 @@ if __name__ == "__main__":
         #if qfile is given, this takes priority over qmax/nq options
         qc = np.genfromtxt(args.qfile, invalid_raise = False, usecols=(0,))
         qc = qc[~np.isnan(qc)]
-    else:
-        #let a user set a desired set of q values to be calculated
-        #based on a given qmax and nq
-        if args.qmax is not None:
-            qmax = args.qmax
-        else:
-            qmax = np.max(q)
-        if args.nq is not None:
-            nq = args.nq
-        else:
-            nq = 501
-        qc = np.linspace(0,qmax,nq)
 
     #interpolate Iq to desired qgrid
-    I_interpolator = interpolate.interp1d(q,I,kind='cubic',fill_value='extrapolate')
-    Ic = I_interpolator(qc)
-    err_interpolator = interpolate.interp1d(q,err,kind='cubic',fill_value='extrapolate')
-    errc = err_interpolator(qc)
-    Iq_calc = np.vstack((qc,Ic,errc)).T
+    Iq_calc = saxs.regrid_Iq(Iq, qmax=args.qmax)
+
 
     qmax = np.min([Iq[:,0].max(),Iq_calc[:,0].max()])
     Iq = Iq[Iq[:,0]<=qmax]

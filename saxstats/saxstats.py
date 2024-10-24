@@ -4517,7 +4517,9 @@ class PDB2MRC(object):
     def save_Iq_calc(self, prefix=None, qmax=None, nq=None, qc=None, use_sasrec=True):
         """Save the calculated Iq curve to a .dat file."""
         header = ' '.join('%s: %.5e ; ' % (self.param_names[i], self.params[i]) for i in range(len(self.params)))
-        header_dat = header + "\n q_calc I_calc err_calc"
+        # store Dmax in the header, which is helpful for other tasks
+        header += f"\nDmax  = {self.D:.5e}"
+        header_dat = header + "\nq_calc I_calc err_calc"
         if prefix is None:
             prefix = self.pdb_basename
         if qmax is not None or nq is not None or qc is not None or use_sasrec:
@@ -4532,6 +4534,8 @@ class PDB2MRC(object):
         """Save the combined experimental and calculated Iq curve to a .fit file."""
         if self.fit is not None:
             header = ' '.join('%s: %.5e ; ' % (self.param_names[i], self.params[i]) for i in range(len(self.params)))
+            # store Dmax in the header, which is helpful for other tasks
+            header += f"\nDmax  = {self.D:.5e}"
             header_fit = header + '\n q, I, error, fit ; chi2= %.3e' % (self.chi2 if self.chi2 is not None else 0)
             if prefix is None:
                 prefix = self.pdb_basename
