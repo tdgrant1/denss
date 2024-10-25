@@ -45,6 +45,8 @@ parser.add_argument("-nq", "--nq", default=None, type=int, help="Number of data 
 parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use of experimental data")
 parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use of experimental data")
 parser.add_argument("-u", "--units", default="a", type=str, help="Angular units of experimental data (\"a\" [1/angstrom] or \"nm\" [1/nanometer]; default=\"a\"). If nm, will convert output to angstroms.")
+parser.add_argument("--use_sasrec", default=False, action="store_true", help="Use Sasrec for interpolation (performs fitting using the algorithm in denss.fit_data.py).")
+parser.add_argument("-d", "-D", "--dmax", "--Dmax", default=None, type=float, help="Maximum dimension used for Sasrec interpolation (optional, but highly recommended (estimates it otherwise))")
 parser.add_argument("--plot_on", dest="plot", action="store_true", help="Plot the profile (requires Matplotlib, default if module exists).")
 parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not plot the profile. (Default if Matplotlib does not exist)")
 parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
@@ -54,8 +56,8 @@ parser.set_defaults(fit_offset=False)
 args = parser.parse_args()
 
 if args.plot:
-    #if plotting is enabled, try to import matplotlib
-    #if import fails, set plotting to false
+    # if plotting is enabled, try to import matplotlib
+    # if import fails, set plotting to false
     try:
         import matplotlib.pyplot as plt
         from matplotlib import gridspec
@@ -71,52 +73,37 @@ if __name__ == "__main__":
     if args.output is None:
         fname_nopath = os.path.basename(args.file)
         basename, ext = os.path.splitext(fname_nopath)
-        output = basename
+        output = basename + '.regrid.dat'
     else:
         output = args.output
 
-
-    #read experimental data
+    # read experimental data
     q, I, sigq, Ifit, file_dmax, isfit = saxs.loadProfile(args.file, units=args.units)
     Iq = np.vstack((q,I,sigq)).T
     Iq = Iq[~np.isnan(Iq).any(axis = 1)]
-    #get rid of any data points equal to zero in the intensities or errors columns
+    # get rid of any data points equal to zero in the intensities or errors columns
     idx = np.where((Iq[:,1]!=0)&(Iq[:,2]!=0))
     Iq = Iq[idx]
     q = Iq[:,0]
     I = Iq[:,1]
     err = Iq[:,2]
 
-    #if no experimental data given, create a new qgrid for interpolation
+    # if no experimental data given, create a new qgrid for interpolation
     if args.qfile is not None:
-        #if qfile is given, this takes priority over qmax/nq options
+        # if qfile is given, this takes priority over qmax/nq options
         qc = np.genfromtxt(args.qfile, invalid_raise = False, usecols=(0,))
         qc = qc[~np.isnan(qc)]
     else:
-        #let a user set a desired set of q values to be calculated
-        #based on a given qmax and nq
-        if args.qmax is not None:
-            qmax = args.qmax
-        else:
-            qmax = np.max(q)
-        if args.nq is not None:
-            nq = args.nq
-        else:
-            nq = 501
-        qc = np.linspace(0,qmax,nq)
+        qc = None
 
-    #interpolate Iq to desired qgrid
-    I_interpolator = interpolate.interp1d(q,I,kind='cubic',fill_value='extrapolate')
-    Ic = I_interpolator(qc)
-    err_interpolator = interpolate.interp1d(q,err,kind='cubic',fill_value='extrapolate')
-    errc = err_interpolator(qc)
-    Iq_calc = np.vstack((qc,Ic,errc)).T
+    # interpolate Iq to desired qgrid
+    Iq_calc = saxs.regrid_Iq(Iq, qmax=args.qmax, nq=args.nq, qc=qc, use_sasrec=args.use_sasrec, D=args.dmax)
 
     qmax = np.min([Iq[:,0].max(),Iq_calc[:,0].max()])
     Iq = Iq[Iq[:,0]<=qmax]
     Iq_calc = Iq_calc[Iq_calc[:,0]<=qmax]
 
-    np.savetxt(basename+'.regrid.dat', Iq_calc, delimiter=' ', fmt='%.5e'.encode('ascii'))
+    np.savetxt(output, Iq_calc, delimiter=' ', fmt='%.5e'.encode('ascii'))
 
 
 

@@ -104,6 +104,7 @@ parser.add_argument("-write_pdb_on", "--write_pdb_on", action="store_true", dest
 parser.add_argument("-write_pdb_off", "--write_pdb_off", action="store_false", dest="write_pdb", help="Do not write modified pdb file.")
 parser.add_argument("-interp_on", "--interp_on", dest="Icalc_interpolation", action="store_true", help="Interpolate I_calc to experimental q grid (default).")
 parser.add_argument("-interp_off", "--interp_off", dest="Icalc_interpolation", action="store_false", help="Do not interpolate I_calc to experimental q grid .")
+parser.add_argument("--use_sasrec_during_fitting", default=False, action="store_true", help="Use Sasrec during fitting procedure for interpolation (more accurate, slower. Note: Sasrec is always used for the output .dat or .fit file, this is just for during the iterative fitting procedure.).")
 parser.add_argument("--plot_on", dest="plot", action="store_true", help="Create simple plots of results (requires Matplotlib, default if module exists).")
 parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not create simple plots of results. (Default if Matplotlib does not exist)")
 parser.add_argument("--print_timings", default=False, action="store_true", help="Print timings for each step of the script.")
@@ -247,6 +248,8 @@ if __name__ == "__main__":
         fit_all=args.fit_all,
         min_method=args.method,
         min_opts=args.minopts,
+        fast=args.fast,
+        use_sasrec_during_fitting=args.use_sasrec_during_fitting,
         )
 
     t.append(time.time())
@@ -327,8 +330,6 @@ if __name__ == "__main__":
     t.append(time.time())
     fs.append("calc_rho_with_modified_params")
 
-    qmax = pdb2mrc.qr.max()-1e-8
-    pdb2mrc.qidx = np.where((pdb2mrc.qr<qmax))
     pdb2mrc.calc_I_with_modified_params(pdb2mrc.params)
     t.append(time.time())
     fs.append("calc_I_with_modified_params")
@@ -361,18 +362,12 @@ if __name__ == "__main__":
     else:
         qc = None
 
-    pdb2mrc.save_Iq_calc(prefix=output, qmax=args.qmax, nq=args.nq, qc=qc)
+    # always use sasrec interpolation for final output calculated profile, since its more accurate
+    pdb2mrc.save_Iq_calc(prefix=output, qmax=args.qmax, nq=args.nq, qc=qc, use_sasrec=True)
 
     if args.write_shannon:
-        # need an estimate of Dmax, but don't necessarily want to calculate
-        # an entire distance matrix, which is prohibitively slow and memory
-        # intensive for large models. Use this convex hull thing instead.
-        # this function returns the box length, which is 3 times the Dmax,
-        # so divide by three
-        D = saxs.estimate_side_from_pdb(pdb, use_convex_hull=True)/3
-        # do a quick comparison for testing:
-        qcalc_max = pdb2mrc.Iq_calc_interp[:,0].max()
-        wshannon = np.pi/D
+        qcalc_max = pdb2mrc.Iq_calc[:,0].max()
+        wshannon = np.pi/pdb2mrc.D
         nshannon = int(qcalc_max/wshannon)
         qshannon = np.linspace(0,nshannon*wshannon,nshannon)
         pdb2mrc.save_Iq_calc(prefix=output+'_Shannon', qc=qshannon)

@@ -3845,10 +3845,10 @@ def cartesian_to_spherical_interpolation(x_mesh, y_mesh, z_mesh, density_cartesi
 
     return get_interpolated_values
 
-def regrid_Iq(Iq, qmax=None, nq=None, qc=None, use_sasrec=False, D=None):
+def regrid_Iq(Iq, qmin=None, qmax=None, nq=None, qc=None, use_sasrec=False, D=None):
     """ Interpolate Iq_calc to desired qgrid.
     qmax - maximum desired q value (e.g. 0.5, optional)
-    nq   - number of q points desired (equispaced from 0 to qmax, e.g., 501, optional)
+    nq   - number of q points desired (equispaced from qmin to qmax, e.g., 501, optional)
     qc   - desired q grid (takes precedence over qmax/nq)
     use_sasrec - rather than using simple scipy interpolation, use the more accurate (but slower) sasrec for interpolation
     D    - maximum dimension of particle (useful for sasrec, if not given, estimated automatically from the data)
@@ -3856,21 +3856,16 @@ def regrid_Iq(Iq, qmax=None, nq=None, qc=None, use_sasrec=False, D=None):
     if qc is None:
         # set some defaults
         if qmax is None:
-            qmax = 0.5
+            qmax = Iq[:,0].max()
+        if qmin is None:
+            qmin = Iq[:,0].min()
         if nq is None:
             nq = 501
-        qc = np.linspace(0, qmax, nq)
-    if use_sasrec:
-        if D is None:
-            D = estimate_dmax(Iq)
-        np.savetxt("test_shannon.dat", Iq, delimiter=" ", fmt="%.5e")
-        print(Iq)
+        if qmax > Iq[:,0].max():
+            print(f'WARNING: interpolated qmax ({qmax:0.2f}) outside range of input qmax ({Iq[:,0].max():0.2f})')
+        qc = np.linspace(qmin, qmax, nq)
+    if use_sasrec and D is not None:
         sasrec = Sasrec(Iq, D=D, qc=qc, alpha=0.0, extrapolate=False)
-        import matplotlib.pyplot as plt
-        plt.plot(sasrec.q, sasrec.I)
-        # plt.plot(sasrec.qc, sasrec.Ic)
-        plt.show()
-        exit()
         Iq_calc_interp = np.vstack((sasrec.qc, sasrec.Ic, sasrec.Icerr)).T
     else:
         I_interpolator = interpolate.interp1d(Iq[:, 0], Iq[:, 1], kind='cubic', fill_value='extrapolate')
@@ -3918,6 +3913,8 @@ class PDB2MRC(object):
                  fit_all=True,
                  min_method='Nelder-Mead',
                  min_opts='{"adaptive": True}',
+                 fast=False,
+                 use_sasrec_during_fitting=False,
                  ignore_warnings=False,
                  quiet=False,
                  run_all_on_init=False,
@@ -3969,7 +3966,8 @@ class PDB2MRC(object):
         if not self.use_b:
             self.pdb.b *= 0
         # calculate some optimal grid values
-        self.optimal_side = estimate_side_from_pdb(self.pdb)
+        self.optimal_side = estimate_side_from_pdb(self.pdb, use_convex_hull=True)
+        self.D = self.optimal_side/3 + 2*(1.7+2.8)
         self.optimal_voxel = 1.0
         self.optimal_nsamples = np.ceil(self.optimal_side / self.optimal_voxel).astype(int)
         self.nsamples_limit = 256
@@ -4019,6 +4017,8 @@ class PDB2MRC(object):
         self.params = np.array([self.rho0, self.shell_contrast])
         self.params_target = np.copy(self.params)
         self.penalties_initialized = False
+        self.fast = fast
+        self.use_sasrec_during_fitting = use_sasrec_during_fitting
         self.ignore_warnings = ignore_warnings
         fname_nopath = os.path.basename(self.pdb.filename)
         self.pdb_basename, ext = os.path.splitext(fname_nopath)
@@ -4052,7 +4052,6 @@ class PDB2MRC(object):
         self.calculate_excluded_volume()
         self.calculate_hydration_shell()
         self.calculate_structure_factors()
-        self.calc_F_with_modified_params(self.params, full_qr=True)
         self.calc_I_with_modified_params(self.params)
         self.calc_rho_with_modified_params(self.params)
 
@@ -4592,16 +4591,29 @@ class PDB2MRC(object):
                                                                                       interpolation=self.Icalc_interpolation,
                                                                                       scale=self.fit_scale,
                                                                                       offset=self.fit_offset,
-                                                                                      return_sf=True, return_fit=True)
+                                                                                      return_sf=True, return_fit=True,
+                                                                                      use_sasrec=True, D=self.D)
         self.logger.info("Scale factor: %.5e " % self.exp_scale_factor)
         self.logger.info("Offset: %.5e " % self.offset)
         self.logger.info("chi2 of fit:  %.5e " % self.optimized_chi2)
 
     def calc_score_with_modified_params(self, params):
         self.calc_I_with_modified_params(params)
-        self.chi2, self.exp_scale_factor = calc_chi2(self.Iq_exp, self.Iq_calc, scale=self.fit_scale,
-                                                     offset=self.fit_offset, interpolation=self.Icalc_interpolation,
-                                                     return_sf=True)
+        # sasrec is slow, so don't use it for fitting by default, but allow it by the user
+        # but we will still use it for final output profile calculation
+        if self.use_sasrec_during_fitting:
+            self.chi2, self.exp_scale_factor = calc_chi2(self.Iq_exp, self.Iq_calc,
+                                                         scale=self.fit_scale,
+                                                         offset=self.fit_offset,
+                                                         interpolation=self.Icalc_interpolation,
+                                                         return_sf=True,
+                                                         use_sasrec=True, D=self.D)
+        else:
+            self.chi2, self.exp_scale_factor = calc_chi2(self.Iq_exp, self.Iq_calc,
+                                                         scale=self.fit_scale,
+                                                         offset=self.fit_offset,
+                                                         interpolation=self.Icalc_interpolation,
+                                                         return_sf=True)
         self.calc_penalty(params)
         self.score = self.chi2 + self.penalty
         if self.fit_params:
@@ -4674,16 +4686,16 @@ class PDB2MRC(object):
         self.calc_F_with_modified_params(params)
         self.I3D = abs2(self.F)
         # self.I3D_sph = abs2(self.F_sph)
-        # self.I_calc = mybinmean(self.I3D.ravel(), self.qblravel, xcount=self.xcount)
+        self.I_calc = mybinmean(self.I3D.ravel(), self.qblravel, xcount=self.xcount)
         # print(self.I3D_sph.shape)
         # Ish = np.zeros(self.I3D_sph.shape[0])
-        Ish = np.zeros_like(self.qsh)
-        for i in range(Ish.shape[0]):
-            # idx = np.where(self.qq == self.qsh[i])
-            # Ish[i] = np.mean(self.I3D_sph[idx])  # Shannon channel intensities directly from fourier space
-            # print(Ish[i])
-            idx = np.where(np.abs(self.qr-self.qsh[i]) <= self.wsh)
-            Ish[i] = np.mean(self.I3D[idx])
+        # Ish = np.zeros_like(self.qsh)
+        # for i in range(Ish.shape[0]):
+        #     # idx = np.where(self.qq == self.qsh[i])
+        #     # Ish[i] = np.mean(self.I3D_sph[idx])  # Shannon channel intensities directly from fourier space
+        #     # print(Ish[i])
+        #     idx = np.where(np.abs(self.qr-self.qsh[i]) <= self.wsh)
+        #     Ish[i] = np.mean(self.I3D[idx])
             # print(Ish[i])
             # print()
         # print(Ish)
@@ -4695,16 +4707,16 @@ class PDB2MRC(object):
         # ax.scatter(self.qx_sph[idx], self.qy_sph[idx], self.qz_sph[idx], c=self.I3D_sph[idx], cmap='viridis')
         # plt.show()
         # exit()
-        self.Ish = Ish
-        self.q_calc = self.qsh
-        self.I_calc = Ish
+        # self.Ish = Ish
+        # self.q_calc = self.qsh
+        # self.I_calc = Ish
         # self.I_calc = np.interp(self.qbinsc, self.qsh, Ish)  # for now interpolate to fill in missing values with zeros
         # import matplotlib.pyplot as plt
         # plt.plot(self.qsh, Ish)
         # plt.plot(self.qbinsc, self.I_calc)
         # plt.show()
-        # self.Iq_calc = np.vstack((self.qbinsc, self.I_calc, self.I_calc * .01 + self.I_calc[0] * 0.002)).T
-        self.Iq_calc = np.vstack((self.qsh, self.Ish, self.Ish * .01 + self.Ish[0] * 0.002)).T
+        self.Iq_calc = np.vstack((self.qbinsc, self.I_calc, self.I_calc * .01 + self.I_calc[0] * 0.002)).T
+        # self.Iq_calc = np.vstack((self.qsh, self.Ish, self.Ish * .01 + self.Ish[0] * 0.002)).T
         # calculate Rg and I0 and store it:
         self.Rg = calc_rg_by_guinier_first_2_points(self.q_calc, self.I_calc)
         self.I0 = self.I_calc[0]
@@ -4712,15 +4724,18 @@ class PDB2MRC(object):
     def calc_rho_with_modified_params(self, params):
         """Calculates electron density map for protein in solution. Includes the excluded volume and
         hydration shell calculations."""
-        # sf_ex is ratio of params[0] to initial rho0
-        sf_ex = params[0] / self.rho0
-        # add hydration shell to density
-        sf_sh = params[1] / self.shell_contrast
+        if self.rho0 != 0:
+            sf_ex = params[0] / self.rho0
+        else:
+            sf_ex = 1.0
+        # sf_sh is ratio of params[1] to initial shell_contrast
+        if self.shell_contrast != 0:
+            sf_sh = params[1] / self.shell_contrast
+        else:
+            sf_sh = 1.0
         self.sf_ex = sf_ex
         self.sf_sh = sf_sh
-        self.rho_exvol *= sf_ex
-        self.rho_shell *= sf_sh
-        self.rho_insolvent = self.rho_invacuo - self.rho_exvol + self.rho_shell
+        self.rho_insolvent = self.rho_invacuo - sf_ex * self.rho_exvol + sf_sh * self.rho_shell
 
     def calculate_excluded_volume_in_A3(self):
         """Calculate the excluded volume of the particle in angstroms cubed."""
@@ -4728,36 +4743,16 @@ class PDB2MRC(object):
             sphere_volume_from_radius(self.pdb.exvolHradius) * self.pdb.numH)
         self.logger.info("Calculated excluded volume: %.2f" % (self.exvol_in_A3))
 
-    def regrid_Iq_calc(self, qmax=None, nq=None, qc=None, use_sasrec=False, D=None):
-        # interpolate Iq_calc to desired qgrid
-        if qc is None:
-            # set some defaults
-            if qmax is None:
-                if self.qmax is None:
-                    qmax = 0.5
-                else:
-                    qmax = self.qmax
-            if nq is None:
-                nq = 501
-            qc = np.linspace(0, qmax, nq)
-        Iq_calc_interp = regrid_Iq(self.Iq_calc, qmax=qmax, nq=nq, qc=qc, use_sasrec=use_sasrec, D=D)
-        self.Iq_calc_interp = Iq_calc_interp
-        self.Iq_calc_orig = np.copy(self.Iq_calc)
-        self.Iq_calc = Iq_calc_interp
-
-    def save_Iq_calc(self, prefix=None, qmax=None, nq=None, qc=None, use_sasrec=True, D=None):
+    def save_Iq_calc(self, prefix=None, qmax=None, nq=None, qc=None, use_sasrec=True):
         """Save the calculated Iq curve to a .dat file."""
         header = ' '.join('%s: %.5e ; ' % (self.param_names[i], self.params[i]) for i in range(len(self.params)))
-        header_dat = header + "\n q_calc I_calc err_calc"
+        # store Dmax in the header, which is helpful for other tasks
+        header += f"\nDmax  = {self.D:.5e}"
+        header_dat = header + "\nq_calc I_calc err_calc"
         if prefix is None:
             prefix = self.pdb_basename
         if qmax is not None or nq is not None or qc is not None or use_sasrec:
-            if use_sasrec:
-                # to use sasrec, we need a Dmax.
-                D = estimate_side_from_pdb(self.pdb, use_convex_hull=True)/3.0
-                # add a carbon radius on either side, plus a water shell on either side
-                D += 2 * (1.7 + 2.8)
-            self.regrid_Iq_calc(qmax=qmax, nq=nq, qc=qc, use_sasrec=use_sasrec, D=D)
+            self.Iq_calc = regrid_Iq(Iq=self.Iq_calc, qmax=qmax, nq=nq, qc=qc, use_sasrec=use_sasrec, D=self.D)
         if qmax is None:
             qmax = self.qx_.max() - 1e-8
             # only write out values less than the edge of the box
@@ -4768,6 +4763,8 @@ class PDB2MRC(object):
         """Save the combined experimental and calculated Iq curve to a .fit file."""
         if self.fit is not None:
             header = ' '.join('%s: %.5e ; ' % (self.param_names[i], self.params[i]) for i in range(len(self.params)))
+            # store Dmax in the header, which is helpful for other tasks
+            header += f"\nDmax  = {self.D:.5e}"
             header_fit = header + '\n q, I, error, fit ; chi2= %.3e' % (self.chi2 if self.chi2 is not None else 0)
             if prefix is None:
                 prefix = self.pdb_basename
@@ -5536,7 +5533,7 @@ def estimate_side_from_pdb(pdb, use_convex_hull=False):
     return side
 
 
-def calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True, return_sf=False, return_fit=False):
+def calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True, return_sf=False, return_fit=False, use_sasrec=True, D=None):
     """Calculates a chi2 comparing experimental vs calculated intensity profiles using interpolation.
 
     Iq_exp (ndarray) - Experimental data, q, I, sigq (required)
@@ -5553,15 +5550,13 @@ def calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True, ret
     q_calc = np.copy(Iq_calc[:, 0])
     I_calc = np.copy(Iq_calc[:, 1])
     if interpolation:
-        I_calc_interpolator = interpolate.interp1d(q_calc, I_calc, kind='cubic', fill_value='extrapolate')
-        I_calc_interp = I_calc_interpolator(q_exp)
-        I_calc = np.copy(I_calc_interp)
-
+        Iq_calc_interp = regrid_Iq(Iq_calc, qc=q_exp, use_sasrec=use_sasrec, D=D)
+        I_calc = Iq_calc_interp[:,1]
     else:
         # if interpolation of (coarse) calculated profile is disabled, we still need to at least
         # put the experimental data on the correct grid for comparison, so regrid the exp arrays
         # with simple 1D linear interpolation. Note, this interpolates the exp to calc, not calc to exp,
-        # becuase exp is finely sampled usually, whereas for denss in particular calc is coarse
+        # because exp is finely sampled usually, whereas for denss in particular calc is coarse
         I_exp = np.interp(q_calc, q_exp, I_exp)
         sigq_exp = np.interp(q_calc, q_exp, sigq_exp)
         q_exp = np.copy(q_calc)
