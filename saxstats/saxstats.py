@@ -3845,6 +3845,31 @@ def cartesian_to_spherical_interpolation(x_mesh, y_mesh, z_mesh, density_cartesi
 
     return get_interpolated_values
 
+
+def cartesian_to_spherical(x, y, z):
+    r = np.sqrt(x**2 + y**2 + z**2)
+    theta = np.arctan2(y, x)
+    phi = np.arccos(z / r)
+    return r, theta, phi
+
+
+def interpolate_cartesian_to_spherical_grid(density_data, r_data, theta_data, phi_data, r, theta, phi):
+    # Interpolate the density data onto the spherical grid
+    interpolated_density_real = interpolate.griddata(
+        (r_data, theta_data, phi_data),
+        density_data.real,
+        (r, theta, phi),
+        method='linear'
+    )
+    interpolated_density_imag = interpolate.griddata(
+        (r_data, theta_data, phi_data),
+        density_data.imag,
+        (r, theta, phi),
+        method='linear'
+    )
+    interpolated_density = interpolated_density_real + 1j*interpolated_density_imag
+    return interpolated_density
+
 def regrid_Iq(Iq, qmin=None, qmax=None, nq=None, qc=None, use_sasrec=False, D=None):
     """ Interpolate Iq_calc to desired qgrid.
     qmax - maximum desired q value (e.g. 0.5, optional)
@@ -4252,7 +4277,7 @@ class PDB2MRC(object):
 
         # Create spherical grid
         n_theta_phi = 1000  # number of points in spherical angular grid
-        theta, phi = fibonacci_sphere(n_theta_phi)
+        theta_bins, phi_bins = fibonacci_sphere(n_theta_phi)
 
         # We want a spherical grid where each radial shell is a Shannon channel
         D = estimate_side_from_pdb(self.pdb, use_convex_hull=True)/3.0
@@ -4264,6 +4289,12 @@ class PDB2MRC(object):
         qsh = np.arange(nsh) * wsh
         self.qsh = qsh
 
+        # Generate the grid coordinates
+        self.qq, self.tt, self.pp = np.meshgrid(qsh, theta_bins, phi_bins, indexing='ij')
+        # Convert cartesian coordinates of the density data to spherical coordinates
+        self.qq_init, self.tt_init, self.pp_init = cartesian_to_spherical(self.qx, self.qy, self.qz)
+
+
         # Create meshgrid for spherical coordinates
         # self.qq, self.tt, self.pp = np.meshgrid(qsh, theta, phi, indexing='ij')
         # Create arrays for qq, tt, pp
@@ -4271,7 +4302,7 @@ class PDB2MRC(object):
         # self.tt = np.tile(theta, (len(qsh), 1))
         # self.pp = np.tile(phi, (len(qsh), 1))
         # self.qq, self.tt, self.pp, self.qx_sph, self.qy_sph, self.qz_sph = generate_coordinate_arrays(qsh, n_theta_phi, self.qx, self.qy, self.qz)
-        self.qq, self.tt, self.pp, = generate_fibonacci_coordinates(qsh, n_theta_phi)
+        # self.qq, self.tt, self.pp, = generate_fibonacci_coordinates(qsh, n_theta_phi)
         print(self.qq.shape)
         # exit()
 
@@ -4377,7 +4408,8 @@ class PDB2MRC(object):
             # calculate the distance of each voxel outside the particle to the surface of the protein+water support
             dist1 = np.zeros(self.x.shape)
             dist1 = ndimage.distance_transform_edt(protein_rw_idx)
-            # now calculate the distance of each voxel inside the protein+water support by inverting it, but first add one voxel
+            # now calculate the distance of each voxel inside the protein+water support by inverting it,
+            # but first add one voxel
             protein_rw_idx2 = ndimage.binary_dilation(protein_rw_idx)
             dist2 = np.zeros(self.x.shape)
             dist2 = ndimage.distance_transform_edt(~protein_rw_idx2)
@@ -4433,6 +4465,13 @@ class PDB2MRC(object):
         # self.F_exvol_sph = interpolator(self.qq, self.tt, self.pp)
         # interpolator = cartesian_to_spherical_interpolation(self.qx, self.qy, self.qz, self.F_shell)
         # self.F_shell_sph = interpolator(self.qq, self.tt, self.pp)
+
+        self.F_invacuo_sph = interpolate_cartesian_to_spherical_grid(self.F_invacuo, self.qq_init, self.tt_init,
+                                                                     self.pp_init, self.qq, self.tt, self.pp)
+        self.F_exvol_sph = interpolate_cartesian_to_spherical_grid(self.F_exvol, self.qq_init, self.tt_init,
+                                                                     self.pp_init, self.qq, self.tt, self.pp)
+        self.F_shell_sph = interpolate_cartesian_to_spherical_grid(self.F_shell, self.qq_init, self.tt_init,
+                                                                     self.pp_init, self.qq, self.tt, self.pp)
 
         if not self.quiet: print('Finished structure factors.')
 
