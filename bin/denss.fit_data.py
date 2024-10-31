@@ -78,15 +78,17 @@ if __name__ == "__main__":
     else:
         output = args.output
 
-
-    Iq = np.genfromtxt(args.file, invalid_raise = False) #, usecols=(0,1,2))
+    if args.ignore_errors:
+        Iq = np.genfromtxt(args.file, invalid_raise=False, usecols=(0, 1))
+    else:
+        Iq = np.genfromtxt(args.file, invalid_raise=False, usecols=(0, 1, 2))
     if len(Iq.shape) < 2:
-        print("Invalid data format. Data file must have 3 columns: q, I, errors.")
+        print("Invalid data format. Data file must have 3 columns: q, I, errors. Alternatively, disable errors with --ignore_errors option (sets errors to 1.0).")
         exit()
     if Iq.shape[1] < 3 or args.ignore_errors:
         print("WARNING: Only 2 columns given. Data should have 3 columns: q, I, errors.")
         print("WARNING: Setting error bars to 1.0 (i.e., ignoring error bars)")
-        Iq2 = np.zeros((Iq.shape[0],3))
+        Iq2 = np.zeros((Iq.shape[0], 3))
         Iq2[:,:2] = Iq[:,:2]
         Iq2[:,2] += 1.0 #set error bars to 1.0
         Iq = Iq2
@@ -94,6 +96,7 @@ if __name__ == "__main__":
     #get rid of any data points equal to zero in the intensities or errors columns
     idx = np.where((Iq[:,1]!=0)&(Iq[:,2]!=0))
     Iq = Iq[idx]
+
     nes = args.nes
 
     if args.units == "nm":
