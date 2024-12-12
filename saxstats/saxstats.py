@@ -2776,7 +2776,7 @@ class Sasrec(object):
         if np.isnan(qmax):
             qmax = 8. / (self.D / 3.5)
         Iq = np.vstack((self.q, self.I, self.Ierr)).T
-        sasrec4vp = Sasrec(Iq[self.q < qmax], self.D, alpha=self.alpha * oversmoothing, extrapolate=self.extrapolate)
+        sasrec4vp = Sasrec(Iq[self.q < qmax], self.D, alpha=self.alpha * oversmoothing, extrapolate=self.extrapolation)
         self.Q = sasrec4vp.Q
         self.Qerr = sasrec4vp.Qerr
         self.Vp = sasrec4vp.Vp

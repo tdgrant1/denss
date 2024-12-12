@@ -180,7 +180,7 @@ if __name__ == "__main__":
 
 
     #calculate chi2 when alpha=0, to get the best possible chi2 for reference
-    sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=0.0, extrapolate=args.extrapolate)
+    sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, ne=nes, alpha=0.0, extrapolate=args.extrapolate)
     ideal_chi2 = sasrec.calc_chi2()
 
     if args.alpha is None:
