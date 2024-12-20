@@ -1442,6 +1442,7 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
     my_logger.info('Recenter Steps: %s', recenter_steps)
     my_logger.info('Recenter Mode: %s', recenter_mode)
     my_logger.info('NCS: %s', ncs)
+    my_logger.info('NCS Type: %s', ncs_type)
     my_logger.info('NCS Steps: %s', ncs_steps)
     my_logger.info('NCS Axis: %s', ncs_axis)
     my_logger.info('Positivity: %s', positivity)
@@ -1582,21 +1583,21 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
         if ncs != 0 and j in ncs_steps:
             if DENSS_GPU:
                 newrho = cp.asnumpy(newrho)
-            newrho = align2xyz(newrho)
+            if ncs_type == "icosahedral":
+                newrho, shift = center_rho_roll(newrho, recenter_mode="com", maxfirst=True, return_shift=True)
+                support = np.roll(np.roll(np.roll(support, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
+            else:
+                newrho = align2xyz(newrho)
             if DENSS_GPU:
                 newrho = cp.array(newrho)
 
         if ncs != 0 and j in [stepi + 1 for stepi in ncs_steps]:
             if DENSS_GPU:
                 newrho = cp.asnumpy(newrho)
-            ncs_type = "icosahedral"
             if ncs_type == "icosahedral":
                 rotations = get_icosahedral_matrices()
-                # First align the density to coordinate axes
-                # newrho = align2xyz(newrho)
                 newrho_total = np.copy(newrho)
-                for R in rotations:
-                    # Pass rotation matrix directly
+                for R in rotations[1:]:  # Skip identity (first matrix)
                     sym = transform_rho(newrho, R=R)
                     newrho_total += sym
                 newrho = newrho_total / len(rotations)
