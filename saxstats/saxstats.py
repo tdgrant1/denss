@@ -1150,6 +1150,111 @@ def grid_center(rho):
     return np.array(rho.shape) // 2
 
 
+def get_icosahedral_matrices():
+    """Generate the 60 rotation matrices for icosahedral symmetry.
+
+    Returns a list of 60 3x3 numpy arrays representing the rotational symmetry
+    operations of an icosahedron:
+    - 1 identity operation
+    - 24 rotations from 5-fold symmetry (6 axes × 4 rotations each)
+    - 20 rotations from 3-fold symmetry (10 axes × 2 rotations each)
+    - 15 rotations from 2-fold symmetry (15 axes × 1 rotation each)
+    """
+    import numpy as np
+    from scipy.spatial.transform import Rotation
+
+    def normalize(v):
+        """Normalize a vector."""
+        norm = np.linalg.norm(v)
+        if norm < 1e-10:
+            return v
+        return v / norm
+
+    def is_unique_matrix(matrix, existing_matrices, tol=1e-6):
+        """Check if a matrix is unique compared to existing ones."""
+        return not any(np.allclose(matrix, existing, atol=tol) for existing in existing_matrices)
+
+    # Golden ratio for icosahedral geometry
+    phi = (1 + np.sqrt(5)) / 2
+
+    # Vertices of a regular icosahedron arranged in antipodal pairs
+    vertices = np.array([
+        [0, 1, phi], [0, -1, phi],  # Top pair
+        [0, 1, -phi], [0, -1, -phi],  # Bottom pair
+        [1, phi, 0], [-1, phi, 0],  # Front pair
+        [1, -phi, 0], [-1, -phi, 0],  # Back pair
+        [phi, 0, 1], [-phi, 0, 1],  # Right pair
+        [phi, 0, -1], [-phi, 0, -1]  # Left pair
+    ])
+    vertices = np.array([normalize(v) for v in vertices])
+
+    rotations = []
+
+    # Add identity operation
+    rotations.append(np.eye(3))
+
+    # Generate 5-fold rotations
+    # An icosahedron has six 5-fold axes through opposite vertices
+    # Each axis gives 4 rotations (72°, 144°, 216°, 288°)
+    for i in range(0, 12, 2):  # Step by 2 to get one vertex from each antipodal pair
+        axis = vertices[i]
+        for k in range(1, 5):  # 4 rotations per axis
+            angle = k * 2 * np.pi / 5
+            R = Rotation.from_rotvec(angle * axis).as_matrix()
+            if is_unique_matrix(R, rotations):
+                rotations.append(R)
+
+    # Generate 3-fold rotations
+    # An icosahedron has 20 triangular faces
+    # Each face center defines a 3-fold rotation axis
+    faces = [
+        [0, 4, 8], [0, 9, 5],  # Around top vertex
+        [1, 6, 8], [1, 9, 7],  # Around top vertex opposite
+        [2, 6, 10], [2, 11, 7],  # Around bottom vertex
+        [3, 4, 10], [3, 11, 5],  # Around bottom vertex opposite
+        [0, 8, 4], [0, 5, 9],  # Top band
+        [1, 8, 6], [1, 7, 9],  # Top band
+        [2, 10, 6], [2, 7, 11],  # Bottom band
+        [3, 10, 4], [3, 5, 11],  # Bottom band
+        [4, 8, 10], [5, 9, 11],  # Middle band
+        [6, 8, 10], [7, 9, 11]  # Middle band
+    ]
+
+    for face in faces:
+        # Face center is average of three vertices
+        face_center = normalize(vertices[face[0]] + vertices[face[1]] + vertices[face[2]])
+        for k in range(1, 3):  # 2 rotations per axis (120°, 240°)
+            angle = k * 2 * np.pi / 3
+            R = Rotation.from_rotvec(angle * face_center).as_matrix()
+            if is_unique_matrix(R, rotations):
+                rotations.append(R)
+
+    # Generate 2-fold rotations
+    # An icosahedron has 30 edges, but each edge and its opposite
+    # define the same rotation axis, giving 15 unique rotations
+    edge_dot = 1 / np.sqrt(5)  # cosine of angle between adjacent vertices
+
+    # Find all edges by looking for adjacent vertices
+    edges = []
+    for i in range(len(vertices)):
+        for j in range(i + 1, len(vertices)):
+            if abs(np.dot(vertices[i], vertices[j]) - edge_dot) < 1e-6:
+                edges.append([i, j])
+
+    # Generate one rotation per unique edge
+    used_edges = set()
+    for i, j in edges:
+        edge_key = tuple(sorted([i, j]))
+        if edge_key not in used_edges:
+            used_edges.add(edge_key)
+            edge_center = normalize(vertices[i] + vertices[j])
+            R = Rotation.from_rotvec(np.pi * edge_center).as_matrix()
+            if is_unique_matrix(R, rotations):
+                rotations.append(R)
+
+    return rotations
+
+
 def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
           ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
           recenter_mode="com", positivity=True, positivity_steps=None, extrapolate=True, output="map",
@@ -1484,30 +1589,39 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
         if ncs != 0 and j in [stepi + 1 for stepi in ncs_steps]:
             if DENSS_GPU:
                 newrho = cp.asnumpy(newrho)
-            if ncs_axis == 1:
-                axes = (1, 2)  # longest
-                axes2 = (0, 1)  # shortest
-            if ncs_axis == 2:
-                axes = (0, 2)  # middle
-                axes2 = (0, 1)  # shortest
-            if ncs_axis == 3:
-                axes = (0, 1)  # shortest
-                axes2 = (1, 2)  # longest
-            degrees = 360. / ncs
-            newrho_total = np.copy(newrho)
-            if ncs_type == "dihedral":
-                # first, rotate original about perpendicular axis by 180
-                # then apply n-fold cyclical rotation
-                d2fold = ndimage.rotate(newrho, 180, axes=axes2, reshape=False)
-                newrhosym = np.copy(newrho) + d2fold
-                newrhosym /= 2.0
-                newrho_total = np.copy(newrhosym)
+            ncs_type = "icosahedral"
+            if ncs_type == "icosahedral":
+                rotations = get_icosahedral_matrices()
+                # First align the density to coordinate axes
+                # newrho = align2xyz(newrho)
+                newrho_total = np.copy(newrho)
+                for R in rotations:
+                    # Pass rotation matrix directly
+                    sym = transform_rho(newrho, R=R)
+                    newrho_total += sym
+                newrho = newrho_total / len(rotations)
             else:
-                newrhosym = np.copy(newrho)
-            for nrot in range(1, ncs):
-                sym = ndimage.rotate(newrhosym, degrees * nrot, axes=axes, reshape=False)
-                newrho_total += np.copy(sym)
-            newrho = newrho_total / ncs
+                if ncs_axis == 1:
+                    axes = (1, 2)  # longest
+                if ncs_axis == 2:
+                    axes = (0, 2)  # middle
+                if ncs_axis == 3:
+                    axes = (0, 1)  # shortest
+                degrees = 360. / ncs
+                newrho_total = np.copy(newrho)
+                if ncs_type == "dihedral":
+                    # first, rotate original about perpendicular axis by 180
+                    # then apply n-fold cyclical rotation
+                    d2fold = ndimage.rotate(newrho, 180, axes=axes, reshape=False)
+                    newrhosym = np.copy(newrho) + d2fold
+                    newrhosym /= 2.0
+                    newrho_total = np.copy(newrhosym)
+                else:
+                    newrhosym = np.copy(newrho)
+                for nrot in range(1, ncs):
+                    sym = ndimage.rotate(newrhosym, degrees * nrot, axes=axes, reshape=False)
+                    newrho_total += np.copy(sym)
+                newrho = newrho_total / ncs
 
             # run shrinkwrap after ncs averaging to get new support
             if shrinkwrap_old_method:
@@ -2142,18 +2256,22 @@ def rho_overlap_score(rho1, rho2, threshold=None):
     return -rscc
 
 
-def transform_rho(rho, T, order=1):
-    """ Rotate and translate electron density map by T vector.
-        T = [alpha, beta, gamma, x, y, z], angles in radians
+def transform_rho(rho, T=None, R=None, order=1):
+    """ Rotate and translate electron density map.
+        T = [alpha, beta, gamma, x, y, z], angles in radians (if no R provided)
+        R = 3x3 rotation matrix (if provided, ignores angles in T)
         order = interpolation order (0-5)
     """
     ne_rho = np.sum(rho)
-    R = euler2matrix(T[0], T[1], T[2])
+    if R is None and T is not None:
+        R = euler2matrix(T[0], T[1], T[2])
+    elif R is None and T is None:
+        R = np.eye(3)
 
-    # Use the geometric center instead of center of mass
     c_out = np.array(rho.shape) / 2.0
     offset = c_out - R.dot(c_out)
-    offset += T[3:]
+    if T is not None:
+        offset += T[3:]
 
     rho = ndimage.interpolation.affine_transform(rho, R, order=order,
                                                  offset=offset, output=np.float64, mode='wrap')
@@ -3149,13 +3267,14 @@ class PDB(object):
         self.unique_radius = None
         self.unique_volume = None
 
-    def read_pdb(self, filename, ignore_waters=True):
+    def read_pdb(self, filename, read_all_models=True, ignore_waters=True):
         self.filename = filename
         self.natoms = 0
         with open(filename) as f:
             for line in f:
-                if line[0:6] == "ENDMDL":
-                    break
+                if not read_all_models:
+                    if line[0:6] == "ENDMDL":
+                        break
                 if line[0:4] != "ATOM" and line[0:4] != "HETA":
                     continue  # skip other lines
                 if ignore_waters and ((line[17:20] == "HOH") or (line[17:20] == "TIP")):
@@ -3180,8 +3299,9 @@ class PDB(object):
         with open(filename) as f:
             atom = 0
             for line in f:
-                if line[0:6] == "ENDMDL":
-                    break
+                if not read_all_models:
+                    if line[0:6] == "ENDMDL":
+                        break
                 if line[0:6] == "CRYST1":
                     cryst = line.split()
                     self.cella = float(cryst[1])
@@ -3245,6 +3365,7 @@ class PDB(object):
                         dr = vdW['C']
                 self.vdW[atom] = dr
                 atom += 1
+                if atom%100000==0: print(atom)
 
     def read_cif(self, filename, ignore_waters=True):
         """
