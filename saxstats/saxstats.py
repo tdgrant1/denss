@@ -1361,7 +1361,7 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
         # then just make a round number when using defaults
         steps += 7621
     else:
-        steps = np.int(steps)
+        steps = int(steps)
 
     Imean = np.zeros((len(qbins)))
 
@@ -5550,7 +5550,7 @@ def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=T
             shrinkwrap_sigma_decay)) + shrinkwrap_minstep)
         steps += 3000
     else:
-        steps = np.int(steps)
+        steps = int(steps)
     Imean = np.zeros((steps + 1, len(qbins)))
     chi = np.zeros((steps + 1))
     rg = np.zeros((steps + 1))

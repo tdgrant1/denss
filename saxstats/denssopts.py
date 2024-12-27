@@ -398,7 +398,7 @@ def parse_arguments(parser):
         else:
             shrinkwrap_old_method = args.shrinkwrap_old_method
 
-    #allow user to give initial support, check for consistency with given grid parameters
+    # allow user to give initial support, check for consistency with given grid parameters
     if args.support_start is not None:
         support_start, support_side = saxs.read_mrc(args.support_start)
         support_nsamples = support_start.shape[0]
@@ -418,9 +418,9 @@ def parse_arguments(parser):
 
     if args.shrinkwrap is None:
         if args.support_start is not None:
-            #assume if a user gives a support, that they do not want to
-            #run shrinkwrap. However, allow the user to enable shrinkwrap explicitly
-            #by setting the shrinkwrap option on
+            # assume if a user gives a support, that they do not want to
+            # run shrinkwrap. However, allow the user to enable shrinkwrap explicitly
+            # by setting the shrinkwrap option on
             args.shrinkwrap = False
             if args.enforce_connectivity is None:
                 args.enforce_connectivity = False
