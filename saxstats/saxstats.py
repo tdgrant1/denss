@@ -4596,7 +4596,7 @@ class PDB2SAS(object):
             # if natoms is too large, sinc lookup table has huge memory requirements
         else:
             if self.pdb.rij is None:
-                self.pdb.rij = self.pdb.calculate_distance_matrix()
+                self.pdb.calculate_distance_matrix(return_squareform=True)
             s = np.sinc(self.q * self.pdb.rij[..., None] / np.pi)
             self.I = np.einsum('iq,jq,ijq->q', self.ff, self.ff, s)
 
