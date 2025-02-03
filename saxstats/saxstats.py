@@ -3121,7 +3121,7 @@ class Sasrec(object):
 class PDB(object):
     """Load pdb file."""
 
-    def __init__(self, filename=None, natoms=None, ignore_waters=True):
+    def __init__(self, filename=None, natoms=None, ignore_waters=True, chain=None):
         if isinstance(filename, int):
             # if a user gives no keyword argument, but just an integer,
             # assume the user means the argument is to be interpreted
@@ -3131,14 +3131,14 @@ class PDB(object):
         if filename is not None:
             ext = os.path.splitext(filename)[1]
             if ext == ".cif":
-                self.read_cif(filename, ignore_waters=ignore_waters)
+                self.read_cif(filename, ignore_waters=ignore_waters, chain=chain)
                 # print("ERROR: Cannot parse .cif files (yet).")
                 # exit()
             else:
                 # if it's not a cif file, default to a pdb file. This allows
                 # for extensions that are not .pdb, such as .pdb1 which exists.
                 try:
-                    self.read_pdb(filename, ignore_waters=ignore_waters)
+                    self.read_pdb(filename, ignore_waters=ignore_waters, chain=chain)
                 except:
                     print("ERROR: Cannot parse file: %s" % filename)
                     exit()
@@ -3149,7 +3149,7 @@ class PDB(object):
         self.unique_radius = None
         self.unique_volume = None
 
-    def read_pdb(self, filename, ignore_waters=True):
+    def read_pdb(self, filename, ignore_waters=True, chain=None):
         self.filename = filename
         self.natoms = 0
         with open(filename) as f:
@@ -3160,6 +3160,10 @@ class PDB(object):
                     continue  # skip other lines
                 if ignore_waters and ((line[17:20] == "HOH") or (line[17:20] == "TIP")):
                     continue
+                if chain is not None:
+                    # Ignore any atoms not in desired chain
+                    if line[21].strip() != chain:
+                        continue
                 self.natoms += 1
         self.atomnum = np.zeros((self.natoms), dtype=int)
         self.atomname = np.zeros((self.natoms), dtype=np.dtype((str, 3)))
@@ -3194,6 +3198,10 @@ class PDB(object):
                     continue  # skip other lines
                 if ignore_waters and ((line[17:20] == "HOH") or (line[17:20] == "TIP")):
                     continue
+                if chain is not None:
+                    # Ignore any atoms not in desired chain
+                    if line[21].strip() != chain:
+                        continue
                 try:
                     self.atomnum[atom] = int(line[6:11])
                 except ValueError as e:
@@ -5282,7 +5290,7 @@ def estimate_side_from_pdb(pdb, use_convex_hull=False):
         # then just take the Dmax from that
         D = np.max(pdb.rij)
     elif use_convex_hull:
-        print("using convex hull")
+        # print("using convex hull")
         hull = spatial.ConvexHull(pdb.coords)
         hull_points = pdb.coords[hull.vertices]
         # Compute the pairwise distances between points on the convex hull
