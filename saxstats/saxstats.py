@@ -1598,7 +1598,7 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
                 rotations = get_icosahedral_matrices()
                 newrho_total = np.copy(newrho)
                 for R in rotations[1:]:  # Skip identity (first matrix)
-                    sym = transform_rho(newrho, R=R)
+                    sym = transform_rho(newrho, R=R, mode='constant')
                     newrho_total += sym
                 newrho = newrho_total / len(rotations)
             else:
@@ -2257,7 +2257,7 @@ def rho_overlap_score(rho1, rho2, threshold=None):
     return -rscc
 
 
-def transform_rho(rho, T=None, R=None, order=1):
+def transform_rho(rho, T=None, R=None, order=1, mode='wrap'):
     """ Rotate and translate electron density map.
         T = [alpha, beta, gamma, x, y, z], angles in radians (if no R provided)
         R = 3x3 rotation matrix (if provided, ignores angles in T)
@@ -2275,7 +2275,7 @@ def transform_rho(rho, T=None, R=None, order=1):
         offset += T[3:]
 
     rho = ndimage.interpolation.affine_transform(rho, R, order=order,
-                                                 offset=offset, output=np.float64, mode='wrap')
+                                                 offset=offset, output=np.float64, mode=mode)
     rho *= ne_rho / np.sum(rho)
     return rho
 
