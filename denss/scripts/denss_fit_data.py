@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#    denss.fit_data.py
+#    denss_fit_data.py
 #    A tool for fitting solution scattering data with smooth function
 #    based on Moore's algorithm for fitting a trigonometric series.
 #
@@ -32,42 +32,41 @@
 #
 
 from __future__ import print_function
-import datetime, time
+import time
 import os, argparse, sys
-import logging
 import numpy as np
-from saxstats._version import __version__
-import saxstats.saxstats as saxs
+from denss import __version__
+from denss import core as saxs
 
-parser = argparse.ArgumentParser(description="A tool for fitting solution scattering data with smooth function based on Moore's algorithm for fitting a trigonometric series.", formatter_class=argparse.RawTextHelpFormatter)
-parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
-parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
-parser.add_argument("-d", "--dmax", default=None, type=float, help="Estimated maximum dimension in angstroms (if q values are in 1/nm, use the -u option to convert).")
-parser.add_argument("-a", "--alpha", default=None, type=float, help="Set alpha smoothing factor")
-parser.add_argument("-u", "--units", default="a", type=str, help="Angular units (\"a\" [1/angstrom] or \"nm\" [1/nanometer]; default=\"a\"). If nm, will convert output to angstroms.")
-parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use")
-parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use")
-parser.add_argument("--ignore_errors", dest="ignore_errors", action="store_true", help="Ignore error bars (i.e., set all error bars to 1.0).")
-parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional)")
-parser.add_argument("-qmax", "--qmax", default=None, type=float, help="Maximum q value for calculated intensities (optional)")
-parser.add_argument("-nq", "--nq", default=None, type=int, help="Number of data points in calculated intensity profile (optional)")
-parser.add_argument("-r", "--rfile", default=None, type=str, help=argparse.SUPPRESS)
-parser.add_argument("-nr", "--nr", default=None, type=int, help="Number of points in P(r) curve (default = number of points in I(q) profile).")
-parser.add_argument("--nes", default=2, type=int, help=argparse.SUPPRESS)
-parser.add_argument("--max_dmax", default=None, type=float, help="Maximum limit for allowed Dmax values (for plotting slider)")
-parser.add_argument("--max_alpha", default=None, type=float, help="Maximum limit for allowed alpha values (for plotting slider)")
-parser.add_argument("--max_nes", default=10, type=int, help=argparse.SUPPRESS)
-parser.add_argument("--no_gui", dest="plot", action="store_false", help="Do not run the interactive GUI mode.")
-parser.add_argument("--no_log", dest="log", action="store_false", help="Do not plot on log y axis.")
-parser.add_argument("--no_extrapolation", dest="extrapolate", action="store_false", help="Do not extrapolate high q data.")
-parser.add_argument("--write_shannon", dest="write_shannon", action="store_true", help="Write a file containing only the Shannon intensities.")
-parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
-parser.set_defaults(plot=True)
-parser.set_defaults(write_shannon=False)
-parser.set_defaults(ignore_errors=False)
-args = parser.parse_args()
 
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser(description="A tool for fitting solution scattering data with smooth function based on Moore's algorithm for fitting a trigonometric series.", formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
+    parser.add_argument("-d", "--dmax", default=None, type=float, help="Estimated maximum dimension in angstroms (if q values are in 1/nm, use the -u option to convert).")
+    parser.add_argument("-a", "--alpha", default=None, type=float, help="Set alpha smoothing factor")
+    parser.add_argument("-u", "--units", default="a", type=str, help="Angular units (\"a\" [1/angstrom] or \"nm\" [1/nanometer]; default=\"a\"). If nm, will convert output to angstroms.")
+    parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use")
+    parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use")
+    parser.add_argument("--ignore_errors", dest="ignore_errors", action="store_true", help="Ignore error bars (i.e., set all error bars to 1.0).")
+    parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional)")
+    parser.add_argument("-qmax", "--qmax", default=None, type=float, help="Maximum q value for calculated intensities (optional)")
+    parser.add_argument("-nq", "--nq", default=None, type=int, help="Number of data points in calculated intensity profile (optional)")
+    parser.add_argument("-r", "--rfile", default=None, type=str, help=argparse.SUPPRESS)
+    parser.add_argument("-nr", "--nr", default=None, type=int, help="Number of points in P(r) curve (default = number of points in I(q) profile).")
+    parser.add_argument("--nes", default=2, type=int, help=argparse.SUPPRESS)
+    parser.add_argument("--max_dmax", default=None, type=float, help="Maximum limit for allowed Dmax values (for plotting slider)")
+    parser.add_argument("--max_alpha", default=None, type=float, help="Maximum limit for allowed alpha values (for plotting slider)")
+    parser.add_argument("--max_nes", default=10, type=int, help=argparse.SUPPRESS)
+    parser.add_argument("--no_gui", dest="plot", action="store_false", help="Do not run the interactive GUI mode.")
+    parser.add_argument("--no_log", dest="log", action="store_false", help="Do not plot on log y axis.")
+    parser.add_argument("--no_extrapolation", dest="extrapolate", action="store_false", help="Do not extrapolate high q data.")
+    parser.add_argument("--write_shannon", dest="write_shannon", action="store_true", help="Write a file containing only the Shannon intensities.")
+    parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
+    parser.set_defaults(plot=True)
+    parser.set_defaults(write_shannon=False)
+    parser.set_defaults(ignore_errors=False)
+    args = parser.parse_args()
 
     alpha = args.alpha
 
@@ -238,7 +237,7 @@ if __name__ == "__main__":
         param_str = store_parameters_as_string()
         #add column headers to param_str for output
         param_str += 'q, I, error, fit ; chi2 = %.3f'%sasrec.chi2
-        #quick, interpolate the raw data, sasrec.I, to the new qc values, but be sure to 
+        #quick, interpolate the raw data, sasrec.I, to the new qc values, but be sure to
         #put zeros in for the q values not measured
         Iinterp = np.interp(sasrec.qc, sasrec.q_data, sasrec.I_data, left=0.0, right=0.0)
         Ierrinterp = np.interp(sasrec.qc, sasrec.q_data, sasrec.Ierr_data)
@@ -646,3 +645,7 @@ if __name__ == "__main__":
 
     print_values()
     save_file()
+
+
+if __name__ == "__main__":
+    main()

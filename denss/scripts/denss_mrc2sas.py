@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#    denss.mrc2sas.py
+#    denss_mrc2sas.py
 #    A tool for calculating a scattering profile from an electron density
 #    map and fitting to experimental SWAXS data.
 #
@@ -30,46 +30,45 @@
 
 from __future__ import print_function
 import os, argparse, sys
-import logging
 import numpy as np
 from scipy import interpolate
-from saxstats._version import __version__
-import saxstats.saxstats as saxs
+from denss import __version__
+from denss import core as saxs
 from textwrap import wrap
 
-parser = argparse.ArgumentParser(description="A tool for calculating a scattering profile from an electron density map and fitting to experimental SWAXS data.", formatter_class=argparse.RawTextHelpFormatter)
-parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
-parser.add_argument("-f", "--file", type=str, help="Electron density filename (.mrc) (required)")
-parser.add_argument("-d", "--data", type=str, help="Experimental SAXS data file for input (3-column ASCII text file (q, I, err), optional, has priority over -q options for qgrid interpolation).")
-parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional, -data has priority for qgrid interpolation).")
-parser.add_argument("-qmax", "--qmax", default=None, type=float, help="Maximum q value for calculated intensities (optional)")
-parser.add_argument("-nq", "--nq", default=None, type=int, help="Number of data points in calculated intensity profile (optional)")
-parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use of experimental data")
-parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use of experimental data")
-parser.add_argument("-u", "--units", default="a", type=str, help="Angular units of experimental data (\"a\" [1/angstrom] or \"nm\" [1/nanometer]; default=\"a\"). If nm, will convert output to angstroms.")
-parser.add_argument("-fit_scale_on", "--fit_scale_on", dest="fit_scale", action="store_true", help="Include scale factor in least squares fit to data (optional, default=True)")
-parser.add_argument("-fit_scale_off", "--fit_scale_off", dest="fit_scale", action="store_false", help="Do not include offset in least squares fit to data.")
-parser.add_argument("-fit_offset_on", "--fit_offset_on", dest="fit_offset", action="store_true", help="Include offset in least squares fit to data (optional, default=False)")
-parser.add_argument("-fit_offset_off", "--fit_offset_off", dest="fit_offset", action="store_false", help="Do not include offset in least squares fit to data.")
-parser.add_argument("--plot_on", dest="plot", action="store_true", help="Plot the profile (requires Matplotlib, default if module exists).")
-parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not plot the profile. (Default if Matplotlib does not exist)")
-parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
-parser.set_defaults(plot=True)
-parser.set_defaults(fit_scale=True)
-parser.set_defaults(fit_offset=False)
-args = parser.parse_args()
 
-if args.plot:
-    #if plotting is enabled, try to import matplotlib
-    #if import fails, set plotting to false
-    try:
-        import matplotlib.pyplot as plt
-        from matplotlib import gridspec
-    except ImportError as e:
-        print("matplotlib import failed.")
-        args.plot = False
+def main():
+    parser = argparse.ArgumentParser(description="A tool for calculating a scattering profile from an electron density map and fitting to experimental SWAXS data.", formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("-f", "--file", type=str, help="Electron density filename (.mrc) (required)")
+    parser.add_argument("-d", "--data", type=str, help="Experimental SAXS data file for input (3-column ASCII text file (q, I, err), optional, has priority over -q options for qgrid interpolation).")
+    parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional, -data has priority for qgrid interpolation).")
+    parser.add_argument("-qmax", "--qmax", default=None, type=float, help="Maximum q value for calculated intensities (optional)")
+    parser.add_argument("-nq", "--nq", default=None, type=int, help="Number of data points in calculated intensity profile (optional)")
+    parser.add_argument("-n1", "--n1", default=None, type=int, help="First data point to use of experimental data")
+    parser.add_argument("-n2", "--n2", default=None, type=int, help="Last data point to use of experimental data")
+    parser.add_argument("-u", "--units", default="a", type=str, help="Angular units of experimental data (\"a\" [1/angstrom] or \"nm\" [1/nanometer]; default=\"a\"). If nm, will convert output to angstroms.")
+    parser.add_argument("-fit_scale_on", "--fit_scale_on", dest="fit_scale", action="store_true", help="Include scale factor in least squares fit to data (optional, default=True)")
+    parser.add_argument("-fit_scale_off", "--fit_scale_off", dest="fit_scale", action="store_false", help="Do not include offset in least squares fit to data.")
+    parser.add_argument("-fit_offset_on", "--fit_offset_on", dest="fit_offset", action="store_true", help="Include offset in least squares fit to data (optional, default=False)")
+    parser.add_argument("-fit_offset_off", "--fit_offset_off", dest="fit_offset", action="store_false", help="Do not include offset in least squares fit to data.")
+    parser.add_argument("--plot_on", dest="plot", action="store_true", help="Plot the profile (requires Matplotlib, default if module exists).")
+    parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not plot the profile. (Default if Matplotlib does not exist)")
+    parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
+    parser.set_defaults(plot=True)
+    parser.set_defaults(fit_scale=True)
+    parser.set_defaults(fit_offset=False)
+    args = parser.parse_args()
 
-if __name__ == "__main__":
+    if args.plot:
+        #if plotting is enabled, try to import matplotlib
+        #if import fails, set plotting to false
+        try:
+            import matplotlib.pyplot as plt
+            from matplotlib import gridspec
+        except ImportError as e:
+            print("matplotlib import failed.")
+            args.plot = False
 
     scriptname = os.path.basename(sys.argv[0])
     command = scriptname + ' ' + ' '.join(sys.argv[1:])
@@ -196,7 +195,8 @@ if __name__ == "__main__":
         plt.close()
 
 
-
+if __name__ == "__main__":
+    main()
 
 
 

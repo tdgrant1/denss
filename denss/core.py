@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#    saxstats.py
+#    core.py
 #    SAXStats
 #    A collection of python functions useful for solution scattering
 #
@@ -56,11 +56,11 @@ import warnings
 import pickle
 
 import numpy as np
-from scipy import ndimage, interpolate, spatial, special, optimize, signal, stats, fft, linalg
+from scipy import ndimage, interpolate, spatial, special, optimize, signal, stats, fft
 from functools import reduce
 
 # load some dictionaries
-from resources import resources
+from denss.resources import resources
 
 electrons = resources.electrons
 atomic_volumes = resources.atomic_volumes
@@ -1427,7 +1427,7 @@ def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
         # F = myfftn(rho, DENSS_GPU=DENSS_GPU)
         F = myrfftn(rho, DENSS_GPU=DENSS_GPU)
 
-        # sometimes, when using denss.refine.py with non-random starting rho,
+        # sometimes, when using denss_refine.py with non-random starting rho,
         # the resulting Fs result in zeros in some locations and the algorithm to break
         # here just make those values to be 1e-16 to be non-zero
         F[np.abs(F) == 0] = 1e-16
@@ -3622,7 +3622,13 @@ class PDB(object):
             charge = '%2s' % self.charge[i]
             records.append([
                                'ATOM  ' + atomnum + '  ' + atomname + ' ' + resname + ' ' + chain + resnum + '    ' + x + y + z + o + b + '          ' + atomtype + charge])
-        np.savetxt(filename, records, fmt='%80s'.encode('ascii'))
+        # np.savetxt(filename, records, fmt='%80s'.encode('ascii'))
+        if sys.version_info[0] < 3:
+            # Python 2 approach
+            np.savetxt(filename, records, fmt='%80s'.encode('ascii'))
+        else:
+            # Python 3 approach
+            np.savetxt(filename, records, fmt='%80s')
 
 
 def sphere_volume_from_radius(R):
@@ -4185,7 +4191,7 @@ class PDB2MRC(object):
             rho_shell *= self.dV  # assume mrc file is in units of density, convert to electron count
             if not np.isclose(sidex, self.side, rtol=1e-3, atol=1e-3) or (rho_shell.shape[0] != self.x.shape[0]):
                 print("Error: shell_mrcfile does not match grid.")
-                print("Use denss.mrcops.py to resample onto the desired grid.")
+                print("Use denss_mrcops.py to resample onto the desired grid.")
                 exit()
         elif self.shell_type == "water":
             # the default is water type shell

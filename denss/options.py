@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 
-from ._version import __version__
+from denss._version import __version__
 import os, argparse
 import numpy as np
-from . import saxstats as saxs
+from denss import core as saxs
+
 
 def store_parameters_as_string(sasrec):
     param_str = ("Parameter Values:\n"
@@ -46,8 +47,8 @@ def parse_arguments(parser):
     parser.add_argument("-p","-p_on","--positivity_on", dest="positivity", action="store_true", help="Enforce positivity restraint inside support. (default)")
     parser.add_argument("-p_off","--positivity_off", dest="positivity", action="store_false", help="Do not enforce positivity restraint inside support.")
     parser.add_argument("-p_steps", "--positivity_steps", default=None, type=int, nargs='+', help=argparse.SUPPRESS) #help="List of steps to enforce positivity.")
-    parser.add_argument("-rho", "--rho_start", default=None, type=str, help="Starting electron density map filename (for use in denss.refine.py only)")
-    parser.add_argument("-support", "--support", "--support_start", dest="support_start", default=None, type=str, help=argparse.SUPPRESS) #help="Starting electron density map filename of initial support (for use in denss.refine.py only)")
+    parser.add_argument("-rho", "--rho_start", default=None, type=str, help="Starting electron density map filename (for use in denss_refine.py only)")
+    parser.add_argument("-support", "--support", "--support_start", dest="support_start", default=None, type=str, help=argparse.SUPPRESS) #help="Starting electron density map filename of initial support (for use in denss_refine.py only)")
     parser.add_argument("--add_noise", default=None, type=float, help="Add noise to starting density map. Uniformly distributed random density is added to each voxel, by default from 0 to 1. The argument is a scale factor to multiply this by.")
     parser.add_argument("-e","-e_on","--extrapolate_on", dest="extrapolate", action="store_true", help=argparse.SUPPRESS) # help="Extrapolate data by Porod law to high resolution limit of voxels. (default)")
     parser.add_argument("-e_off","--extrapolate_off", dest="extrapolate", action="store_false", help=argparse.SUPPRESS) #help="Do not extrapolate data by Porod law to high resolution limit of voxels.")
@@ -191,7 +192,7 @@ def parse_arguments(parser):
         I = sasrec.Ic
         sigq = sasrec.Icerr
 
-        #save fit, just like from denss.fit_data.py
+        #save fit, just like from denss_fit_data.py
         param_str = store_parameters_as_string(sasrec)
         #add column headers to param_str for output
         param_str += 'q, I, error, fit'
@@ -372,7 +373,7 @@ def parse_arguments(parser):
     oversampling = args.oversampling
     side = dmax * oversampling
 
-    #allow user to give initial density map for denss.refine.py
+    #allow user to give initial density map for denss_refine.py
     if args.rho_start is not None:
         rho_start, rho_side = saxs.read_mrc(args.rho_start)
         rho_nsamples = rho_start.shape[0]

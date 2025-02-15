@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#    denss.align_and_average.py
+#    denss_align_and_average.py
 #    A tool for aligning and averaging multiple electron density maps.
 #
 #    Part of DENSS
@@ -28,22 +28,23 @@
 #
 
 from __future__ import print_function
-import sys, os, argparse, logging
+import sys, os, argparse
 import numpy as np
-from saxstats._version import __version__
-import saxstats.saxstats as saxs
+from denss import __version__
+from denss import core as saxs
 
-parser = argparse.ArgumentParser(description="A tool for selecting the enantiomer with the same handedness as the reference.", formatter_class=argparse.RawTextHelpFormatter)
-parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
-parser.add_argument("-f", "--file", type=str, help="MRC file")
-parser.add_argument("-ref", "--ref", default = None, type=str, help="Reference filename (.mrc file, required)")
-parser.add_argument("-o", "--output", type=str, help="output filename prefix")
-parser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
-parser.set_defaults(enan = True)
-parser.set_defaults(center = True)
-args = parser.parse_args()
 
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser(description="A tool for selecting the enantiomer with the same handedness as the reference.", formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("-f", "--file", type=str, help="MRC file")
+    parser.add_argument("-ref", "--ref", default = None, type=str, help="Reference filename (.mrc file, required)")
+    parser.add_argument("-o", "--output", type=str, help="output filename prefix")
+    parser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
+    parser.set_defaults(enan = True)
+    parser.set_defaults(center = True)
+    args = parser.parse_args()
+
 
     if args.output is None:
         fname_nopath = os.path.basename(args.file)
@@ -84,5 +85,6 @@ if __name__ == "__main__":
         sys.exit(1)
 
 
-
+if __name__ == "__main__":
+    main()
 

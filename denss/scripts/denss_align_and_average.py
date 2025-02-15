@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#    denss.align_and_average.py
+#    denss_align_and_average.py
 #    A tool for aligning and averaging multiple electron density maps.
 #
 #    Part of DENSS
@@ -30,27 +30,27 @@
 from __future__ import print_function
 import sys, os, argparse, logging
 import numpy as np
-from saxstats._version import __version__
-import saxstats.saxstats as saxs
+from denss import __version__
+from denss import core as saxs
 
-parser = argparse.ArgumentParser(description="A tool for aligning and averaging multiple electron density maps.", formatter_class=argparse.RawTextHelpFormatter)
-parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
-parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files")
-parser.add_argument("-ref", "--ref",default = None, type=str, help="Reference filename (.mrc or .pdb file, optional)")
-parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB (default).")
-parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB.")
-parser.add_argument("-en_on", "--enantiomer_on", action = "store_true", dest="enan", help="Generate and select best enantiomers (default). ")
-parser.add_argument("-en_off", "--enantiomer_off", action = "store_false", dest="enan", help="Do not generate and select best enantiomers.")
-parser.add_argument("-r", "--resolution", default=15.0, type=float, help="Desired resolution (i.e. Gaussian width sigma) of map calculated from PDB file.")
-parser.add_argument("--ignore_pdb_waters", dest="ignore_waters", action="store_true", help="Ignore waters if PDB file given.")
-parser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
-parser.add_argument("-o", "--output", type=str, help="output filename prefix")
-parser.set_defaults(enan = True)
-parser.set_defaults(center = True)
-parser.set_defaults(ignore_waters = False)
-args = parser.parse_args()
+def main():
+    parser = argparse.ArgumentParser(description="A tool for aligning and averaging multiple electron density maps.", formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files")
+    parser.add_argument("-ref", "--ref",default = None, type=str, help="Reference filename (.mrc or .pdb file, optional)")
+    parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB (default).")
+    parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB.")
+    parser.add_argument("-en_on", "--enantiomer_on", action = "store_true", dest="enan", help="Generate and select best enantiomers (default). ")
+    parser.add_argument("-en_off", "--enantiomer_off", action = "store_false", dest="enan", help="Do not generate and select best enantiomers.")
+    parser.add_argument("-r", "--resolution", default=15.0, type=float, help="Desired resolution (i.e. Gaussian width sigma) of map calculated from PDB file.")
+    parser.add_argument("--ignore_pdb_waters", dest="ignore_waters", action="store_true", help="Ignore waters if PDB file given.")
+    parser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
+    parser.add_argument("-o", "--output", type=str, help="output filename prefix")
+    parser.set_defaults(enan = True)
+    parser.set_defaults(center = True)
+    parser.set_defaults(ignore_waters = False)
+    args = parser.parse_args()
 
-if __name__ == "__main__":
     __spec__ = None
 
     if args.output is None:
@@ -223,5 +223,6 @@ if __name__ == "__main__":
     logging.info('END')
 
 
-
+if __name__ == "__main__":
+    main()
 

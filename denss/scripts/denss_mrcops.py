@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#    denss.mrcops.py
+#    denss_mrcops.py
 #    A tool for calculating simple scattering profiles
 #    from MRC formatted electron density maps
 #
@@ -29,32 +29,30 @@
 #
 
 from __future__ import print_function
-import os, argparse, sys
-import logging
+import os, argparse
 import numpy as np
 from scipy import ndimage
-from saxstats._version import __version__
-import saxstats.saxstats as saxs
+from denss import __version__
+from denss import core as saxs
 
-parser = argparse.ArgumentParser(description="A tool for performing basic operations on MRC formatted electron density maps", formatter_class=argparse.RawTextHelpFormatter)
-parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
-parser.add_argument("-f", "--file", type=str, help="Electron density filename (.mrc)")
-parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired length of voxel of map (resamples map, before any padding)")
-parser.add_argument("-n", "--n", default=None, type=int, help="Desired number of samples (creates cubic map by padding with zeros or clipping, after any resampling)")
-parser.add_argument("-s", "--side", default=None, type=float, help="Desired length of side of map (creates cubic map by padding with zeros or clipping, after any resampling)")
-parser.add_argument("-ongrid", "--ongrid", "--onGrid", dest='ongrid', default=None, type=str, help="Filename of mrc file to match grid size to. (default=None)")
-parser.add_argument("-t","--threshold", default=None, type=float, help="Minimum density threshold (given as e-/A^3; sets lesser values to zero).")
-parser.add_argument("-ne","--ne", default=None, type=float, help="Desired number of electrons in map.")
-parser.add_argument("-zflip","--zflip", action="store_true", help="Generate the enantiomer by flipping map over Z axis.")
-parser.add_argument("-rc","--recenter", action="store_true", help="Recenter the density by center of mass.")
-parser.add_argument("-rc_type","--recenter_type", default='roll', type=str, help="Recenter by interpolation or roll (default=roll).")
-parser.add_argument("-shift","--shift", default=None, nargs=3, help="Translate density by this vector (x y z, space separated list in units of angstroms).")
-parser.add_argument("-shift_type","--shift_type", default='roll', type=str, help="Translate by interpolation or roll (default=roll).")
-parser.add_argument("-u", "--units", default=None, type=str, help="Change units (\"a\": [from nm to angstrom] or \"nm\": [from angstrom to nanometer])")
-parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
-args = parser.parse_args()
-
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser(description="A tool for performing basic operations on MRC formatted electron density maps", formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("-f", "--file", type=str, help="Electron density filename (.mrc)")
+    parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired length of voxel of map (resamples map, before any padding)")
+    parser.add_argument("-n", "--n", default=None, type=int, help="Desired number of samples (creates cubic map by padding with zeros or clipping, after any resampling)")
+    parser.add_argument("-s", "--side", default=None, type=float, help="Desired length of side of map (creates cubic map by padding with zeros or clipping, after any resampling)")
+    parser.add_argument("-ongrid", "--ongrid", "--onGrid", dest='ongrid', default=None, type=str, help="Filename of mrc file to match grid size to. (default=None)")
+    parser.add_argument("-t","--threshold", default=None, type=float, help="Minimum density threshold (given as e-/A^3; sets lesser values to zero).")
+    parser.add_argument("-ne","--ne", default=None, type=float, help="Desired number of electrons in map.")
+    parser.add_argument("-zflip","--zflip", action="store_true", help="Generate the enantiomer by flipping map over Z axis.")
+    parser.add_argument("-rc","--recenter", action="store_true", help="Recenter the density by center of mass.")
+    parser.add_argument("-rc_type","--recenter_type", default='roll', type=str, help="Recenter by interpolation or roll (default=roll).")
+    parser.add_argument("-shift","--shift", default=None, nargs=3, help="Translate density by this vector (x y z, space separated list in units of angstroms).")
+    parser.add_argument("-shift_type","--shift_type", default='roll', type=str, help="Translate by interpolation or roll (default=roll).")
+    parser.add_argument("-u", "--units", default=None, type=str, help="Change units (\"a\": [from nm to angstrom] or \"nm\": [from angstrom to nanometer])")
+    parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
+    args = parser.parse_args()
 
     if args.output is None:
         fname_nopath = os.path.basename(args.file)
@@ -98,7 +96,7 @@ if __name__ == "__main__":
         rho2, (a2,b2,c2) = saxs.read_mrc(args.ongrid, returnABC=True)
         #check that grid is a cube
         if not np.allclose(rho2.shape, rho2.shape[0]) or not np.allclose([a2,b2,c2], a2):
-            print("mrc file for --ongrid option is not a cube. Please resample to a cube using denss.mrcops.py first.")
+            print("mrc file for --ongrid option is not a cube. Please resample to a cube using denss_mrcops.py first.")
             print(rho2.shape, (a2,b2,c2))
             exit()
         else:
@@ -191,7 +189,8 @@ if __name__ == "__main__":
     saxs.write_mrc(rho,(a,b,c),filename=output+'.mrc')
 
 
-
+if __name__ == "__main__":
+    main()
 
 
 

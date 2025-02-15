@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 #
-#    denss.align_by_principal_axes.py
-#    A tool for aligning an electron density map to another electron density
-#    map based only on alignment of principal axes (no minimization).
+#    denss_align.py
+#    A tool for aligning electron density maps.
 #
 #    Part of DENSS
 #    DENSS: DENsity from Solution Scattering
@@ -32,28 +31,33 @@ from __future__ import print_function
 import os, sys, logging
 import numpy as np
 import argparse
-from saxstats._version import __version__
-import saxstats.saxstats as saxs
+from denss import __version__
+from denss import core as saxs
 
-parser = argparse.ArgumentParser(description="A tool for aligning an electron density map to another electron density map based only on alignment of principal axes (no minimization).", formatter_class=argparse.RawTextHelpFormatter)
-parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
-parser.add_argument("-f", "--file", type=str, help="MRC file for alignment to reference principal axes.")
-parser.add_argument("-ref", "--ref", default = None, type=str, help="Reference (.mrc or .pdb file (map will be calculated from PDB))")
-parser.add_argument("-o", "--output", default = None, type=str, help="output filename prefix")
-parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB reference (default).")
-parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB reference.")
-parser.add_argument("-r", "--resolution", default=15.0, type=float, help="Desired resolution (i.e. Gaussian width sigma) of map calculated from PDB file.")
-parser.add_argument("--ignore_pdb_waters", dest="ignore_waters", action="store_true", help="Ignore waters if PDB file given.")
-parser.set_defaults(center = True)
-parser.set_defaults(ignore_waters = False)
-args = parser.parse_args()
+def main():
+    parser = argparse.ArgumentParser(description="A tool for aligning electron density maps.", formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files for alignment to reference.")
+    parser.add_argument("-ref", "--ref", default = None, type=str, help="Reference (.mrc or .pdb file (map will be calculated from PDB))")
+    parser.add_argument("-o", "--output", default = None, type=str, help="output filename prefix")
+    parser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
+    parser.add_argument("-en_on", "--enantiomer_on", action = "store_true", dest="enan", help="Generate and select best enantiomers (default). ")
+    parser.add_argument("-en_off", "--enantiomer_off", action = "store_false", dest="enan", help="Do not generate and select best enantiomers.")
+    parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB reference (default).")
+    parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB reference.")
+    parser.add_argument("-r", "--resolution", default=15.0, type=float, help="Desired resolution (i.e. Gaussian width sigma) of map calculated from PDB file.")
+    parser.add_argument("--ignore_pdb_waters", dest="ignore_waters", action="store_true", help="Ignore waters if PDB file given.")
+    parser.set_defaults(enan = True)
+    parser.set_defaults(center = True)
+    parser.set_defaults(ignore_waters = False)
+    args = parser.parse_args()
 
-if __name__ == "__main__":
+    __spec__ = None
 
     if args.output is None:
-        fname_nopath = os.path.basename(args.file)
+        fname_nopath = os.path.basename(args.files[0])
         basename, ext = os.path.splitext(fname_nopath)
-        output = basename+"_alignedbyPA"
+        output = basename+"_aligned"
     else:
         output = args.output
 
@@ -63,10 +67,20 @@ if __name__ == "__main__":
     logging.info('Command: %s', ' '.join(sys.argv))
     #logging.info('Script name: %s', sys.argv[0])
     logging.info('DENSS Version: %s', __version__)
-    logging.info('Map filename(s): %s', args.file)
+    logging.info('Map filename(s): %s', args.files)
     logging.info('Reference filename: %s', args.ref)
+    logging.info('Enantiomer selection: %s', args.enan)
 
-    rho, side = saxs.read_mrc(args.file)
+    nmaps = len(args.files)
+    allrhos = []
+    sides = []
+    for file in args.files:
+        rho, side = saxs.read_mrc(file)
+        allrhos.append(rho)
+        sides.append(side)
+
+    allrhos = np.array(allrhos)
+    sides = np.array(sides)
 
     if args.ref is None:
         print("Need reference file (.mrc or .pdb)")
@@ -78,8 +92,8 @@ if __name__ == "__main__":
             reffname_nopath = os.path.basename(args.ref)
             refbasename, refext = os.path.splitext(reffname_nopath)
             refoutput = refbasename+"_centered.pdb"
-            refside = side
-            voxel = (refside/rho.shape[0])
+            refside = sides[0]
+            voxel = (refside/allrhos[0].shape)[0]
             halfside = refside/2
             n = int(refside/voxel)
             dx = refside/n
@@ -115,15 +129,40 @@ if __name__ == "__main__":
             print("Invalid reference filename given. .mrc or .pdb file required")
             sys.exit(1)
 
-    aligned = saxs.principal_axis_alignment(refrho,rho)
+    if args.enan:
+        print(" Selecting best enantiomer(s)...")
+        try:
+            if args.ref:
+                allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
+            else:
+                allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=allrhos[0], cores=args.cores)
+        except KeyboardInterrupt:
+            sys.exit(1)
 
-    saxs.write_mrc(aligned, side, output+'.mrc')
-    print("%s.mrc written. " % (output,))
+    print(" Aligning to reference...")
+    try:
+        aligned, scores = saxs.align_multiple(refrho, allrhos, args.cores)
+    except KeyboardInterrupt:
+        sys.exit(1)
+
+    for i in range(nmaps):
+        if nmaps > 1:
+            fname_nopath = os.path.basename(args.files[i])
+            basename, ext = os.path.splitext(fname_nopath)
+            reffname_nopath = os.path.basename(args.ref)
+            refbasename, refext = os.path.splitext(reffname_nopath)
+            ioutput = output+"_"+basename+"_to_"+refbasename
+        else:
+            ioutput = output
+        saxs.write_mrc(aligned[i], sides[0], ioutput+'.mrc')
+        print("%s.mrc written. Score = %0.3e" % (ioutput,scores[i]))
+        logging.info('Correlation score to reference: %s.mrc %.3e', ioutput, scores[i])
 
     logging.info('END')
 
 
-
+if __name__ == "__main__":
+    main()
 
 
 

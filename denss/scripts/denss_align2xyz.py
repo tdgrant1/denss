@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#    denss.align2xyz.py
+#    denss_align2xyz.py
 #    A tool for aligning an electron density map such that its principal
 #    axes of inertia are aligned with the x,y,z axes.
 #
@@ -30,18 +30,16 @@
 
 from __future__ import print_function
 import os, sys, logging
-import numpy as np
 import argparse
-from saxstats._version import __version__
-import saxstats.saxstats as saxs
+from denss import __version__
+from denss import core as saxs
 
-parser = argparse.ArgumentParser(description="A tool for aligning an electron density map such that its principal axes of inertia are aligned with the x,y,z axes.", formatter_class=argparse.RawTextHelpFormatter)
-parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
-parser.add_argument("-f", "--file", type=str, help="List of MRC files for alignment to reference.")
-parser.add_argument("-o", "--output", default = None, type=str, help="output filename prefix")
-args = parser.parse_args()
-
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser(description="A tool for aligning an electron density map such that its principal axes of inertia are aligned with the x,y,z axes.", formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("-f", "--file", type=str, help="List of MRC files for alignment to reference.")
+    parser.add_argument("-o", "--output", default = None, type=str, help="output filename prefix")
+    args = parser.parse_args()
 
     if args.output is None:
         fname_nopath = os.path.basename(args.file)
@@ -68,7 +66,8 @@ if __name__ == "__main__":
     logging.info('END')
 
 
-
+if __name__ == "__main__":
+    main()
 
 
 

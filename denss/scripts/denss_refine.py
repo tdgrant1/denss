@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 #
-#    denss.py
+#    denss_refine.py
+#    A tool for refining an electron density map from solution scattering data
+#
+#    Part of DENSS
 #    DENSS: DENsity from Solution Scattering
 #    A tool for calculating an electron density map from solution scattering data
 #
@@ -25,18 +28,22 @@
 #
 
 from __future__ import print_function
-from saxstats._version import __version__
-import saxstats.saxstats as saxs
-import saxstats.denssopts as dopts
+from denss import __version__
+from denss import core as saxs
+from denss import options as dopts
 import numpy as np
 import sys, argparse, os
 import logging
 
-parser = argparse.ArgumentParser(description="DENSS: DENsity from Solution Scattering.\n A tool for calculating an electron density map from solution scattering data", formatter_class=argparse.RawTextHelpFormatter)
-args = dopts.parse_arguments(parser)
 
-if __name__ == "__main__":
-    __spec__ = None
+def main():
+    parser = argparse.ArgumentParser(description="DENSS: DENsity from Solution Scattering.\n A tool for calculating an electron density map from solution scattering data", formatter_class=argparse.RawTextHelpFormatter)
+    args = dopts.parse_arguments(parser)
+
+    if args.rho_start is None:
+        print(" denss_refine.py requires a .mrc file to be given to the --rho_start option.")
+        sys.exit()
+
     my_logger = logging.getLogger()
     my_logger.setLevel(logging.DEBUG)
 
@@ -46,7 +53,7 @@ if __name__ == "__main__":
     # h1.setLevel(logging.INFO)
     # h1.setFormatter(formatter)
 
-    h2 = logging.FileHandler(os.path.join('.', args.output+'.log'), mode='w')
+    h2 = logging.FileHandler(os.path.join('../bin', args.output + '.log'), mode='w')
     h2.setLevel(logging.INFO)
     h2.setFormatter(formatter)
 
@@ -71,6 +78,9 @@ if __name__ == "__main__":
         ne=args.ne,
         voxel=args.voxel,
         oversampling=args.oversampling,
+        rho_start=args.rho_start,
+        support_start=args.support_start,
+        add_noise=args.add_noise,
         recenter=args.recenter,
         recenter_steps=args.recenter_steps,
         recenter_mode=args.recenter_mode,
@@ -84,7 +94,6 @@ if __name__ == "__main__":
         ncs_axis=args.ncs_axis,
         ncs_type=args.ncs_type,
         seed=args.seed,
-        support_start=args.support_start,
         shrinkwrap=args.shrinkwrap,
         shrinkwrap_old_method=args.shrinkwrap_old_method,
         shrinkwrap_sigma_start=args.shrinkwrap_sigma_start,
@@ -105,6 +114,7 @@ if __name__ == "__main__":
         my_logger=my_logger)
 
     print("\n%s"%args.output)
+
 
     if args.plot:
         import matplotlib.pyplot as plt
@@ -185,3 +195,5 @@ if __name__ == "__main__":
     logging.info('END')
 
 
+if __name__ == "__main__":
+    main()

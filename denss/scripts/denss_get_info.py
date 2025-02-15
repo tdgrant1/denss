@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#    denss.get_info.py
+#    denss_get_info.py
 #    Print some basic information about an MRC file.
 #
 #    Part of DENSS
@@ -28,18 +28,16 @@
 #
 
 from __future__ import print_function
-import os, sys, logging
 import numpy as np
 from scipy import ndimage
 import argparse
-from saxstats._version import __version__
-import saxstats.saxstats as saxs
+from denss import core as saxs
 
-parser = argparse.ArgumentParser(description="Print some basic information about an MRC file.", formatter_class=argparse.RawTextHelpFormatter)
-parser.add_argument("-f", "--file", type=str, help="MRC filename.")
-args = parser.parse_args()
 
-if __name__ == "__main__":
+def main():
+    parser = argparse.ArgumentParser(description="Print some basic information about an MRC file.", formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("-f", "--file", type=str, help="MRC filename.")
+    args = parser.parse_args()
 
 
     rho, (a,b,c) = saxs.read_mrc(args.file, returnABC=True)
@@ -64,7 +62,8 @@ if __name__ == "__main__":
     print(" Modified RMSD of Density (voxels >0.01*max): %3.5f" % np.sqrt(np.mean(np.square(rho[idx]))))
 
 
-
+if __name__ == "__main__":
+    main()
 
 
 

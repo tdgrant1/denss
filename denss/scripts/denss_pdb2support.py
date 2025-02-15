@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#    denss.pdb2support.py
+#    denss_pdb2support.py
 #    A tool for calculating unitary electron density maps from pdb files.
 #
 #    Part of the DENSS package
@@ -28,38 +28,36 @@
 #
 
 from __future__ import print_function
-from saxstats._version import __version__
-import saxstats.saxstats as saxs
+from denss import __version__
+from denss import core as saxs
 import numpy as np
-from scipy import interpolate, ndimage, optimize
 import sys, argparse, os
-import copy, time
+import time
 
 
-parser = argparse.ArgumentParser(description="A tool for calculating simple electron density maps from pdb files.", formatter_class=argparse.RawTextHelpFormatter)
-parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
-parser.add_argument("-f", "--file", type=str, help="Atomic model as a .pdb file for input.")
-parser.add_argument("-s", "--side", default=None, type=float, help="Desired side length of real space box (default=None).")
-parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired voxel size (default=None)")
-parser.add_argument("-n", "--nsamples", default=None, type=int, help="Desired number of samples per axis (default=None)")
-parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (B-factor-like atomic displacement.)")
-parser.add_argument("-ongrid", "--ongrid", "--onGrid", dest='ongrid', default=None, type=str, help="Filename of mrc file to match grid size to. (default=None)")
-parser.add_argument("-vdW", "--vdW", "-vdw", "--vdw", dest="vdW", default=None, nargs='+', type=float, help="van der Waals radii of atom_types (for H, C, N, O, by default). (optional)")
-parser.add_argument("-atom_types", "--atom_types", default=['H', 'C', 'N', 'O'], nargs='+', type=str, help="Atom types to allow modification of van der waals radii (space separated list, default = H C N O). (optional)")
-parser.add_argument("-probe", "--probe", default=None, type=float, help="Probe distance (default=2.80, i.e. water diameter)")
-parser.add_argument("-b", "--b", "--use_b", dest="use_b", action="store_true", help="Include B-factors in atomic model (optional, default=False)")
-parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB (default).")
-parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB.")
-parser.add_argument("--ignore_waters", dest="ignore_waters", action="store_true", help="Ignore waters.")
-parser.add_argument("-o", "--output", default=None, help="Output filename prefix (default=basename_pdb)")
-parser.set_defaults(ignore_waters = False)
-parser.set_defaults(center = True)
-parser.set_defaults(plot=True)
-parser.set_defaults(use_b=False)
-args = parser.parse_args()
+def main():
+    parser = argparse.ArgumentParser(description="A tool for calculating simple electron density maps from pdb files.", formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("-f", "--file", type=str, help="Atomic model as a .pdb file for input.")
+    parser.add_argument("-s", "--side", default=None, type=float, help="Desired side length of real space box (default=None).")
+    parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired voxel size (default=None)")
+    parser.add_argument("-n", "--nsamples", default=None, type=int, help="Desired number of samples per axis (default=None)")
+    parser.add_argument("-r", "--resolution", default=None, type=float, help="Desired resolution (B-factor-like atomic displacement.)")
+    parser.add_argument("-ongrid", "--ongrid", "--onGrid", dest='ongrid', default=None, type=str, help="Filename of mrc file to match grid size to. (default=None)")
+    parser.add_argument("-vdW", "--vdW", "-vdw", "--vdw", dest="vdW", default=None, nargs='+', type=float, help="van der Waals radii of atom_types (for H, C, N, O, by default). (optional)")
+    parser.add_argument("-atom_types", "--atom_types", default=['H', 'C', 'N', 'O'], nargs='+', type=str, help="Atom types to allow modification of van der waals radii (space separated list, default = H C N O). (optional)")
+    parser.add_argument("-probe", "--probe", default=None, type=float, help="Probe distance (default=2.80, i.e. water diameter)")
+    parser.add_argument("-b", "--b", "--use_b", dest="use_b", action="store_true", help="Include B-factors in atomic model (optional, default=False)")
+    parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB (default).")
+    parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB.")
+    parser.add_argument("--ignore_waters", dest="ignore_waters", action="store_true", help="Ignore waters.")
+    parser.add_argument("-o", "--output", default=None, help="Output filename prefix (default=basename_pdb)")
+    parser.set_defaults(ignore_waters = False)
+    parser.set_defaults(center = True)
+    parser.set_defaults(plot=True)
+    parser.set_defaults(use_b=False)
+    args = parser.parse_args()
 
-
-if __name__ == "__main__":
     start = time.time()
 
     command = ' '.join(sys.argv)
@@ -101,7 +99,7 @@ if __name__ == "__main__":
         rho, (a,b,c) = saxs.read_mrc(args.ongrid, returnABC=True)
         #check that grid is a cube
         if not np.allclose(rho.shape, rho.shape[0]) or not np.allclose([a,b,c], a):
-            print("mrc file for --ongrid option is not a cube. Please resample using denss.mrcops.py first.")
+            print("mrc file for --ongrid option is not a cube. Please resample using denss_mrcops.py first.")
             print(rho.shape, (a,b,c))
             exit()
         else:
@@ -215,7 +213,8 @@ if __name__ == "__main__":
     saxs.write_mrc(support*1.0,side,output+"_support.mrc")
 
 
-
+if __name__ == "__main__":
+    main()
 
 
 

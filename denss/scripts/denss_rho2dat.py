@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#    denss.rho2dat.py
+#    denss_rho2dat.py
 #    A tool for calculating simple scattering profiles
 #    from MRC formatted electron density maps
 #
@@ -29,36 +29,34 @@
 #
 
 from __future__ import print_function
-import os, argparse, sys
-import logging
+import os, argparse
 import numpy as np
-from scipy import ndimage
-from saxstats._version import __version__
-import saxstats.saxstats as saxs
+from denss import __version__
+from denss import core as saxs
 
-parser = argparse.ArgumentParser(description="A tool for calculating simple scattering profiles from MRC formatted electron density maps", formatter_class=argparse.RawTextHelpFormatter)
-parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
-parser.add_argument("-f", "--file", type=str, help="Electron density filename (.mrc)")
-parser.add_argument("-dq", "--dq", default=None, type=float, help="Desired q spacing (pads map with zeros)")
-parser.add_argument("-n", "--n", default=None, type=int, help="Desired number of samples (overrides --dq option)")
-parser.add_argument("--ns", default=1, type=int, help="Sampling fraction (i.e. every ns'th element, must be integer, allows for reduced sampling for speed up at cost of resolution (i.e. qmax will be smaller))")
-parser.add_argument("-t","--threshold", default=None, type=float, help="Minimum density threshold (sets lesser values to zero).")
-parser.add_argument("--plot_on", dest="plot", action="store_true", help="Plot the profile (requires Matplotlib, default if module exists).")
-parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not plot the profile. (Default if Matplotlib does not exist)")
-parser.add_argument("--save_mrc", action="store_true", help="Save the modified MRC file.")
-parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
-parser.set_defaults(plot=True)
-args = parser.parse_args()
 
-if args.plot:
-    #if plotting is enabled, try to import matplotlib
-    #if import fails, set plotting to false
-    try:
-        import matplotlib.pyplot as plt
-    except ImportError:
-        args.plot = False
+def main():
+    parser = argparse.ArgumentParser(description="A tool for calculating simple scattering profiles from MRC formatted electron density maps", formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("-f", "--file", type=str, help="Electron density filename (.mrc)")
+    parser.add_argument("-dq", "--dq", default=None, type=float, help="Desired q spacing (pads map with zeros)")
+    parser.add_argument("-n", "--n", default=None, type=int, help="Desired number of samples (overrides --dq option)")
+    parser.add_argument("--ns", default=1, type=int, help="Sampling fraction (i.e. every ns'th element, must be integer, allows for reduced sampling for speed up at cost of resolution (i.e. qmax will be smaller))")
+    parser.add_argument("-t","--threshold", default=None, type=float, help="Minimum density threshold (sets lesser values to zero).")
+    parser.add_argument("--plot_on", dest="plot", action="store_true", help="Plot the profile (requires Matplotlib, default if module exists).")
+    parser.add_argument("--plot_off", dest="plot", action="store_false", help="Do not plot the profile. (Default if Matplotlib does not exist)")
+    parser.add_argument("--save_mrc", action="store_true", help="Save the modified MRC file.")
+    parser.add_argument("-o", "--output", default=None, help="Output filename prefix")
+    parser.set_defaults(plot=True)
+    args = parser.parse_args()
 
-if __name__ == "__main__":
+    if args.plot:
+        #if plotting is enabled, try to import matplotlib
+        #if import fails, set plotting to false
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError:
+            args.plot = False
 
     if args.output is None:
         fname_nopath = os.path.basename(args.file)
@@ -197,6 +195,8 @@ if __name__ == "__main__":
         plt.show()
 
 
+if __name__ == "__main__":
+    main()
 
 
 
