@@ -17,6 +17,9 @@ dependencies = [
     "scipy",
 ]
 
+[project.optional-dependencies]
+plotting = ["matplotlib"]
+
 [tool.setuptools.dynamic]
 version = {attr = "denss._version.__version__"}
 
