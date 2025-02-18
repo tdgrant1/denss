@@ -30,12 +30,12 @@
 from __future__ import print_function
 import sys, os, argparse
 import numpy as np
-from denss import __version__
-from denss import core as saxs
+
+import denss
 
 def main():
     parser = argparse.ArgumentParser(description="A tool for checking a set of electron density maps for the same handedness.", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files")
     parser.add_argument("-ref", "--ref", default = None, type=str, help="Reference filename (.mrc file, optional)")
     parser.add_argument("-o", "--output", type=str, help="output filename prefix")
@@ -56,7 +56,7 @@ def main():
     allrhos = []
     sides = []
     for file in args.files:
-        rho, side = saxs.read_mrc(file)
+        rho, side = denss.read_mrc(file)
         allrhos.append(rho)
         sides.append(side)
     allrhos = np.array(allrhos)
@@ -65,7 +65,7 @@ def main():
     if args.ref is not None:
         #allow input of reference for enantiomer selection
         if args.ref.endswith('.mrc'):
-            refrho, refside = saxs.read_mrc(args.ref)
+            refrho, refside = denss.read_mrc(args.ref)
         if (not args.ref.endswith('.mrc')):
             print("Invalid reference filename given. .mrc file required")
             sys.exit(1)
@@ -73,9 +73,9 @@ def main():
     print(" Selecting best enantiomers...")
     try:
         if args.ref:
-            allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
+            allrhos, scores = denss.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
         else:
-            allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=allrhos[0], cores=args.cores)
+            allrhos, scores = denss.select_best_enantiomers(allrhos, refrho=allrhos[0], cores=args.cores)
     except KeyboardInterrupt:
         sys.exit(1)
 
@@ -84,7 +84,7 @@ def main():
         fname_nopath = os.path.basename(args.files[i])
         basename, ext = os.path.splitext(fname_nopath)
         ioutput = basename+"_enan"
-        saxs.write_mrc(allrhos[i], sides[0], ioutput+'.mrc')
+        denss.write_mrc(allrhos[i], sides[0], ioutput+'.mrc')
 
 
 if __name__ == "__main__":

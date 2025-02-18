@@ -28,8 +28,8 @@
 #
 
 from __future__ import print_function
-from denss import __version__
-from denss import core as saxs
+
+import denss
 from denss import options as dopts
 import numpy as np
 import sys, argparse, os
@@ -62,12 +62,12 @@ def main():
 
     my_logger.info('BEGIN')
     my_logger.info('Command: %s', ' '.join(sys.argv))
-    my_logger.info('DENSS Version: %s', __version__)
+    my_logger.info('DENSS Version: %s', denss.__version__)
     my_logger.info('Data filename: %s', args.file)
     my_logger.info('Output prefix: %s', args.output)
     my_logger.info('Mode: %s', args.mode)
 
-    qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV, rho, side, fit, final_chi2 = saxs.denss(
+    qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV, rho, side, fit, final_chi2 = denss.denss(
         q=args.q,
         I=args.I,
         sigq=args.sigq,

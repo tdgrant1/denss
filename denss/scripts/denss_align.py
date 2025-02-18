@@ -31,12 +31,12 @@ from __future__ import print_function
 import os, sys, logging
 import numpy as np
 import argparse
-from denss import __version__
-from denss import core as saxs
+
+import denss
 
 def main():
     parser = argparse.ArgumentParser(description="A tool for aligning electron density maps.", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files for alignment to reference.")
     parser.add_argument("-ref", "--ref", default = None, type=str, help="Reference (.mrc or .pdb file (map will be calculated from PDB))")
     parser.add_argument("-o", "--output", default = None, type=str, help="output filename prefix")
@@ -66,7 +66,7 @@ def main():
     logging.info('BEGIN')
     logging.info('Command: %s', ' '.join(sys.argv))
     #logging.info('Script name: %s', sys.argv[0])
-    logging.info('DENSS Version: %s', __version__)
+    logging.info('DENSS Version: %s', denss.__version__)
     logging.info('Map filename(s): %s', args.files)
     logging.info('Reference filename: %s', args.ref)
     logging.info('Enantiomer selection: %s', args.enan)
@@ -75,7 +75,7 @@ def main():
     allrhos = []
     sides = []
     for file in args.files:
-        rho, side = saxs.read_mrc(file)
+        rho, side = denss.read_mrc(file)
         allrhos.append(rho)
         sides.append(side)
 
@@ -100,11 +100,11 @@ def main():
             x_ = np.linspace(-halfside,halfside,n)
             x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
             xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
-            pdb = saxs.PDB(args.ref)
+            pdb = denss.PDB(args.ref)
             if args.center:
                 pdb.coords -= pdb.coords.mean(axis=0)
                 pdb.write(filename=refoutput)
-            pdb2mrc = saxs.PDB2MRC(
+            pdb2mrc = denss.PDB2MRC(
                 pdb=pdb,
                 center_coords=False, #done above
                 voxel=dx,
@@ -122,9 +122,9 @@ def main():
             pdb2mrc.calc_rho_with_modified_params(pdb2mrc.params)
             refrho = pdb2mrc.rho_insolvent
             refrho = refrho*np.sum(allrhos[0])/np.sum(refrho)
-            saxs.write_mrc(refrho,pdb2mrc.side,filename=refbasename+'_pdb.mrc')
+            denss.write_mrc(refrho,pdb2mrc.side,filename=refbasename+'_pdb.mrc')
         if args.ref.endswith('.mrc'):
-            refrho, refside = saxs.read_mrc(args.ref)
+            refrho, refside = denss.read_mrc(args.ref)
         if (not args.ref.endswith('.mrc')) and (not args.ref.endswith('.pdb')):
             print("Invalid reference filename given. .mrc or .pdb file required")
             sys.exit(1)
@@ -133,15 +133,15 @@ def main():
         print(" Selecting best enantiomer(s)...")
         try:
             if args.ref:
-                allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
+                allrhos, scores = denss.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
             else:
-                allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=allrhos[0], cores=args.cores)
+                allrhos, scores = denss.select_best_enantiomers(allrhos, refrho=allrhos[0], cores=args.cores)
         except KeyboardInterrupt:
             sys.exit(1)
 
     print(" Aligning to reference...")
     try:
-        aligned, scores = saxs.align_multiple(refrho, allrhos, args.cores)
+        aligned, scores = denss.align_multiple(refrho, allrhos, args.cores)
     except KeyboardInterrupt:
         sys.exit(1)
 
@@ -154,7 +154,7 @@ def main():
             ioutput = output+"_"+basename+"_to_"+refbasename
         else:
             ioutput = output
-        saxs.write_mrc(aligned[i], sides[0], ioutput+'.mrc')
+        denss.write_mrc(aligned[i], sides[0], ioutput+'.mrc')
         print("%s.mrc written. Score = %0.3e" % (ioutput,scores[i]))
         logging.info('Correlation score to reference: %s.mrc %.3e', ioutput, scores[i])
 

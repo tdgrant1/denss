@@ -40,8 +40,8 @@ from functools import partial
 import numpy as np
 
 from denss import options as dopts
-from denss import __version__
-from denss import core as saxs
+
+import denss
 
 def main():
     parser = argparse.ArgumentParser()
@@ -105,11 +105,11 @@ def main():
 
             logger.info('BEGIN')
             logger.info('Script name: %s', sys.argv[0])
-            logger.info('DENSS Version: %s', __version__)
+            logger.info('DENSS Version: %s', denss.__version__)
             logger.info('Data filename: %s', superargs.file)
             logger.info('Output prefix: %s', kwargs['output'])
             logger.info('Mode: %s', superargs.mode)
-            result = saxs.denss(**kwargs)
+            result = denss.denss(**kwargs)
             logger.info('END')
             return result
 
@@ -157,7 +157,7 @@ def main():
 
         superlogger.info('BEGIN')
         superlogger.info('Command: %s', ' '.join(sys.argv))
-        superlogger.info('DENSS Version: %s', __version__)
+        superlogger.info('DENSS Version: %s', denss.__version__)
         superlogger.info('Data filename: %s', superargs.file)
         superlogger.info('Enantiomer selection: %r', superargs.enan)
 
@@ -237,11 +237,11 @@ def main():
                 x_ = np.linspace(-halfside,halfside,n)
                 x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
                 xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
-                pdb = saxs.PDB(superargs.ref)
+                pdb = denss.PDB(superargs.ref)
                 if superargs.center:
                     pdb.coords -= pdb.coords.mean(axis=0)
                     pdb.write(filename=refoutput)
-                pdb2mrc = saxs.PDB2MRC(
+                pdb2mrc = denss.PDB2MRC(
                     pdb=pdb,
                     center_coords=False, #done above
                     voxel=dx,
@@ -259,29 +259,29 @@ def main():
                 pdb2mrc.calc_rho_with_modified_params(pdb2mrc.params)
                 refrho = pdb2mrc.rho_insolvent
                 refrho = refrho*np.sum(allrhos[0])/np.sum(refrho)
-                saxs.write_mrc(refrho,pdb2mrc.side,filename=refbasename+'_pdb.mrc')
+                denss.write_mrc(refrho,pdb2mrc.side,filename=refbasename+'_pdb.mrc')
             if superargs.ref.endswith('.mrc'):
-                refrho, refside = saxs.read_mrc(superargs.ref)
+                refrho, refside = denss.read_mrc(superargs.ref)
 
         if superargs.enan:
             print()
             print(" Selecting best enantiomers...")
             superlogger.info('Selecting best enantiomers')
             try:
-                allrhos, scores = saxs.select_best_enantiomers(allrhos, cores=superargs.cores)
+                allrhos, scores = denss.select_best_enantiomers(allrhos, cores=superargs.cores)
             except KeyboardInterrupt:
                 sys.exit(1)
             for i in range(superargs.nmaps):
                 ioutput = output+"_"+str(i)+"_enan"
-                saxs.write_mrc(allrhos[i], sides[0], ioutput+".mrc")
+                denss.write_mrc(allrhos[i], sides[0], ioutput+".mrc")
 
         if superargs.ref is None:
             print()
             print(" Generating reference...")
             superlogger.info('Generating reference')
             try:
-                refrho = saxs.binary_average(allrhos, superargs.cores)
-                saxs.write_mrc(refrho, sides[0], output+"_reference.mrc")
+                refrho = denss.binary_average(allrhos, superargs.cores)
+                denss.write_mrc(refrho, sides[0], output+"_reference.mrc")
             except KeyboardInterrupt:
                 sys.exit(1)
 
@@ -289,7 +289,7 @@ def main():
         print(" Aligning all maps to reference...")
         superlogger.info('Aligning all maps to reference')
         try:
-            aligned, scores = saxs.align_multiple(refrho, allrhos, superargs.cores)
+            aligned, scores = denss.align_multiple(refrho, allrhos, superargs.cores)
         except KeyboardInterrupt:
             sys.exit(1)
 
@@ -306,7 +306,7 @@ def main():
             else:
                 filtered[i] = ' '
             ioutput = output+"_"+str(i)+"_aligned"
-            saxs.write_mrc(aligned[i], sides[0], ioutput+".mrc")
+            denss.write_mrc(aligned[i], sides[0], ioutput+".mrc")
             print("%s.mrc written. Score = %0.3f %s " % (ioutput,scores[i],filtered[i]))
             superlogger.info('Correlation score to reference: %s.mrc %.3f %s', ioutput, scores[i], filtered[i])
 
@@ -319,19 +319,19 @@ def main():
         superlogger.info('Standard deviation of the scores: %.3f', std)
         superlogger.info('Total number of input maps for alignment: %i',allrhos.shape[0])
         superlogger.info('Number of aligned maps accepted: %i', aligned.shape[0])
-        superlogger.info('Correlation score between average and reference: %.3f', -saxs.rho_overlap_score(average_rho, refrho))
+        superlogger.info('Correlation score between average and reference: %.3f', -denss.rho_overlap_score(average_rho, refrho))
         superlogger.info('Mean Density of Avg Map (all voxels): %3.5f', np.mean(average_rho))
         superlogger.info('Std. Dev. of Density (all voxels): %3.5f', np.std(average_rho))
         superlogger.info('RMSD of Density (all voxels): %3.5f', np.sqrt(np.mean(np.square(average_rho))))
-        saxs.write_mrc(average_rho, sides[0], output+'_avg.mrc')
+        denss.write_mrc(average_rho, sides[0], output+'_avg.mrc')
 
         #rather than compare two halves, average all fsc's to the reference
         fscs = []
         resns = []
         for calc_map in range(len(aligned)):
-            fsc_map = saxs.calc_fsc(aligned[calc_map],refrho,sides[0])
+            fsc_map = denss.calc_fsc(aligned[calc_map],refrho,sides[0])
             fscs.append(fsc_map)
-            resn_map = saxs.fsc2res(fsc_map)
+            resn_map = denss.fsc2res(fsc_map)
             resns.append(resn_map)
 
         fscs = np.array(fscs)
@@ -347,7 +347,7 @@ def main():
 
         resns = np.array(resns)
         fsc = np.mean(fscs,axis=0)
-        resn, x, y, resx = saxs.fsc2res(fsc, return_plot=True)
+        resn, x, y, resx = denss.fsc2res(fsc, return_plot=True)
         resn_sd = np.std(resns)
         if np.min(fsc[:,1]) > 0.5:
             print("Resolution: < %.1f +- %.1f A (maximum possible)" % (resn,resn_sd))

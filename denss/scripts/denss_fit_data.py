@@ -35,13 +35,13 @@ from __future__ import print_function
 import time
 import os, argparse, sys
 import numpy as np
-from denss import __version__
-from denss import core as saxs
+
+import denss
 
 
 def main():
     parser = argparse.ArgumentParser(description="A tool for fitting solution scattering data with smooth function based on Moore's algorithm for fitting a trigonometric series.", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
     parser.add_argument("-d", "--dmax", default=None, type=float, help="Estimated maximum dimension in angstroms (if q values are in 1/nm, use the -u option to convert).")
     parser.add_argument("-a", "--alpha", default=None, type=float, help="Set alpha smoothing factor")
@@ -114,10 +114,10 @@ def main():
 
     if args.dmax is None:
         #estimate dmax directly from data
-        #note that saxs.estimate_dmax does NOT extrapolate
+        #note that denss.estimate_dmax does NOT extrapolate
         #the high q data, even though by default
-        #saxs.Sasrec does extrapolate.
-        D, sasrec = saxs.estimate_dmax(Iq, clean_up=True)
+        #denss.Sasrec does extrapolate.
+        D, sasrec = denss.estimate_dmax(Iq, clean_up=True)
     else:
         D = args.dmax
 
@@ -179,14 +179,14 @@ def main():
 
 
     #calculate chi2 when alpha=0, to get the best possible chi2 for reference
-    sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, ne=nes, alpha=0.0, extrapolate=args.extrapolate)
+    sasrec = denss.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, ne=nes, alpha=0.0, extrapolate=args.extrapolate)
     ideal_chi2 = sasrec.calc_chi2()
 
     if args.alpha is None:
         alpha = sasrec.optimize_alpha()
     else:
         alpha = args.alpha
-    sasrec = saxs.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=alpha, ne=nes, extrapolate=args.extrapolate)
+    sasrec = denss.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, alpha=alpha, ne=nes, extrapolate=args.extrapolate)
 
     #implement method of estimating Vp, Vc, etc using oversmoothing
     sasrec.estimate_Vp_etal()
@@ -231,7 +231,7 @@ def main():
         print(param_str)
 
     def save_file(event=None):
-        #sascif = saxs.Sascif(sasrec)
+        #sascif = denss.Sascif(sasrec)
         #sascif.write(output+".sascif")
         #print "%s file saved" % (output+".sascif")
         param_str = store_parameters_as_string()
@@ -398,8 +398,8 @@ def main():
                         mask[int(rangei)] = False
                     except:
                         print("Invalid Remove Range")
-            qc = saxs.create_lowq(q=Iq_orig[:,0])
-            sasrec = saxs.Sasrec(Iq_orig[mask], dmax, qc=qc, r=r, nr=args.nr, alpha=alpha, ne=nes, extrapolate=extrapolate)
+            qc = denss.create_lowq(q=Iq_orig[:,0])
+            sasrec = denss.Sasrec(Iq_orig[mask], dmax, qc=qc, r=r, nr=args.nr, alpha=alpha, ne=nes, extrapolate=extrapolate)
             sasrec.estimate_Vp_etal()
             res = (sasrec.I_data - sasrec.Ic_qe)/sasrec.Ierr_data
             ridx = np.where((sasrec.q_data<sasrec.qc.max()))

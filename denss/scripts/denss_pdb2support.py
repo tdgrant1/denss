@@ -28,8 +28,8 @@
 #
 
 from __future__ import print_function
-from denss import __version__
-from denss import core as saxs
+
+import denss
 import numpy as np
 import sys, argparse, os
 import time
@@ -37,7 +37,7 @@ import time
 
 def main():
     parser = argparse.ArgumentParser(description="A tool for calculating simple electron density maps from pdb files.", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--file", type=str, help="Atomic model as a .pdb file for input.")
     parser.add_argument("-s", "--side", default=None, type=float, help="Desired side length of real space box (default=None).")
     parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired voxel size (default=None)")
@@ -70,7 +70,7 @@ def main():
     else:
         output = args.output
 
-    pdb = saxs.PDB(args.file,ignore_waters=args.ignore_waters)
+    pdb = denss.PDB(args.file,ignore_waters=args.ignore_waters)
     if args.center:
         pdboutput = basename+"_centered.pdb"
         pdb.coords -= pdb.coords.mean(axis=0)
@@ -89,14 +89,14 @@ def main():
             exit()
         vdWs = args.vdW
     else:
-        vdWs = [saxs.vdW.get(key) for key in atom_types]
+        vdWs = [denss.vdW.get(key) for key in atom_types]
         pdb.radius = pdb.vdW
 
     if not args.use_b:
         pdb.b *= 0
 
     if args.ongrid is not None:
-        rho, (a,b,c) = saxs.read_mrc(args.ongrid, returnABC=True)
+        rho, (a,b,c) = denss.read_mrc(args.ongrid, returnABC=True)
         #check that grid is a cube
         if not np.allclose(rho.shape, rho.shape[0]) or not np.allclose([a,b,c], a):
             print("mrc file for --ongrid option is not a cube. Please resample using denss_mrcops.py first.")
@@ -126,7 +126,7 @@ def main():
     elif args.voxel is not None and args.nsamples is None and args.side is None:
         #if v is given, estimate side, calculate nsamples.
         voxel = args.voxel
-        optimal_side = saxs.estimate_side_from_pdb(pdb)
+        optimal_side = denss.estimate_side_from_pdb(pdb)
         nsamples = np.ceil(optimal_side/voxel).astype(int)
         side = voxel * nsamples
         #if n > 256, adjust side length
@@ -147,7 +147,7 @@ def main():
         nsamples = args.nsamples
         voxel = 1.0
         side = voxel * nsamples
-        optimal_side = saxs.estimate_side_from_pdb(pdb)
+        optimal_side = denss.estimate_side_from_pdb(pdb)
         if side < optimal_side:
             print("Warning: side length may be too small and may result in undersampling errors.")
     elif args.voxel is None and args.nsamples is None and args.side is not None:
@@ -163,7 +163,7 @@ def main():
     elif args.voxel is None and args.nsamples is None and args.side is None:
         #if none given, set voxel to 1, estimate side length, adjust nsamples
         voxel = 1.0
-        optimal_side = saxs.estimate_side_from_pdb(pdb)
+        optimal_side = denss.estimate_side_from_pdb(pdb)
         nsamples = np.ceil(optimal_side/voxel).astype(int)
         if nsamples > 256:
             nsamples = 256
@@ -207,10 +207,10 @@ def main():
     #for now, add in resolution to pdb object to enable passing between functions easily.
     pdb.resolution = resolution
 
-    support = saxs.pdb2support_fast(pdb,x,y,z,radius=pdb.radius,probe=probe)
+    support = denss.pdb2support_fast(pdb,x,y,z,radius=pdb.radius,probe=probe)
 
     #write output
-    saxs.write_mrc(support*1.0,side,output+"_support.mrc")
+    denss.write_mrc(support*1.0,side,output+"_support.mrc")
 
 
 if __name__ == "__main__":

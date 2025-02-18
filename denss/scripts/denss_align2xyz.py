@@ -31,12 +31,12 @@
 from __future__ import print_function
 import os, sys, logging
 import argparse
-from denss import __version__
-from denss import core as saxs
+
+import denss
 
 def main():
     parser = argparse.ArgumentParser(description="A tool for aligning an electron density map such that its principal axes of inertia are aligned with the x,y,z axes.", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--file", type=str, help="List of MRC files for alignment to reference.")
     parser.add_argument("-o", "--output", default = None, type=str, help="output filename prefix")
     args = parser.parse_args()
@@ -53,14 +53,14 @@ def main():
     logging.info('BEGIN')
     logging.info('Command: %s', ' '.join(sys.argv))
     #logging.info('Script name: %s', sys.argv[0])
-    logging.info('DENSS Version: %s', __version__)
+    logging.info('DENSS Version: %s', denss.__version__)
     logging.info('Map filename(s): %s', args.file)
 
-    rho, side = saxs.read_mrc(args.file)
+    rho, side = denss.read_mrc(args.file)
 
-    aligned = saxs.align2xyz(rho)
+    aligned = denss.align2xyz(rho)
 
-    saxs.write_mrc(aligned, side, output+'.mrc')
+    denss.write_mrc(aligned, side, output+'.mrc')
     print("%s.mrc written. " % (output,))
 
     logging.info('END')

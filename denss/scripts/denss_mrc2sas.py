@@ -32,14 +32,14 @@ from __future__ import print_function
 import os, argparse, sys
 import numpy as np
 from scipy import interpolate
-from denss import __version__
-from denss import core as saxs
+
+import denss
 from textwrap import wrap
 
 
 def main():
     parser = argparse.ArgumentParser(description="A tool for calculating a scattering profile from an electron density map and fitting to experimental SWAXS data.", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--file", type=str, help="Electron density filename (.mrc) (required)")
     parser.add_argument("-d", "--data", type=str, help="Experimental SAXS data file for input (3-column ASCII text file (q, I, err), optional, has priority over -q options for qgrid interpolation).")
     parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional, -data has priority for qgrid interpolation).")
@@ -81,7 +81,7 @@ def main():
         output = args.output
 
     #read density map and calculate scattering profile
-    rho, side = saxs.read_mrc(args.file)
+    rho, side = denss.read_mrc(args.file)
     halfside = side/2
     nx, ny, nz = rho.shape[0], rho.shape[1], rho.shape[2]
     n = nx
@@ -102,17 +102,17 @@ def main():
     qblravel = qbin_labels.ravel()
     xcount = np.bincount(qblravel)
     #create modified qbins and put qbins in center of bin rather than at left edge of bin.
-    qbinsc = saxs.mybinmean(qr.ravel(), qblravel, xcount)
+    qbinsc = denss.mybinmean(qr.ravel(), qblravel, xcount)
 
     #calculate scattering profile from density
-    F = saxs.myfftn(rho)
-    I3D = saxs.abs2(F)
-    Imean = saxs.mybinmean(I3D.ravel(), qblravel, xcount=xcount)
+    F = denss.myfftn(rho)
+    I3D = denss.abs2(F)
+    Imean = denss.mybinmean(I3D.ravel(), qblravel, xcount=xcount)
     Iq_calc = np.vstack((qbinsc, Imean, Imean*.01)).T
 
     if args.data is not None:
         #read experimental data
-        q, I, sigq, Ifit, file_dmax, isfit = saxs.loadProfile(args.data, units=args.units)
+        q, I, sigq, Ifit, file_dmax, isfit = denss.loadProfile(args.data, units=args.units)
         Iq = np.vstack((q,I,sigq)).T
         Iq = Iq[~np.isnan(Iq).any(axis = 1)]
         #get rid of any data points equal to zero in the intensities or errors columns
@@ -155,7 +155,7 @@ def main():
     Iq_calc = Iq_calc[Iq_calc[:,0]<=qmax]
 
     #calculate fit with interpolation
-    final_chi2, exp_scale_factor, offset, fit = saxs.calc_chi2(Iq, Iq_calc, scale=args.fit_scale, offset=args.fit_offset, interpolation=True,return_sf=True,return_fit=True)
+    final_chi2, exp_scale_factor, offset, fit = denss.calc_chi2(Iq, Iq_calc, scale=args.fit_scale, offset=args.fit_offset, interpolation=True,return_sf=True,return_fit=True)
     np.savetxt(basename+'.mrc2sas.dat', fit[:,[0,3,2]], delimiter=' ', fmt='%.5e'.encode('ascii'),
         header='q(data),I(density),error(data)')
     np.savetxt(basename+'.mrc2sas.fit', fit, delimiter=' ', fmt='%.5e'.encode('ascii'),

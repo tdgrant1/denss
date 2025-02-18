@@ -29,13 +29,13 @@
 
 import os, copy, argparse
 import numpy as np
-from denss import __version__
-from denss import core as saxs
+
+import denss
 
 
 def main():
     parser = argparse.ArgumentParser(description="A tool for converting hypred pdb files (with density in B-factor column) to MRC formatted electron density maps.", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--file", type=str, help="Hypred model as a .pdb file for input.")
     parser.add_argument("-o", "--output", default=None, help="Output filename prefix (default=basename_hypred)")
     args = parser.parse_args()
@@ -45,7 +45,7 @@ def main():
     basename, ext = os.path.splitext(fname_nopath)
     output = basename
 
-    pdb = saxs.PDB(file)
+    pdb = denss.PDB(file)
     prot = copy.deepcopy(pdb)
     h2o = copy.deepcopy(pdb)
 
@@ -100,17 +100,17 @@ def main():
     idx_y = (1/dx*h2o.y).astype(int)
     idx_z = (1/dx*h2o.z).astype(int)
     rho_h2o[idx_x, idx_y, idx_z] = h2o.b
-    rho_h2o, shift = saxs.center_rho_roll(rho_h2o, return_shift=True)
-    saxs.write_mrc(rho_h2o,side,output+'_H2O.mrc')
+    rho_h2o, shift = denss.center_rho_roll(rho_h2o, return_shift=True)
+    denss.write_mrc(rho_h2o,side,output+'_H2O.mrc')
 
     #do the same for protein
     idx_x = (2*prot.x).astype(int)
     idx_y = (2*prot.y).astype(int)
     idx_z = (2*prot.z).astype(int)
     rho_prot[idx_x, idx_y, idx_z] = prot.b
-    # rho_prot = saxs.center_rho_roll(rho_prot)
+    # rho_prot = denss.center_rho_roll(rho_prot)
     rho_prot = np.roll(np.roll(np.roll(rho_prot, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
-    saxs.write_mrc(rho_prot,side,output+'_protein.mrc')
+    denss.write_mrc(rho_prot,side,output+'_protein.mrc')
 
 
 if __name__ == "__main__":

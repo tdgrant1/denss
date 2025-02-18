@@ -30,13 +30,13 @@
 from __future__ import print_function
 import sys, os, argparse
 import numpy as np
-from denss import __version__
-from denss import core as saxs
+
+import denss
 
 
 def main():
     parser = argparse.ArgumentParser(description="A tool for generating a reference from multiple electron density maps.", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files")
     parser.add_argument("-o", "--output", type=str, help="output filename prefix")
     parser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
@@ -56,7 +56,7 @@ def main():
     allrhos = []
     sides = []
     for file in args.files:
-        rho, side = saxs.read_mrc(file)
+        rho, side = denss.read_mrc(file)
         allrhos.append(rho)
         sides.append(side)
     allrhos = np.array(allrhos)
@@ -68,8 +68,8 @@ def main():
 
     print(" Generating reference...")
     try:
-        refrho = saxs.binary_average(allrhos, args.cores)
-        saxs.write_mrc(refrho, sides[0], output+"_reference.mrc")
+        refrho = denss.binary_average(allrhos, args.cores)
+        denss.write_mrc(refrho, sides[0], output+"_reference.mrc")
     except KeyboardInterrupt:
         sys.exit(1)
 

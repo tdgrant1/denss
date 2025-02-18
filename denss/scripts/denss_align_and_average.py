@@ -30,12 +30,12 @@
 from __future__ import print_function
 import sys, os, argparse, logging
 import numpy as np
-from denss import __version__
-from denss import core as saxs
+
+import denss
 
 def main():
     parser = argparse.ArgumentParser(description="A tool for aligning and averaging multiple electron density maps.", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files")
     parser.add_argument("-ref", "--ref",default = None, type=str, help="Reference filename (.mrc or .pdb file, optional)")
     parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB (default).")
@@ -65,7 +65,7 @@ def main():
     logging.info('BEGIN')
     logging.info('Command: %s', ' '.join(sys.argv))
     #logging.info('Script name: %s', sys.argv[0])
-    logging.info('DENSS Version: %s', __version__)
+    logging.info('DENSS Version: %s', denss.__version__)
     logging.info('Map filename(s): %s', args.files)
     logging.info('Reference filename: %s', args.ref)
     logging.info('Enantiomer selection: %s', args.enan)
@@ -75,7 +75,7 @@ def main():
     allrhos = []
     sides = []
     for file in args.files:
-        rho, side = saxs.read_mrc(file)
+        rho, side = denss.read_mrc(file)
         allrhos.append(rho)
         sides.append(side)
     allrhos = np.array(allrhos)
@@ -101,11 +101,11 @@ def main():
             x_ = np.linspace(-halfside,halfside,n)
             x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
             xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
-            pdb = saxs.PDB(args.ref)
+            pdb = denss.PDB(args.ref)
             if args.center:
                 pdb.coords -= pdb.coords.mean(axis=0)
                 pdb.write(filename=refoutput)
-            pdb2mrc = saxs.PDB2MRC(
+            pdb2mrc = denss.PDB2MRC(
                 pdb=pdb,
                 center_coords=False, #done above
                 voxel=dx,
@@ -123,9 +123,9 @@ def main():
             pdb2mrc.calc_rho_with_modified_params(pdb2mrc.params)
             refrho = pdb2mrc.rho_insolvent
             refrho = refrho*np.sum(allrhos[0])/np.sum(refrho)
-            saxs.write_mrc(refrho,pdb2mrc.side,filename=refbasename+'_pdb.mrc')
+            denss.write_mrc(refrho,pdb2mrc.side,filename=refbasename+'_pdb.mrc')
         if args.ref.endswith('.mrc'):
-            refrho, refside = saxs.read_mrc(args.ref)
+            refrho, refside = denss.read_mrc(args.ref)
         if (not args.ref.endswith('.mrc')) and (not args.ref.endswith('.pdb')):
             print("Invalid reference filename given. .mrc or .pdb file required")
             sys.exit(1)
@@ -134,23 +134,23 @@ def main():
         print(" Selecting best enantiomers...")
         try:
             if args.ref:
-                allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
+                allrhos, scores = denss.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
             else:
-                allrhos, scores = saxs.select_best_enantiomers(allrhos, refrho=allrhos[0], cores=args.cores)
+                allrhos, scores = denss.select_best_enantiomers(allrhos, refrho=allrhos[0], cores=args.cores)
         except KeyboardInterrupt:
             sys.exit(1)
 
     if args.ref is None:
         print(" Generating reference...")
         try:
-            refrho = saxs.binary_average(allrhos, args.cores)
-            saxs.write_mrc(refrho, sides[0], output+"_reference.mrc")
+            refrho = denss.binary_average(allrhos, args.cores)
+            denss.write_mrc(refrho, sides[0], output+"_reference.mrc")
         except KeyboardInterrupt:
             sys.exit(1)
 
     print(" Aligning all maps to reference...")
     try:
-        aligned, scores = saxs.align_multiple(refrho, allrhos, args.cores)
+        aligned, scores = denss.align_multiple(refrho, allrhos, args.cores)
     except KeyboardInterrupt:
         sys.exit(1)
 
@@ -170,7 +170,7 @@ def main():
         fname_nopath = os.path.basename(args.files[i])
         basename, ext = os.path.splitext(fname_nopath)
         ioutput = basename+"_aligned"
-        saxs.write_mrc(aligned[i], sides[0], ioutput+'.mrc')
+        denss.write_mrc(aligned[i], sides[0], ioutput+'.mrc')
         print("%s.mrc written. Score = %0.3e %s " % (ioutput,scores[i],filtered[i]))
         logging.info('Correlation score to reference: %s.mrc %.3e %s', ioutput, scores[i], filtered[i])
 
@@ -183,8 +183,8 @@ def main():
     logging.info('Standard deviation of the scores: %.3e', std)
     logging.info('Total number of input maps for alignment: %i',allrhos.shape[0])
     logging.info('Number of aligned maps accepted: %i', aligned.shape[0])
-    logging.info('Correlation score between average and reference: %.3e', -saxs.rho_overlap_score(average_rho, refrho))
-    saxs.write_mrc(average_rho, sides[0], output+'_avg.mrc')
+    logging.info('Correlation score between average and reference: %.3e', -denss.rho_overlap_score(average_rho, refrho))
+    denss.write_mrc(average_rho, sides[0], output+'_avg.mrc')
     logging.info('END')
 
 
@@ -192,9 +192,9 @@ def main():
     fscs = []
     resns = []
     for calc_map in range(len(aligned)):
-        fsc_map = saxs.calc_fsc(aligned[calc_map],refrho,sides[0])
+        fsc_map = denss.calc_fsc(aligned[calc_map],refrho,sides[0])
         fscs.append(fsc_map)
-        resn_map = saxs.fsc2res(fsc_map)
+        resn_map = denss.fsc2res(fsc_map)
         resns.append(resn_map)
 
     fscs = np.array(fscs)
@@ -210,7 +210,7 @@ def main():
 
     resns = np.array(resns)
     fsc = np.mean(fscs,axis=0)
-    resn, x, y, resx = saxs.fsc2res(fsc, return_plot=True)
+    resn, x, y, resx = denss.fsc2res(fsc, return_plot=True)
     resn_sd = np.std(resns)
     if np.min(fsc[:,1]) > 0.5:
         print("Resolution: < %.1f +- %.1f A (maximum possible)" % (resn,resn_sd))

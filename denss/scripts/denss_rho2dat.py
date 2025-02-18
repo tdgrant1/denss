@@ -31,13 +31,13 @@
 from __future__ import print_function
 import os, argparse
 import numpy as np
-from denss import __version__
-from denss import core as saxs
+
+import denss
 
 
 def main():
     parser = argparse.ArgumentParser(description="A tool for calculating simple scattering profiles from MRC formatted electron density maps", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--file", type=str, help="Electron density filename (.mrc)")
     parser.add_argument("-dq", "--dq", default=None, type=float, help="Desired q spacing (pads map with zeros)")
     parser.add_argument("-n", "--n", default=None, type=int, help="Desired number of samples (overrides --dq option)")
@@ -65,7 +65,7 @@ def main():
     else:
         output = args.output
 
-    rho, side = saxs.read_mrc(args.file)
+    rho, side = denss.read_mrc(args.file)
     if rho.shape[0]%2==1:
         rho = rho[:-1,:-1,:-1]
     #if nstmp%2==1: args.ns+=1
@@ -99,13 +99,13 @@ def main():
     qblravel = qbin_labels.ravel()
     xcount = np.bincount(qblravel)
     #create modified qbins and put qbins in center of bin rather than at left edge of bin.
-    qbinsc = saxs.mybinmean(qr.ravel(), qblravel, xcount)
+    qbinsc = denss.mybinmean(qr.ravel(), qblravel, xcount)
 
     #calculate scattering profile from density
-    F = saxs.myfftn(rho)
+    F = denss.myfftn(rho)
     F[F.real==0] = 1e-16
-    I3D = saxs.abs2(F)
-    Imean = saxs.mybinmean(I3D.ravel(), qblravel, xcount=xcount)
+    I3D = denss.abs2(F)
+    Imean = denss.mybinmean(I3D.ravel(), qblravel, xcount=xcount)
 
     if args.plot: 
         qmax_to_use = np.max(qx_)
@@ -161,16 +161,16 @@ def main():
         qbin_labels -= 1
         qblravel = qbin_labels.ravel()
         xcount = np.bincount(qblravel)
-        qbinsc = saxs.mybinmean(qr.ravel(), qblravel, xcount)
+        qbinsc = denss.mybinmean(qr.ravel(), qblravel, xcount)
         rho_pad = np.zeros((n,n,n))
         a = n//2-n_orig//2
         b = n//2+n_orig//2
         rho_pad[a:b,a:b,a:b] = rho
         rho = np.copy(rho_pad)
 
-    F = saxs.myfftn(rho)
-    I3D = saxs.abs2(F)
-    Imean = saxs.mybinmean(I3D.ravel(), qblravel, xcount=xcount)
+    F = denss.myfftn(rho)
+    I3D = denss.abs2(F)
+    Imean = denss.mybinmean(I3D.ravel(), qblravel, xcount=xcount)
 
     qmax_to_use = np.max(qx_)
     print("qmax to use: %f" % qmax_to_use)
@@ -185,7 +185,7 @@ def main():
     np.savetxt(output+'.dat', Iq, delimiter=' ', fmt='% .16e')
 
     if args.save_mrc:
-        saxs.write_mrc(rho, side, output+'_mod.mrc')
+        denss.write_mrc(rho, side, output+'_mod.mrc')
 
     if args.plot:
         print('Actual dq = %.4f' % (2*np.pi/side))

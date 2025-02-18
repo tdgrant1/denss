@@ -32,12 +32,12 @@ from __future__ import print_function
 import os, argparse
 import numpy as np
 from scipy import ndimage
-from denss import __version__
-from denss import core as saxs
+
+import denss
 
 def main():
     parser = argparse.ArgumentParser(description="A tool for performing basic operations on MRC formatted electron density maps", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--file", type=str, help="Electron density filename (.mrc)")
     parser.add_argument("-v", "--voxel", default=None, type=float, help="Desired length of voxel of map (resamples map, before any padding)")
     parser.add_argument("-n", "--n", default=None, type=int, help="Desired number of samples (creates cubic map by padding with zeros or clipping, after any resampling)")
@@ -61,7 +61,7 @@ def main():
     else:
         output = args.output
 
-    rho, (a,b,c) = saxs.read_mrc(args.file,returnABC=True)
+    rho, (a,b,c) = denss.read_mrc(args.file,returnABC=True)
     #float32 is not precise enough for some calculations, convert to float64
     rho = rho.astype(np.float64)
     vx, vy, vz = np.array((a,b,c))/np.array(rho.shape)
@@ -93,7 +93,7 @@ def main():
     dV = vx*vy*vz
 
     if args.ongrid is not None:
-        rho2, (a2,b2,c2) = saxs.read_mrc(args.ongrid, returnABC=True)
+        rho2, (a2,b2,c2) = denss.read_mrc(args.ongrid, returnABC=True)
         #check that grid is a cube
         if not np.allclose(rho2.shape, rho2.shape[0]) or not np.allclose([a2,b2,c2], a2):
             print("mrc file for --ongrid option is not a cube. Please resample to a cube using denss_mrcops.py first.")
@@ -113,7 +113,7 @@ def main():
 
     if voxel is not None:
         #only resample if voxel option is defined by user
-        rho = saxs.zoom_rho(rho,(vx,vy,vz),(voxel,voxel,voxel))
+        rho = denss.zoom_rho(rho,(vx,vy,vz),(voxel,voxel,voxel))
         #the zooming isn't exact due to integer voxels
         #so reset voxel sizes here
         vx = vy = vz = voxel
@@ -139,7 +139,7 @@ def main():
     newshape = (n, n, n)
 
     if (args.side is not None) or (args.n is not None):
-        rho = saxs.pad_rho(rho,newshape)
+        rho = denss.pad_rho(rho,newshape)
         a,b,c = vx * newshape[0], vy * newshape[1], vz*newshape[2]
     print("postpad")
     print("Shape:  ", rho.shape)
@@ -149,9 +149,9 @@ def main():
     #recenter density
     if args.recenter:
         if args.recenter_type[0].upper() == "I":
-            rho, shift = saxs.center_rho(rho, return_shift=True,iterations=1)
+            rho, shift = denss.center_rho(rho, return_shift=True,iterations=1)
         else:
-            rho, shift = saxs.center_rho_roll(rho, return_shift=True)
+            rho, shift = denss.center_rho_roll(rho, return_shift=True)
             shift = shift.astype(float)
         print("Translation Vector: [ %f %f %f ]" % (shift[0]*vx,shift[1]*vy,shift[2]*vz))
 
@@ -186,7 +186,7 @@ def main():
 
     print("Final number of electrons:", np.sum(rho)*dV)
 
-    saxs.write_mrc(rho,(a,b,c),filename=output+'.mrc')
+    denss.write_mrc(rho,(a,b,c),filename=output+'.mrc')
 
 
 if __name__ == "__main__":

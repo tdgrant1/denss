@@ -30,13 +30,13 @@
 from __future__ import print_function
 import sys, os, argparse
 import numpy as np
-from denss import __version__
-from denss import core as saxs
+
+import denss
 
 
 def main():
     parser = argparse.ArgumentParser(description="A tool for selecting the enantiomer with the same handedness as the reference.", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--file", type=str, help="MRC file")
     parser.add_argument("-ref", "--ref", default = None, type=str, help="Reference filename (.mrc file, required)")
     parser.add_argument("-o", "--output", type=str, help="output filename prefix")
@@ -53,12 +53,12 @@ def main():
     else:
         output = args.output
 
-    rho, side = saxs.read_mrc(args.file)
+    rho, side = denss.read_mrc(args.file)
 
     if args.ref is not None:
         #allow input of reference for enantiomer selection
         if args.ref.endswith('.mrc'):
-            refrho, refside = saxs.read_mrc(args.ref)
+            refrho, refside = denss.read_mrc(args.ref)
         else:
             print("Invalid reference filename given. .mrc file required")
             sys.exit(1)
@@ -79,8 +79,8 @@ def main():
 
     print(" Selecting best enantiomer...")
     try:
-        best_enan, score = saxs.select_best_enantiomer(refrho=refrho, rho=rho)
-        saxs.write_mrc(best_enan, side, output+'.mrc')
+        best_enan, score = denss.select_best_enantiomer(refrho=refrho, rho=rho)
+        denss.write_mrc(best_enan, side, output+'.mrc')
     except KeyboardInterrupt:
         sys.exit(1)
 

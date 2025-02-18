@@ -35,8 +35,8 @@ from __future__ import print_function
 
 import time
 
-from denss import __version__
-from denss import core as saxs
+
+import denss
 
 import numpy as np
 from scipy import ndimage
@@ -52,7 +52,7 @@ def main():
     fs.append("start")
 
     parser = argparse.ArgumentParser(description="A tool for calculating simple electron density maps from pdb files.", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--file", type=str, help="Atomic model as a .pdb file for input (required).")
     parser.add_argument("-d", "--data", type=str, help="Experimental SAXS data file for input (3-column ASCII text file (q, I, err), optional).")
     parser.add_argument("--fast", dest="fast", action="store_true", help="Fast mode. Sets nsamples to 64 (increases voxel size), disables plotting, disables mrc writing, sets shell type to uniform.")
@@ -152,13 +152,13 @@ def main():
                         format='%(asctime)s %(message)s') #, datefmt='%Y-%m-%d %I:%M:%S %p')
     logging.info('BEGIN')
     logging.info('Command: %s', ' '.join(sys.argv))
-    logging.info('DENSS Version: %s', __version__)
+    logging.info('DENSS Version: %s', denss.__version__)
     # logging.info('PDB filename: %s', args.file)
 
     t.append(time.time())
     fs.append("init log")
 
-    pdb = saxs.PDB(args.file, ignore_waters=args.ignore_waters)
+    pdb = denss.PDB(args.file, ignore_waters=args.ignore_waters)
 
     t.append(time.time())
     fs.append("read pdb")
@@ -213,7 +213,7 @@ def main():
     t.append(time.time())
     fs.append("import matplotlib")
 
-    pdb2mrc = saxs.PDB2MRC(
+    pdb2mrc = denss.PDB2MRC(
         pdb=pdb,
         ignore_waters=args.ignore_waters,
         explicitH=args.explicitH,
@@ -437,11 +437,11 @@ def main():
     if args.write_mrc_file:
         #write output
         print('Writing density map to %s_insolvent.mrc file.'%output)
-        saxs.write_mrc(pdb2mrc.rho_insolvent/pdb2mrc.dV,pdb2mrc.side,output+"_insolvent.mrc")
+        denss.write_mrc(pdb2mrc.rho_insolvent/pdb2mrc.dV,pdb2mrc.side,output+"_insolvent.mrc")
     if args.write_extras:
-        saxs.write_mrc(pdb2mrc.rho_invacuo/pdb2mrc.dV,pdb2mrc.side,output+"_invacuo.mrc")
-        saxs.write_mrc(pdb2mrc.rho_exvol/pdb2mrc.dV,pdb2mrc.side,output+"_exvol.mrc")
-        saxs.write_mrc(pdb2mrc.rho_shell/pdb2mrc.dV,pdb2mrc.side,output+"_shell.mrc")
+        denss.write_mrc(pdb2mrc.rho_invacuo/pdb2mrc.dV,pdb2mrc.side,output+"_invacuo.mrc")
+        denss.write_mrc(pdb2mrc.rho_exvol/pdb2mrc.dV,pdb2mrc.side,output+"_exvol.mrc")
+        denss.write_mrc(pdb2mrc.rho_shell/pdb2mrc.dV,pdb2mrc.side,output+"_shell.mrc")
     t.append(time.time())
     fs.append("write_mrc")
 

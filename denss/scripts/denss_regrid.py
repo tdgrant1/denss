@@ -30,13 +30,13 @@
 from __future__ import print_function
 import os, argparse, sys
 import numpy as np
-from denss import __version__
-from denss import core as saxs
+
+import denss
 
 
 def main():
     parser = argparse.ArgumentParser(description="A tool for calculating a scattering profile from an electron density map and fitting to experimental SWAXS data.", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--file", type=str, help="Scattering profile filename (required)")
     parser.add_argument("-q", "--qfile", default=None, type=str, help="ASCII text filename to use for setting the calculated q values (like a SAXS .dat file, but just uses first column, optional).")
     parser.add_argument("-qmax", "--qmax", default=None, type=float, help="Maximum q value for calculated intensities (optional)")
@@ -75,7 +75,7 @@ def main():
         output = args.output
 
     # read experimental data
-    q, I, sigq, Ifit, file_dmax, isfit = saxs.loadProfile(args.file, units=args.units)
+    q, I, sigq, Ifit, file_dmax, isfit = denss.loadProfile(args.file, units=args.units)
     Iq = np.vstack((q,I,sigq)).T
     Iq = Iq[~np.isnan(Iq).any(axis = 1)]
     # get rid of any data points equal to zero in the intensities or errors columns
@@ -94,7 +94,7 @@ def main():
         qc = None
 
     # interpolate Iq to desired qgrid
-    Iq_calc = saxs.regrid_Iq(Iq, qmax=args.qmax, nq=args.nq, qc=qc, use_sasrec=args.use_sasrec, D=args.dmax)
+    Iq_calc = denss.regrid_Iq(Iq, qmax=args.qmax, nq=args.nq, qc=qc, use_sasrec=args.use_sasrec, D=args.dmax)
 
     qmax = np.min([Iq[:,0].max(),Iq_calc[:,0].max()])
     Iq = Iq[Iq[:,0]<=qmax]

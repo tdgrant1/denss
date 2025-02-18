@@ -31,12 +31,12 @@
 from __future__ import print_function
 import os, argparse, sys
 import numpy as np
-from denss import __version__
-from denss import core as saxs
+
+import denss
 
 def main():
     parser = argparse.ArgumentParser(description="A tool for calculating the Fourier Shell Correlation between two pre-aligned MRC formatted electron density maps", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--file", type=str, help="Electron density filename (.mrc)")
     parser.add_argument("-ref", "--ref", type=str, help="Reference electron density filename (.mrc)")
     parser.add_argument("--plot_on", dest="plot", action="store_true", help="Plot the profile (requires Matplotlib, default if module exists).")
@@ -61,8 +61,8 @@ def main():
         output = args.output
 
 
-    rho, side = saxs.read_mrc(args.file)
-    refrho, refside = saxs.read_mrc(args.ref)
+    rho, side = denss.read_mrc(args.file)
+    refrho, refside = denss.read_mrc(args.ref)
     if rho.shape[0] != refrho.shape[0]:
         print("Shape of rho and ref are not equal.")
         sys.exit()
@@ -70,10 +70,10 @@ def main():
         print("Side length of rho and ref are not equal.")
         sys.exit()
 
-    fsc = saxs.calc_fsc(rho,refrho,side)
-    rscc = saxs.real_space_correlation_coefficient(rho,refrho)
+    fsc = denss.calc_fsc(rho,refrho,side)
+    rscc = denss.real_space_correlation_coefficient(rho,refrho)
     print("RSCC: %.3e"%rscc)
-    resn, x, y, resx = saxs.fsc2res(fsc, return_plot=True)
+    resn, x, y, resx = denss.fsc2res(fsc, return_plot=True)
     if np.min(fsc[:,1]) > 0.5:
         print("Resolution: < %.1f A (maximum possible)" % resn)
     else:

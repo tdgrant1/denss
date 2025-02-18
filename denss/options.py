@@ -1,9 +1,8 @@
 #!/usr/bin/env python
 
-from denss._version import __version__
 import os, argparse
 import numpy as np
-from denss import core as saxs
+import denss
 
 
 def store_parameters_as_string(sasrec):
@@ -24,7 +23,7 @@ def store_parameters_as_string(sasrec):
 
 def parse_arguments(parser):
 
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat, .fit, or .out)")
     parser.add_argument("-u", "--units", default="a", type=str, help="Angular units (\"a\" [1/angstrom] or \"nm\" [1/nanometer]; default=\"a\")")
     parser.add_argument("-m", "--mode", default="SLOW", type=str, help="Mode. F(AST) sets default options to run quickly for simple particle shapes. S(LOW) useful for more complex molecules. M(EMBRANE) mode allows for negative contrast. (default SLOW)")
@@ -115,7 +114,7 @@ def parse_arguments(parser):
                "has been re-enabled until a bug fix is released. ")
         args.extrapolate = True
 
-    q, I, sigq, Ifit, file_dmax, isfit = saxs.loadProfile(args.file, units=args.units)
+    q, I, sigq, Ifit, file_dmax, isfit = denss.loadProfile(args.file, units=args.units)
     Iq = np.zeros((q.size,3))
     #for denss, I is actually the fit, since we want the smooth data
     #for reconstructions
@@ -137,8 +136,8 @@ def parse_arguments(parser):
         print("Not enough data points (check that data has 3 columns: q, I, errors).")
         exit()
 
-    Iq = saxs.clean_up_data(Iq)
-    is_raw_data = saxs.check_if_raw_data(Iq)
+    Iq = denss.clean_up_data(Iq)
+    is_raw_data = denss.check_if_raw_data(Iq)
     #now that we've cleaned up the data, reset the q, I, sigq arrays
     q = Iq[:,0]
     I = Iq[:,1]
@@ -150,7 +149,7 @@ def parse_arguments(parser):
         #if dmax from loadProfile() is -1, then dmax was not able
         #to be extracted from the file
         #in that case, estimate dmax directly from the data
-        dmax, sasrec = saxs.estimate_dmax(Iq)
+        dmax, sasrec = denss.estimate_dmax(Iq)
     else:
         dmax = file_dmax
     D = dmax
@@ -158,7 +157,7 @@ def parse_arguments(parser):
     if is_raw_data:
         #in case a user gives raw experimental data, first, fit the data
         #using Sasrec and dmax
-        sasrec = saxs.Sasrec(Iq, D, alpha=0.0)
+        sasrec = denss.Sasrec(Iq, D, alpha=0.0)
         ideal_chi2 = sasrec.calc_chi2()
         al = []
         chi2 = []
@@ -167,7 +166,7 @@ def parse_arguments(parser):
         alphas = np.arange(-10,20.)
         for alpha in alphas:
             #print("***** ALPHA ****** %.5e"%alpha)
-            sasrec = saxs.Sasrec(Iq, D, alpha=10.**alpha)
+            sasrec = denss.Sasrec(Iq, D, alpha=10.**alpha)
             r = sasrec.r
             pi = np.pi
             N = sasrec.N[:,None]
@@ -185,8 +184,8 @@ def parse_arguments(parser):
         opt_alpha = 10.0**(np.interp(chif*ideal_chi2,[y[ali+1],y[ali]],[x[ali+1],x[ali]])-1)
         alpha = opt_alpha
 
-        sasrec = saxs.Sasrec(Iq, D, alpha=alpha)
-        #sasrec = saxs.Sasrec(Iq, dmax, qc=None, extrapolate=False)
+        sasrec = denss.Sasrec(Iq, D, alpha=alpha)
+        #sasrec = denss.Sasrec(Iq, dmax, qc=None, extrapolate=False)
         #now, set the Iq values to be the new fitted q values
         q = sasrec.qc
         I = sasrec.Ic
@@ -375,7 +374,7 @@ def parse_arguments(parser):
 
     #allow user to give initial density map for denss_refine.py
     if args.rho_start is not None:
-        rho_start, rho_side = saxs.read_mrc(args.rho_start)
+        rho_start, rho_side = denss.read_mrc(args.rho_start)
         rho_nsamples = rho_start.shape[0]
         rho_voxel = rho_side/rho_nsamples
 
@@ -399,7 +398,7 @@ def parse_arguments(parser):
 
     #allow user to give initial support, check for consistency with given grid parameters
     if args.support_start is not None:
-        support_start, support_side = saxs.read_mrc(args.support_start)
+        support_start, support_side = denss.read_mrc(args.support_start)
         support_nsamples = support_start.shape[0]
         support_voxel = support_side/support_nsamples
 

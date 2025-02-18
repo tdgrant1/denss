@@ -30,12 +30,12 @@
 from __future__ import print_function
 import sys, os, argparse, logging
 import numpy as np
-from denss import __version__
-from denss import core as saxs
+
+import denss
 
 def main():
     parser = argparse.ArgumentParser(description="A tool for averaging multiple pre-aligned electron density maps.", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=__version__))
+    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files")
     parser.add_argument("-o", "--output", type=str, help="Output filename prefix")
     args = parser.parse_args()
@@ -52,7 +52,7 @@ def main():
     logging.info('BEGIN')
     logging.info('Command: %s', ' '.join(sys.argv))
     #logging.info('Script name: %s', sys.argv[0])
-    logging.info('DENSS Version: %s', __version__)
+    logging.info('DENSS Version: %s', denss.__version__)
 
     rhosum = None
     n=1
@@ -62,7 +62,7 @@ def main():
         sys.stdout.write("\r% 5i / % 5i" % (n, nmaps))
         sys.stdout.flush()
         n+=1
-        rho, side = saxs.read_mrc(file)
+        rho, side = denss.read_mrc(file)
         rhos.append(rho)
         if rhosum is None:
             rhosum = rho
@@ -71,22 +71,22 @@ def main():
     print()
     rhos = np.array(rhos)
     average_rho = rhosum / nmaps
-    saxs.write_mrc(average_rho,side, output+"_avg.mrc")
+    denss.write_mrc(average_rho,side, output+"_avg.mrc")
     print("%s_avg.mrc written." % output)
 
     #rather than compare two halves, average all fsc's to the reference
     fscs = []
     resns = []
     for calc_map in range(nmaps):
-        fsc_map = saxs.calc_fsc(rhos[calc_map],average_rho,side)
+        fsc_map = denss.calc_fsc(rhos[calc_map],average_rho,side)
         fscs.append(fsc_map)
-        resn_map = saxs.fsc2res(fsc_map)
+        resn_map = denss.fsc2res(fsc_map)
         resns.append(resn_map)
 
     fscs = np.array(fscs)
     resns = np.array(resns)
     fsc = np.mean(fscs,axis=0)
-    resn, x, y, resx = saxs.fsc2res(fsc, return_plot=True)
+    resn, x, y, resx = denss.fsc2res(fsc, return_plot=True)
     resn_sd = np.std(resns)
     if np.min(fsc[:,1]) > 0.5:
         print("Resolution: < %.1f +- %.1f A (maximum possible)" % (resn,resn_sd))

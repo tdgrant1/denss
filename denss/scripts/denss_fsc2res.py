@@ -3,7 +3,7 @@
 from __future__ import print_function
 import numpy as np
 import os, argparse
-from denss import core as saxs
+import denss
 
 
 def main():
@@ -41,7 +41,7 @@ def main():
     else:
         fsc = np.mean(fscs,axis=0)
 
-    resn, x, y, resx = saxs.fsc2res(fsc, return_plot=True)
+    resn, x, y, resx = denss.fsc2res(fsc, return_plot=True)
     if np.min(fsc[:,1]) > 0.5:
         print("Resolution: < %.1f A (maximum possible)" % resn)
     else:

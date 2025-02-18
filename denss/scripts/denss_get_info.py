@@ -31,7 +31,7 @@ from __future__ import print_function
 import numpy as np
 from scipy import ndimage
 import argparse
-from denss import core as saxs
+import denss
 
 
 def main():
@@ -40,7 +40,7 @@ def main():
     args = parser.parse_args()
 
 
-    rho, (a,b,c) = saxs.read_mrc(args.file, returnABC=True)
+    rho, (a,b,c) = denss.read_mrc(args.file, returnABC=True)
     vx, vy, vz = np.array((a,b,c))/np.array(rho.shape)
 
     print(" Grid size:   %i x %i x %i" % (rho.shape[0],rho.shape[1],rho.shape[2]))
