@@ -38,8 +38,10 @@ import numpy as np
 
 import denss
 
+sasrec = None
 
 def main():
+    global sasrec
     parser = argparse.ArgumentParser(description="A tool for fitting solution scattering data with smooth function based on Moore's algorithm for fitting a trigonometric series.", formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--file", type=str, help="SAXS data file for input (either .dat or .out)")
@@ -231,9 +233,6 @@ def main():
         print(param_str)
 
     def save_file(event=None):
-        #sascif = denss.Sascif(sasrec)
-        #sascif.write(output+".sascif")
-        #print "%s file saved" % (output+".sascif")
         param_str = store_parameters_as_string()
         #add column headers to param_str for output
         param_str += 'q, I, error, fit ; chi2 = %.3f'%sasrec.chi2
@@ -577,7 +576,6 @@ def main():
         axExtrap = plt.axes([0.37, 0.170, 0.015, 0.03], frameon=True)
         axExtrap.margins(0.0)
 
-
         extrapolate_check = CheckButtons(axExtrap, ["Extrapolate"], [args.extrapolate])
         check = extrapolate_check
         try:
@@ -615,7 +613,6 @@ def main():
             pass
 
         check.labels[0].set_position((1.5,.5))
-
 
         #here is the slider updating
         sdmax.on_changed(update)
