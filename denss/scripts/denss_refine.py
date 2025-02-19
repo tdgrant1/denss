@@ -67,7 +67,7 @@ def main():
     my_logger.info('Output prefix: %s', args.output)
     my_logger.info('Mode: %s', args.mode)
 
-    qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV, rho, side, fit, final_chi2 = denss.denss(
+    qdata, Idata, sigqdata, qbinsc, Imean, chis, rg, supportV, rho, side, fit, final_chi2 = denss.reconstruct_abinitio_from_scattering_profile(
         q=args.q,
         I=args.I,
         sigq=args.sigq,

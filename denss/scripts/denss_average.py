@@ -71,7 +71,7 @@ def main():
     print()
     rhos = np.array(rhos)
     average_rho = rhosum / nmaps
-    denss.write_mrc(average_rho,side, output+"_avg.mrc")
+    denss.write_mrc(average_rho, side, output+"_avg.mrc")
     print("%s_avg.mrc written." % output)
 
     #rather than compare two halves, average all fsc's to the reference

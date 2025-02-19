@@ -29,7 +29,7 @@ include-package-data = true
 package-data = {denss = ["resources/*.json"]}
 
 [project.scripts]
-denss = "denss.scripts.denss:main"
+denss = "denss.scripts.denss_abinitio:main"
 denss-align = "denss.scripts.denss_align:main"
 denss-align2xyz = "denss.scripts.denss_align2xyz:main"
 denss-align-by-principal-axes = "denss.scripts.denss_align_by_principal_axes:main"

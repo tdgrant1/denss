@@ -920,7 +920,7 @@ def loadProfile(fname, units="a"):
     if units == "nm":
         # DENSS assumes 1/angstrom, so convert from 1/nm to 1/angstrom
         q /= 10
-        if denss != -1:
+        if dmax != -1:
             dmax *= 10
         print("Angular units converted from 1/nm to 1/angstrom")
 
@@ -1150,17 +1150,17 @@ def grid_center(rho):
     return np.array(rho.shape) // 2
 
 
-def denss(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
-          ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
-          recenter_mode="com", positivity=True, positivity_steps=None, extrapolate=True, output="map",
-          steps=None, seed=None, rho_start=None, support_start=None, add_noise=None,
-          shrinkwrap=True, shrinkwrap_old_method=False, shrinkwrap_sigma_start=3,
-          shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
-          shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01,
-          write_xplor_format=False, write_freq=100, enforce_connectivity=True,
-          enforce_connectivity_steps=[500], enforce_connectivity_max_features=1, cutout=True, quiet=False, ncs=0,
-          ncs_steps=[500], ncs_axis=1, ncs_type="cyclical", abort_event=None, my_logger=logging.getLogger(),
-          path='.', gui=False, DENSS_GPU=False):
+def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
+                                                 ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
+                                                 recenter_mode="com", positivity=True, positivity_steps=None, extrapolate=True, output="map",
+                                                 steps=None, seed=None, rho_start=None, support_start=None, add_noise=None,
+                                                 shrinkwrap=True, shrinkwrap_old_method=False, shrinkwrap_sigma_start=3,
+                                                 shrinkwrap_sigma_end=1.5, shrinkwrap_sigma_decay=0.99, shrinkwrap_threshold_fraction=0.2,
+                                                 shrinkwrap_iter=20, shrinkwrap_minstep=100, chi_end_fraction=0.01,
+                                                 write_xplor_format=False, write_freq=100, enforce_connectivity=True,
+                                                 enforce_connectivity_steps=[500], enforce_connectivity_max_features=1, cutout=True, quiet=False, ncs=0,
+                                                 ncs_steps=[500], ncs_axis=1, ncs_type="cyclical", abort_event=None, my_logger=logging.getLogger(),
+                                                 path='.', gui=False, DENSS_GPU=False):
     """Calculate electron density from scattering data."""
     if abort_event is not None:
         if abort_event.is_set():

@@ -156,9 +156,9 @@ def main():
 
     #calculate fit with interpolation
     final_chi2, exp_scale_factor, offset, fit = denss.calc_chi2(Iq, Iq_calc, scale=args.fit_scale, offset=args.fit_offset, interpolation=True,return_sf=True,return_fit=True)
-    np.savetxt(basename+'.mrc2sas.dat', fit[:,[0,3,2]], delimiter=' ', fmt='%.5e'.encode('ascii'),
+    np.savetxt(output+'.mrc2sas.dat', fit[:,[0,3,2]], delimiter=' ', fmt='%.5e',
         header='q(data),I(density),error(data)')
-    np.savetxt(basename+'.mrc2sas.fit', fit, delimiter=' ', fmt='%.5e'.encode('ascii'),
+    np.savetxt(output+'.mrc2sas.fit', fit, delimiter=' ', fmt='%.5e',
         header='q(data),I(data),error(data),I(density); chi2=%.3f'%final_chi2)
 
     print("Chi2 = %.3f"%final_chi2)
@@ -175,7 +175,7 @@ def main():
         Ic = fit[:,3]
 
         ax0.plot(q, Ie,'.',c='gray',label=args.file)
-        ax0.plot(q, Ic, '-',c='red',label=basename+'.mrc2sas.fit \n' + r'$\chi^2 = $ %.2f'%final_chi2)
+        ax0.plot(q, Ic, '-',c='red',label=output+'.mrc2sas.fit \n' + r'$\chi^2 = $ %.2f'%final_chi2)
         resid = (Ie - Ic)/err
         ax1.plot(q, resid*0, 'k--')
         ax1.plot(q, resid, '.',c='red')

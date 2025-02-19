@@ -26,7 +26,7 @@ def main():
     if args.output is None:
         fname_nopath = os.path.basename(args.files[0])
         basename, ext = os.path.splitext(fname_nopath)
-        output = basename+" "
+        output = basename
     else:
         output = args.output
 
@@ -56,9 +56,9 @@ def main():
             plt.plot(fscs[i,:,0],fscs[i,:,1],'k--',alpha=0.1)
         plt.plot(fsc[:,0],fsc[:,1],'bo-')
         #plt.plot(x,y,'k-')
-        plt.plot([resx],[0.5],'ro',label='Resolution = '+str(resn)+r'$\mathrm{\AA}$')
+        plt.plot([resx],[0.5],'ro',label=f'Resolution = {resn:.2f} $\AA$')
         plt.legend()
-        plt.xlabel('Resolution (1/$\mathrm{\AA}$)')
+        plt.xlabel('Resolution (1/$\AA$)')
         plt.ylabel('Fourier Shell Correlation')
         print(output)
         plt.savefig(output+'.png',dpi=150)
