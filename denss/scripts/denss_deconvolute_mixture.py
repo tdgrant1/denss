@@ -507,7 +507,7 @@ class ShannonDeconvolution:
                     estimated_profile = estimated_profiles[i_component]
                     profile_similarity_to_water[i_component] = calculate_cosine_similarity(estimated_profile, water_I)
 
-                profile_dissimilarity_error = np.sum(np.sqrt((profile_similarity_to_water - self.target_similarity)**2)) # Calculate error
+                profile_similarity_error = np.sum(np.sqrt((profile_similarity_to_water - self.target_similarity)**2)) # Calculate error
 
         profile_similarity_penalty = profile_similarity_error * self.profile_similarity_weight # Apply weight
         return profile_similarity_penalty
@@ -716,7 +716,7 @@ if __name__ == '__main__':
         known_profile_types=known_profile_types,  # Pass the known_profile_types
         fractions_weight=1.0,
         water_penalty_weight=0.0,
-        profile_dissimilarity_weight=10.0,
+        profile_similarity_weight=10.0,
         target_similarity=target_similarity,
         update_visualization=True,
         verbose=True
