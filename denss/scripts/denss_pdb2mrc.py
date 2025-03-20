@@ -316,6 +316,8 @@ def main():
         t.append(time.time())
         fs.append("load_data")
         pdb2mrc.initialize_penalties(penalty_weight=args.penalty_weight)
+        t.append(time.time())
+        fs.append("initialize_intensities")
         pdb2mrc.minimize_parameters(fit_radii=args.fit_radii)
     t.append(time.time())
     fs.append("minimize_parameters")
