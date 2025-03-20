@@ -4281,24 +4281,30 @@ class PDB2MRC(object):
 
         if not self.quiet: print('Finished structure factors.')
 
-    def load_data(self, filename=None, units=None):
+    def load_data(self, filename=None, Iq_exp=None, units=None):
         if not self.quiet: print('Loading data...')
-        if filename is None and self.data_filename is None:
-            print("ERROR: No data filename given.")
-        elif filename is None:
-            fn = self.data_filename
-        else:
+        if (filename is None and self.data_filename is None) and (Iq_exp is None):
+            print("ERROR: No data filename or array given.")
+        elif filename is not None:
             fn = filename
             self.data_filename = filename
+        elif self.data_filename is not None:
+            fn = self.data_filename
+        else:
+            fn = None
+
         if units is not None:
             self.data_units = units
-        if self.data_filename is not None:
+
+        if fn is not None:
             Iq_exp = np.genfromtxt(fn, invalid_raise=False, usecols=(0, 1, 2))
+
+        if Iq_exp is not None:
             if len(Iq_exp.shape) < 2:
-                print("Invalid data format. Data file must have 3 columns: q, I, errors.")
+                print("Invalid data format. Data must have 3 columns: q, I, errors.")
                 exit()
             if Iq_exp.shape[1] < 3:
-                print("Not enough columns (data must have 3 columns: q, I, errors).")
+                print("Not enough columns (Data must have 3 columns: q, I, errors).")
                 exit()
             Iq_exp = Iq_exp[~np.isnan(Iq_exp).any(axis=1)]
             # get rid of any data points equal to zero in the intensities or errors columns
