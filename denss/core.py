@@ -76,15 +76,15 @@ implicit_H_radius = 0.826377
 try:
     import numba as nb
 
-    numba = True
+    HAS_NUMBA = True
     # suppress some unnecessary deprecation warnings
     from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
 
     warnings.simplefilter('ignore', category=NumbaDeprecationWarning)
     warnings.simplefilter('ignore', category=NumbaPendingDeprecationWarning)
 except:
-    numba = False
-
+    HAS_NUMBA = False
+HAS_NUMBA = False
 try:
     import cupy as cp
 
@@ -189,11 +189,30 @@ def abs2(x):
     return _abs2
 
 
-# @numba.jit(nopython=True)
-# def mybincount(x, weights):
-#     result = np.zeros(x.max() + 1, int)
-#     for i in x:
-#         result[i] += weights[i]
+def abs2_fast(x, out=None):
+    if out is None:
+        out = np.empty_like(x, dtype=np.float64)
+
+    # Use the original abs2 implementation
+    np.add((x.real) ** 2, (x.imag) ** 2, out=out)
+    return out
+
+def mybinmean_optimized(xravel, binsravel, xcount=None, out=None):
+    # Calculate sums binned by bin index
+    xsum = np.bincount(binsravel, xravel)
+
+    # Use provided bin counts or calculate them
+    if xcount is None:
+        xcount = np.bincount(binsravel)
+
+    # Use provided output array or create new one
+    if out is None:
+        out = np.empty_like(xsum, dtype=float)
+
+    # Compute means in-place
+    np.divide(xsum, xcount, out=out)
+    return out
+
 
 def mybinmean(xravel, binsravel, xcount=None, DENSS_GPU=False):
     if DENSS_GPU:
@@ -4093,6 +4112,7 @@ class PDB2MRC(object):
         self.side = side
         self.n = n
         self.dx = dx
+        self.dx = dx
         self.dV = dV
         self.x_ = x_
         self.x, self.y, self.z = x, y, z
@@ -4328,20 +4348,25 @@ class PDB2MRC(object):
         self.logger.info('Last data point: %s', self.n2)
 
     def initialize_penalties(self, penalty_weight=None):
-        # get initial chi2 without fitting
+        """Initialize penalty weights more efficiently by avoiding redundant calculations"""
+        # Set target parameters and temporary zero penalty
         self.params_target = self.params
         self.penalty_weight = 0.0
-        self.calc_I_with_modified_params(self.params)
+
+        # We only need to calculate intensities once
+        # Call calc_score directly, which will call calc_I internally
         self.calc_score_with_modified_params(self.params)
         chi2_nofit = self.chi2
+
+        # Set the actual penalty weight
         if penalty_weight is None:
             self.penalty_weight = chi2_nofit * 100.0
         else:
             self.penalty_weight = penalty_weight
+
         self.penalties_initialized = True
 
     def minimize_parameters(self, fit_radii=False):
-
         if not self.penalties_initialized:
             self.initialize_penalties()
 
@@ -4478,44 +4503,50 @@ class PDB2MRC(object):
         self.penalty = penalty
 
     def calc_F_with_modified_params(self, params, full_qr=False):
-        """Calculates structure factor sum from set of parameters"""
-        # sf_ex is ratio of params[0] to initial rho0
-        if self.rho0 != 0:
-            sf_ex = params[0] / self.rho0
-        else:
-            sf_ex = 1.0
-        # sf_sh is ratio of params[1] to initial shell_contrast
-        if self.shell_contrast != 0:
-            sf_sh = params[1] / self.shell_contrast
-        else:
-            sf_sh = 1.0
-        self.F = np.zeros_like(self.F_invacuo)
+        """Calculates structure factor sum from set of parameters with optimized performance"""
+        # Calculate scaling factors
+        sf_ex = params[0] / self.rho0 if self.rho0 != 0 else 1.0
+        sf_sh = params[1] / self.shell_contrast if self.shell_contrast != 0 else 1.0
+
+        # Ensure F array exists
+        if not hasattr(self, 'F') or self.F is None:
+            self.F = np.zeros_like(self.F_invacuo)
+
         if full_qr:
+            # For full q-range, use direct assignment
             self.F = self.F_invacuo - sf_ex * self.F_exvol + sf_sh * self.F_shell
         else:
-            # scale Fs only in the data range for fitting for speed
+            # Fall back to standard calculation
             self.F[self.qidx] = self.F_invacuo[self.qidx] - sf_ex * self.F_exvol[self.qidx] + sf_sh * self.F_shell[
                 self.qidx]
 
     def calc_I_with_modified_params(self, params):
         """Calculates intensity profile for optimization of parameters"""
         if len(params) > 2:
-            # more params means we want to scale radii also
-            # which means we must first recalculate the excluded volume density
-            # in real space
+            # Handle radii scaling
             self.scale_radii(radii_sf=params[2:])
             self.calculate_excluded_volume(quiet=True)
-            # and recalculate the F_exvol
             self.F_exvol = myfftn(self.rho_exvol)
+
+        # Calculate structure factors
         self.calc_F_with_modified_params(params)
-        self.I3D = abs2(self.F)
-        self.I_calc = mybinmean(self.I3D.ravel(), self.qblravel, xcount=self.xcount)
-        # start with uncertainties scaled with intensity, and a floor
-        errors = self.I_calc[0] * 0.002   + self.I_calc**0.5 * .01
-        # scale errors by sqrt(number of voxels), relative to the maximum possible
+
+        # Calculate intensities
+        if not hasattr(self, 'I3D') or self.I3D is None:
+            self.I3D = np.empty_like(self.F, dtype=np.float64)
+        abs2_fast(self.F, out=self.I3D)
+
+        # Bin intensities
+        if not hasattr(self, 'I_calc') or self.I_calc is None or len(self.I_calc) != len(self.xcount):
+            self.I_calc = np.empty(len(self.xcount), dtype=np.float64)
+        mybinmean_optimized(self.I3D.ravel(), self.qblravel, xcount=self.xcount, out=self.I_calc)
+
+        # Calculate errors and create output array
+        errors = self.I_calc[0] * 0.002 + self.I_calc ** 0.5 * 0.01
         errors *= self.xcount_factor
         self.Iq_calc = np.vstack((self.qbinsc, self.I_calc, errors)).T
-        # calculate Rg and I0 and store it:
+
+        # Calculate Rg and I0
         self.Rg = calc_rg_by_guinier_first_2_points(self.q_calc, self.I_calc)
         self.I0 = self.I_calc[0]
 
@@ -4635,7 +4666,7 @@ class PDB2SAS(object):
             self.calc_debye()
 
 
-if numba:
+if HAS_NUMBA:
     @nb.njit(fastmath=True, parallel=True, error_model="numpy", cache=True)
     def numba_cdist(A, B):
         assert A.shape[1] == B.shape[1]
