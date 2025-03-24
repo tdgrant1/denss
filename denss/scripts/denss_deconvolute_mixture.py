@@ -1,9 +1,10 @@
-import os.path
+import os
 import sys, time
+import re
 import numpy as np
 from scipy import optimize
 import matplotlib.pyplot as plt
-import denss  # Assuming denss is installed or in your PYTHONPATH
+import denss
 from functools import partial
 
 # --- Define Fraction Model Functions (MUST COME FIRST) ---
@@ -55,11 +56,47 @@ def parse_command_line_args():
     parser = argparse.ArgumentParser(description="Deconvolute evolving mixture SAXS data using Shannon expansion.")
 
     # Essential Required Input Arguments
-    parser.add_argument("-m", "--mixture_stack_file", required=True,
-                        help="Path to mixture stack data file (N_frames x N_qbins).")
-    parser.add_argument("-q", "--q_values_file", required=True,
+
+    # Replace the existing mixture_stack_file argument
+    parser.add_argument("-m", "--mixture_stack", required=True,
+                        help="Path to mixture stack input. Can be: \n"
+                             "1. A single data file (.dat, .txt, .npy)\n"
+                             "2. A directory (all .dat files will be loaded)\n"
+                             "3. A text file containing list of data files\n"
+                             "4. A wildcard pattern (e.g., 'data/*.dat')\n"
+                             "5. A template with placeholder (e.g., 'data_{}.dat')")
+
+    # Add optional parameters to control behavior when needed
+    parser.add_argument("--q_column", type=int, default=0,
+                        help="Column index for q values in data files (default: 0)")
+    parser.add_argument("--I_column", type=int, default=1,
+                        help="Column index for intensity values in data files (default: 1)")
+    parser.add_argument("--sort_method", default="natural",
+                        choices=["natural", "alpha", "time", "numeric"],
+                        help="Method to sort files when loading from directory (default: natural)")
+
+    parser.add_argument("--interpolation_mode", default="auto",
+                        choices=["none", "common", "union", "reference", "auto"],
+                        help="How to handle files with different q-points: " +
+                             "'none': require identical q-points, " +
+                             "'common': use common q-range, " +
+                             "'union': use all q-points, " +
+                             "'reference': interpolate to first file, " +
+                             "'auto': try common, then reference")
+
+    # Only needed for template-based loading
+    parser.add_argument("--range_start", type=int,
+                        help="Starting frame number (only needed for template with {} placeholder)")
+    parser.add_argument("--range_end", type=int,
+                        help="Ending frame number (only needed for template with {} placeholder)")
+    parser.add_argument("--range_step", type=int, default=1,
+                        help="Step size between frames (default: 1)")
+    parser.add_argument("--range_padding", type=int,
+                        help="Zero-padding for frame numbers (e.g., 3 -> '001')")
+
+    parser.add_argument("-q", "--q_values_file",
                         help="Path to file containing q values (must correspond to mixture_stack rows).")
-    parser.add_argument("-d", "--d_values", required=True, help="Comma-separated D values for unknown components.")
+    parser.add_argument("-d", "--d_values", help="Comma-separated D values for unknown components.")
 
     # Flexible Initial Guess Profiles Input
     parser.add_argument("-u", "--unknown_profiles_init_input", default="auto",
@@ -102,6 +139,7 @@ def parse_command_line_args():
                         help="Enable interactive visualization during optimization.")
     parser.add_argument("--plot_update_frequency", type=int, default=10,
                         help="Plot update frequency (iterations). Default: 10")
+    parser.add_argument("--fit_frame_number", default=None, help="Frame number for plotting example fit.")
     parser.add_argument("--verbose", action="store_true", default=True,
                         help="Enable verbose output. Default: True")  # Default verbose to True
     parser.add_argument("--no-verbose", action="store_false", dest='verbose',
@@ -115,6 +153,700 @@ def parse_command_line_args():
     return parsed_args_dict # Return the dictionary
 
 
+# Loading files for this requires flexibility and ease of use for the user, which is a tough combination to strike
+# Here we will utilize multiple different functions for different possible use cases
+
+def load_mixture_stack_from_directory(directory_path, q_column=0, I_column=1,
+                                      file_pattern="*.dat", sort_method="natural"):
+    """
+    Load mixture stack from all matching files in a directory.
+
+    Parameters:
+    -----------
+    directory_path : str
+        Path to directory containing .dat files
+    q_column : int
+        Column index for q values (default: 0)
+    I_column : int
+        Column index for intensity values (default: 1)
+    file_pattern : str
+        Glob pattern to match files (default: "*.dat")
+    sort_method : str
+        Method to sort files: "natural" (human-like sorting),
+        "alpha" (alphabetical), "time" (modification time),
+        or "numeric" (extract numbers from filenames)
+
+    Returns:
+    --------
+    tuple
+        (q_values, mixture_stack) as numpy arrays
+    """
+    import glob
+    import os
+    import re
+
+    # Get list of files matching pattern
+    files = glob.glob(os.path.join(directory_path, file_pattern))
+
+    if not files:
+        raise ValueError(f"No files matching '{file_pattern}' found in {directory_path}")
+
+    # Sort files based on requested method
+    if sort_method == "alpha":
+        files.sort()
+    elif sort_method == "time":
+        files.sort(key=os.path.getmtime)
+    elif sort_method == "numeric":
+        def extract_number(filename):
+            numbers = re.findall(r'\d+', os.path.basename(filename))
+            return int(numbers[0]) if numbers else 0
+
+        files.sort(key=extract_number)
+    elif sort_method == "natural":
+        def natural_sort_key(s):
+            return [int(text) if text.isdigit() else text.lower()
+                    for text in re.split(r'(\d+)', os.path.basename(s))]
+
+        files.sort(key=natural_sort_key)
+    else:
+        raise ValueError(f"Unknown sort method: {sort_method}")
+
+    # Load first file to get q values and determine dimensions
+    first_data = np.genfromtxt(files[0], invalid_raise=False, usecols=(0, 1, 2))
+    q_values = first_data[:, q_column]
+    n_q_bins = len(q_values)
+    n_frames = len(files)
+
+    # Initialize mixture stack
+    mixture_stack = np.zeros((n_frames, n_q_bins))
+
+    # Load intensity data from each file
+    for i, file_path in enumerate(files):
+        data = np.genfromtxt(file_path, invalid_raise=False, usecols=(0, 1, 2))
+        if data.shape[0] != n_q_bins:
+            raise ValueError(f"File {file_path} has different number of q points than the first file")
+        mixture_stack[i, :] = data[:, I_column]
+
+    return q_values, mixture_stack
+
+
+def load_mixture_stack_from_list(file_list_path, q_column=0, I_column=1):
+    """
+    Load mixture stack from a list of files specified in a text file.
+
+    Parameters:
+    -----------
+    file_list_path : str
+        Path to text file containing list of .dat files (one per line)
+    q_column : int
+        Column index for q values (default: 0)
+    I_column : int
+        Column index for intensity values (default: 1)
+
+    Returns:
+    --------
+    tuple
+        (q_values, mixture_stack) as numpy arrays
+    """
+    import os
+
+    # Read the list of files
+    with open(file_list_path, 'r') as f:
+        files = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+
+    if not files:
+        raise ValueError(f"No files listed in {file_list_path}")
+
+    # Handle relative paths - make them relative to the list file location
+    list_dir = os.path.dirname(os.path.abspath(file_list_path))
+    files = [os.path.join(list_dir, f) if not os.path.isabs(f) else f for f in files]
+
+    # Check all files exist
+    missing_files = [f for f in files if not os.path.exists(f)]
+    if missing_files:
+        raise ValueError(f"Missing files: {', '.join(missing_files)}")
+
+    # Load first file to get q values and determine dimensions
+    first_data = np.genfromtxt(files[0], invalid_raise=False, usecols=(0, 1, 2))
+    q_values = first_data[:, q_column]
+    n_q_bins = len(q_values)
+    n_frames = len(files)
+
+    # Initialize mixture stack
+    mixture_stack = np.zeros((n_frames, n_q_bins))
+
+    # Load intensity data from each file
+    for i, file_path in enumerate(files):
+        data = np.genfromtxt(file_path, invalid_raise=False, usecols=(0, 1, 2))
+        if data.shape[0] != n_q_bins:
+            raise ValueError(f"File {file_path} has different number of q points than the first file")
+        mixture_stack[i, :] = data[:, I_column]
+
+    return q_values, mixture_stack
+
+
+def load_mixture_stack_from_range(file_template, start, end, step=1,
+                                  padding=None, q_column=0, I_column=1):
+    """
+    Load mixture stack from sequentially numbered files.
+
+    Parameters:
+    -----------
+    file_template : str
+        Template with {} placeholder for number (e.g., "data_{}.dat")
+    start : int
+        Starting frame number
+    end : int
+        Ending frame number (inclusive)
+    step : int
+        Step size between frames (default: 1)
+    padding : int or None
+        Zero-padding for frame numbers (e.g., 3 -> "001") or None for no padding
+    q_column : int
+        Column index for q values (default: 0)
+    I_column : int
+        Column index for intensity values (default: 1)
+
+    Returns:
+    --------
+    tuple
+        (q_values, mixture_stack) as numpy arrays
+    """
+    import os
+
+    # Generate list of files
+    files = []
+    for i in range(start, end + 1, step):
+        if padding is not None:
+            num_str = str(i).zfill(padding)
+        else:
+            num_str = str(i)
+        file_path = file_template.format(num_str)
+        files.append(file_path)
+
+    # Check all files exist
+    missing_files = [f for f in files if not os.path.exists(f)]
+    if missing_files:
+        raise ValueError(f"Missing files: {', '.join(missing_files)}")
+
+    # Load first file to get q values and determine dimensions
+    first_data = np.genfromtxt(files[0], invalid_raise=False, usecols=(0, 1, 2))
+    q_values = first_data[:, q_column]
+    n_q_bins = len(q_values)
+    n_frames = len(files)
+
+    # Initialize mixture stack
+    mixture_stack = np.zeros((n_frames, n_q_bins))
+
+    # Load intensity data from each file
+    for i, file_path in enumerate(files):
+        data = np.genfromtxt(file_path, invalid_raise=False, usecols=(0, 1, 2))
+        if data.shape[0] != n_q_bins:
+            raise ValueError(f"File {file_path} has different number of q points than the first file")
+        mixture_stack[i, :] = data[:, I_column]
+
+    return q_values, mixture_stack
+
+
+def detect_and_load_mixture_stack(input_path, q_values_file=None, q_column=0, I_column=1,
+                                  sort_method="natural", range_start=None, range_end=None,
+                                  range_step=1, range_padding=None):
+    """
+    Smart detection of input type and loading of mixture stack.
+
+    Parameters:
+    -----------
+    input_path : str
+        Path to mixture stack input (could be file, directory, list file, or pattern)
+    q_values_file : str or None
+        Path to file containing q values, or None to extract from data files
+    q_column : int
+        Column index for q values in data files (default: 0)
+    I_column : int
+        Column index for intensity values in data files (default: 1)
+    sort_method : str
+        Method for sorting files in directory mode
+    range_start, range_end : int or None
+        Start and end frame numbers for template mode
+    range_step : int
+        Step size between frames for template mode (default: 1)
+    range_padding : int or None
+        Zero-padding for frame numbers in template mode
+
+    Returns:
+    --------
+    tuple
+        (q_values, mixture_stack) as numpy arrays
+    """
+    import os
+    import glob
+    import numpy as np
+
+    # First, check if we have a separate q_values file
+    q_values = None
+    if q_values_file and os.path.isfile(q_values_file):
+        q_values = np.genfromtxt(q_values_file, invalid_raise=False, usecols=(0,))
+        print(f"Loading q values from: {q_values_file}")
+
+    # Case 1: Input is a .npy file
+    if input_path.endswith('.npy') and os.path.isfile(input_path):
+        mixture_stack = np.load(input_path)
+        print(f"Loading .npy mixture stack from {input_path}")
+
+        # If we already have q values, use those
+        if q_values is not None:
+            return q_values, mixture_stack
+        else:
+            # Otherwise assume first column is q
+            q = mixture_stack[:, 0].copy()
+            mixture_stack = mixture_stack[:, 1:]
+            return q, mixture_stack
+
+    # Case 2: Input is a directory
+    if os.path.isdir(input_path):
+        print(f"Detected directory input. Loading all .dat files from {input_path}")
+        files = sorted(glob.glob(os.path.join(input_path, "*.dat")))
+        if not files:
+            raise ValueError(f"No .dat files found in directory: {input_path}")
+
+        # Process files (using helper function)
+        q, mixture_stack = process_data_files(
+            files,
+            q_values,
+            q_column,
+            I_column,
+            sort_method,
+            interpolation_mode=parsed_args.get("interpolation_mode", "auto")
+        )
+        return q, mixture_stack
+
+    # Case 3: Input is a text file with list of files
+    if os.path.isfile(input_path) and (input_path.endswith('.txt') or input_path.endswith('.list')):
+        with open(input_path, 'r') as f:
+            first_line = f.readline().strip()
+            if first_line and not first_line.startswith('#'):
+                # Try relative path resolution
+                base_dir = os.path.dirname(input_path)
+                first_file = first_line
+                if not os.path.isabs(first_line):
+                    first_file = os.path.join(base_dir, first_line)
+
+                if os.path.exists(first_file):
+                    print(f"Detected list file input. Loading files listed in {input_path}")
+                    with open(input_path, 'r') as f:
+                        files = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+
+                    # Make relative paths absolute
+                    files = [os.path.join(base_dir, f) if not os.path.isabs(f) else f for f in files]
+
+                    # Process files
+                    q, mixture_stack = process_data_files(files, q_values, q_column, I_column, sort_method)
+                    return q, mixture_stack
+
+    # Case 4: Input contains wildcard characters
+    if '*' in input_path or '?' in input_path:
+        matching_files = sorted(glob.glob(input_path))
+        if matching_files:
+            print(f"Detected wildcard pattern. Loading {len(matching_files)} matching files")
+            q, mixture_stack = process_data_files(matching_files, q_values, q_column, I_column, sort_method)
+            return q, mixture_stack
+
+    # Case 5: Input contains curly braces placeholder
+    if '{}' in input_path and range_start is not None and range_end is not None:
+        print(f"Detected range template. Loading files from {range_start} to {range_end}")
+        files = []
+        for i in range(range_start, range_end + 1, range_step):
+            if range_padding is not None:
+                num_str = str(i).zfill(range_padding)
+            else:
+                num_str = str(i)
+            file_path = input_path.format(num_str)
+            if os.path.isfile(file_path):
+                files.append(file_path)
+            else:
+                print(f"Warning: File not found: {file_path}")
+
+        if not files:
+            raise ValueError(f"No files found for template: {input_path} with range {range_start}-{range_end}")
+
+        # Process files
+        q, mixture_stack = process_data_files(files, q_values, q_column, I_column, sort_method)
+        return q, mixture_stack
+
+    # Case 6: Input is a single data file (fallback)
+    if os.path.isfile(input_path):
+        print(f"Loading single file mixture stack from {input_path}")
+        mixture_stack = np.genfromtxt(input_path)
+
+        # If we already have q values, use those
+        if q_values is not None:
+            return q_values, mixture_stack
+        else:
+            # Assume first column is q
+            q = mixture_stack[:, 0].copy()
+            mixture_stack = mixture_stack[:, 1:] if mixture_stack.ndim > 1 else np.array([mixture_stack[1:]])
+            return q, mixture_stack
+
+    # If we get here, we couldn't determine the input type
+    raise ValueError(
+        f"Could not determine input type for '{input_path}'. "
+        "Please provide a valid file, directory, file list, or pattern."
+    )
+
+
+def load_saxs_file_generic(file_path, q_column=0, I_column=1):
+    """
+    A generic SAXS data file loader that adapts to different file formats.
+
+    This function intelligently determines the data section of SAXS files
+    by analyzing line patterns and content, handling various formats from
+    different instruments and processing software.
+
+    Parameters:
+    -----------
+    file_path : str
+        Path to the SAXS data file
+    q_column : int
+        Index of the q column in the data section (default: 0)
+    I_column : int
+        Index of the intensity column in the data section (default: 1)
+
+    Returns:
+    --------
+    tuple
+        (q_values, intensities) as numpy arrays
+    """
+    # Read all lines from the file
+    with open(file_path, 'r') as f:
+        lines = f.readlines()
+
+    # Analysis variables
+    data_lines = []
+    numeric_pattern = r'^[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?'
+    comment_markers = ['#', '!', '//', 'REMARK', '*', '/*', 'HEADER', '{']
+
+    # Analyze file structure
+    possible_data_blocks = []
+    current_block = []
+    current_block_column_count = None
+
+    for i, line in enumerate(lines):
+        line = line.strip()
+
+        # Skip empty lines
+        if not line:
+            continue
+
+        # Skip obvious comment or metadata lines
+        if any(line.startswith(marker) for marker in comment_markers):
+            continue
+
+        # Check if line contains mostly numeric data
+        fields = line.split()
+        numeric_fields = 0
+
+        # Skip lines with too few fields to contain q and I values
+        if len(fields) < 2:
+            continue
+
+        # Count numeric fields
+        for field in fields:
+            if re.match(numeric_pattern, field):
+                numeric_fields += 1
+
+        # Consider a line to be data if at least 70% of fields are numeric
+        is_data_line = numeric_fields >= max(2, int(0.7 * len(fields)))
+
+        if is_data_line:
+            # If starting a new block or continuing with same column count
+            if not current_block or current_block_column_count == len(fields):
+                current_block.append(line)
+                current_block_column_count = len(fields)
+            else:
+                # Column count changed - end current block and start new one
+                if len(current_block) > 5:  # Only keep blocks with sufficient lines
+                    possible_data_blocks.append((current_block, current_block_column_count))
+                current_block = [line]
+                current_block_column_count = len(fields)
+
+    # Add the last block if it exists
+    if current_block and len(current_block) > 5:
+        possible_data_blocks.append((current_block, current_block_column_count))
+
+    # No valid data blocks found
+    if not possible_data_blocks:
+        raise ValueError(f"Could not identify data section in file: {file_path}")
+
+    # Select the largest data block
+    selected_block = max(possible_data_blocks, key=lambda x: len(x[0]))
+    data_text = '\n'.join(selected_block[0])
+
+    # Safety check for column indices
+    col_count = selected_block[1]
+    if max(q_column, I_column) >= col_count:
+        raise ValueError(
+            f"Requested columns ({q_column}, {I_column}) exceed available columns ({col_count}) in file: {file_path}")
+
+    # Parse the data using StringIO
+    from io import StringIO
+    import numpy as np
+
+    try:
+        data = np.genfromtxt(StringIO(data_text), invalid_raise=False)
+
+        # Extract q and intensity values
+        q_values = data[:, q_column]
+        intensities = data[:, I_column]
+
+        # Validate data - check for NaN values
+        if np.isnan(q_values).any() or np.isnan(intensities).any():
+            # Find first non-NaN section and use that
+            valid_indices = ~(np.isnan(q_values) | np.isnan(intensities))
+            if np.sum(valid_indices) < 10:
+                raise ValueError(f"Too few valid data points in file: {file_path}")
+
+            q_values = q_values[valid_indices]
+            intensities = intensities[valid_indices]
+
+        return q_values, intensities
+
+    except Exception as e:
+        # If standard approach fails, try a more aggressive parsing
+        try:
+            # Try to extract just numeric values from each line
+            all_numeric_values = []
+            for line in selected_block[0]:
+                numeric_vals = re.findall(numeric_pattern, line)
+                all_numeric_values.append(numeric_vals)
+
+            # Find mode of the number of values per line
+            lengths = [len(vals) for vals in all_numeric_values]
+            from collections import Counter
+            most_common_length = Counter(lengths).most_common(1)[0][0]
+
+            # Filter to lines with the most common length
+            filtered_numeric_values = [vals for vals in all_numeric_values if len(vals) == most_common_length]
+
+            # Convert to numpy array
+            data_array = np.array(filtered_numeric_values, dtype=float)
+
+            # Extract q and I columns safely
+            safe_q_column = min(q_column, data_array.shape[1] - 1)
+            safe_I_column = min(I_column, data_array.shape[1] - 1)
+
+            return data_array[:, safe_q_column], data_array[:, safe_I_column]
+
+        except Exception as nested_e:
+            raise ValueError(
+                f"Failed to parse file after multiple attempts: {file_path}\nOriginal error: {e}\nSecondary error: {nested_e}")
+
+def process_data_files(files, q_values=None, q_column=0, I_column=1, sort_method="natural",
+                       interpolation_mode="auto"):
+    """
+    Helper function to process a list of data files into a mixture stack.
+    Now with support for files with different q-grids.
+
+    Parameters:
+    -----------
+    files : list
+        List of file paths to process
+    q_values : ndarray or None
+        Pre-loaded q values or None to extract from files
+    q_column : int
+        Column index for q values
+    I_column : int
+        Column index for intensity values
+    sort_method : str
+        Sorting method if needed
+    interpolation_mode : str
+        How to handle files with different q-points:
+        - "none": Require all files to have identical q-points
+        - "common": Find common q-range and truncate all files
+        - "union": Use union of all q-points and interpolate
+        - "reference": Interpolate all files to match first file
+        - "auto": Try common first, then reference if needed
+
+    Returns:
+    --------
+    tuple
+        (q_values, mixture_stack) as numpy arrays
+    """
+    import numpy as np
+    import re
+    import os
+    from scipy.interpolate import interp1d
+
+    # Apply sorting if needed
+    if sort_method == "alpha":
+        files = sorted(files)
+    elif sort_method == "time":
+        files = sorted(files, key=os.path.getmtime)
+    elif sort_method == "numeric":
+        def extract_number(filename):
+            numbers = re.findall(r'\d+', os.path.basename(filename))
+            return int(numbers[0]) if numbers else 0
+
+        files = sorted(files, key=extract_number)
+    elif sort_method == "natural":
+        def natural_sort_key(s):
+            return [int(text) if text.isdigit() else text.lower()
+                    for text in re.split(r'(\d+)', os.path.basename(s))]
+
+        files = sorted(files, key=natural_sort_key)
+
+    # First survey all files to understand q-grid differences
+    all_q_grids = []
+    all_q_min = float('inf')
+    all_q_max = float('-inf')
+    common_q_min = float('-inf')
+    common_q_max = float('inf')
+
+    print(f"Surveying {len(files)} files to determine q-grid compatibility...")
+
+    for file_path in files:
+        try:
+            # Use our generic parser instead of genfromtxt directly
+            file_q, file_I = load_saxs_file_generic(file_path, q_column, I_column)
+
+            # Track min/max for all files for union q-range
+            all_q_min = min(all_q_min, file_q.min())
+            all_q_max = max(all_q_max, file_q.max())
+
+            # Track min/max for common q-range intersection
+            common_q_min = max(common_q_min, file_q.min())
+            common_q_max = min(common_q_max, file_q.max())
+
+            all_q_grids.append(file_q)
+        except Exception as e:
+            print(f"Warning: Error reading file {file_path}: {e}")
+
+    # Check if all q-grids are the same
+    first_q_grid = all_q_grids[0]
+    all_same = True
+
+    for q_grid in all_q_grids[1:]:
+        if len(q_grid) != len(first_q_grid) or not np.allclose(q_grid, first_q_grid):
+            all_same = False
+            break
+
+    # If all q-grids are the same and "none" mode selected, proceed normally
+    if all_same and (interpolation_mode == "none" or interpolation_mode == "auto"):
+        print("All files have identical q-grids. Proceeding with direct loading.")
+
+        # Use provided q_values or from first file
+        if q_values is None:
+            q_values = first_q_grid
+
+        # Initialize mixture stack
+        n_q_bins = len(q_values)
+        n_frames = len(files)
+        mixture_stack = np.zeros((n_frames, n_q_bins))
+
+        # Load intensity data from each file
+        for i, file_path in enumerate(files):
+            # data = np.genfromtxt(file_path)
+            data_q, data_I = load_saxs_file_generic(file_path, q_column, I_column)
+            # mixture_stack[i, :] = data[:, I_column]
+            mixture_stack[i, :] = data_I
+
+        return q_values, mixture_stack
+
+    # If q-grids differ or interpolation mode forced, handle with interpolation
+    print(f"Files have different q-grids. Using '{interpolation_mode}' interpolation mode.")
+
+    # Choose target q-grid based on selected mode
+    if interpolation_mode == "reference" or (interpolation_mode == "auto" and (common_q_max <= common_q_min)):
+        # Use first file's q-grid as reference
+        target_q = first_q_grid
+        print(
+            f"Using reference q-grid from first file with {len(target_q)} points: {target_q[0]:.6f} to {target_q[-1]:.6f}")
+
+    elif interpolation_mode == "common":
+        # Use intersection of all q-ranges with spacing from first file
+        if common_q_max <= common_q_min:
+            print(f"Warning: No common q-range found. Falling back to reference mode.")
+            target_q = first_q_grid
+        else:
+            # Find typical spacing from first file
+            typical_spacing = np.median(np.diff(first_q_grid))
+            # Create new q-grid with same spacing in common range
+            n_points = int((common_q_max - common_q_min) / typical_spacing) + 1
+            target_q = np.linspace(common_q_min, common_q_max, n_points)
+            print(f"Using common q-range with {len(target_q)} points: {target_q[0]:.6f} to {target_q[-1]:.6f}")
+
+    elif interpolation_mode == "union":
+        # Use union of all q-ranges
+        # Find typical spacing from all files
+        all_spacings = []
+        for q_grid in all_q_grids:
+            if len(q_grid) > 1:
+                all_spacings.append(np.median(np.diff(q_grid)))
+        typical_spacing = np.median(all_spacings)
+
+        # Create new q-grid with same spacing in union range
+        n_points = int((all_q_max - all_q_min) / typical_spacing) + 1
+        target_q = np.linspace(all_q_min, all_q_max, n_points)
+        print(f"Using union q-range with {len(target_q)} points: {target_q[0]:.6f} to {target_q[-1]:.6f}")
+
+    else:
+        # Default to first file as reference
+        target_q = first_q_grid
+        print(f"Unknown interpolation mode '{interpolation_mode}'. Using reference q-grid.")
+
+    # Initialize mixture stack with target q-grid
+    n_q_bins = len(target_q)
+    n_frames = len(files)
+    mixture_stack = np.zeros((n_frames, n_q_bins))
+
+    # Load and interpolate intensity data from each file
+    print(f"Interpolating data from {len(files)} files to a common q-grid with {n_q_bins} points...")
+
+    for i, file_path in enumerate(files):
+        try:
+            data = np.genfromtxt(file_path)
+            file_q = data[:, q_column]
+            file_I = data[:, I_column]
+
+            # Create interpolation function
+            interp_func = interp1d(
+                file_q, file_I,
+                kind='linear',
+                bounds_error=False,
+                fill_value=(file_I[0], file_I[-1])  # Extrapolate with end values
+            )
+
+            # Apply interpolation to get intensity on target q-grid
+            interpolated_I = interp_func(target_q)
+
+            # Check for NaN or inf values (can happen with extrapolation)
+            if np.any(~np.isfinite(interpolated_I)):
+                # Replace any non-finite values with nearest valid values
+                mask = ~np.isfinite(interpolated_I)
+                valid_indices = np.where(~mask)[0]
+                if len(valid_indices) > 0:
+                    for idx in np.where(mask)[0]:
+                        nearest_valid_idx = valid_indices[np.argmin(np.abs(valid_indices - idx))]
+                        interpolated_I[idx] = interpolated_I[nearest_valid_idx]
+                else:
+                    # If no valid values, use zeros
+                    interpolated_I = np.zeros_like(interpolated_I)
+                    print(f"Warning: File {file_path} has no valid intensity values after interpolation")
+
+            # Store in mixture stack
+            mixture_stack[i, :] = interpolated_I
+
+            if i % 100 == 0 or i == len(files) - 1:
+                print(f"  Processed {i + 1}/{len(files)} files")
+
+        except Exception as e:
+            print(f"Error processing file {file_path}: {e}")
+            # Fill with zeros for this frame
+            mixture_stack[i, :] = np.zeros(n_q_bins)
+
+    return target_q, mixture_stack
+
+
+
 def setup_deconvolution(parsed_args):
     """
     Parses command-line arguments, loads data files, preprocesses data,
@@ -123,23 +855,18 @@ def setup_deconvolution(parsed_args):
     """
 
     # --- Data Loading from Parsed Arguments Dictionary ---
-    basename, ext = os.path.splitext(parsed_args["mixture_stack_file"])
-    if ext == ".npy":
-        mixture_stack = np.load(parsed_args["mixture_stack_file"])
-    else:
-        mixture_stack = np.genfromtxt(parsed_args["mixture_stack_file"])
+    q, mixture_stack = detect_and_load_mixture_stack(
+        parsed_args["mixture_stack"],  # Your original argument name, may need to adjust
+        q_values_file=parsed_args["q_values_file"],
+        q_column=parsed_args.get("q_column", 0),  # Use .get() to handle missing keys
+        I_column=parsed_args.get("I_column", 1),
+        sort_method=parsed_args.get("sort_method", "natural"),
+        range_start=parsed_args.get("range_start"),
+        range_end=parsed_args.get("range_end"),
+        range_step=parsed_args.get("range_step", 1),
+        range_padding=parsed_args.get("range_padding")
+    )
 
-    q_values_file = parsed_args["q_values_file"]  # Get q_values_file path from args
-    if q_values_file:  # If q_values_file is provided
-        q = np.genfromtxt(q_values_file, usecols=(0,))  # Load q-values from file
-        mixture_stack_I = mixture_stack  # Assume mixture_stack file contains only intensity data
-        print(f"Loading q-values from: {q_values_file}")
-    else:  # If q_values_file is NOT provided, load q from mixture_stack_file
-        q = mixture_stack[:, 0].copy()  # Load q-values from mixture_stack (1st column)
-        mixture_stack_I = mixture_stack[:, 1:]  # Mixture stack is now only intensities (from 2nd column onwards)
-        print(f"Loading q-values from first column of: {parsed_args['mixture_stack_file']}")
-
-    mixture_stack = mixture_stack_I  # Assign intensity data back to mixture_stack
     n_frames = mixture_stack[0]
 
     d_values_str = parsed_args["d_values"].split(',')
@@ -193,7 +920,7 @@ def setup_deconvolution(parsed_args):
             except ValueError:  # If not integer, assume it's a file path
                 file_path = input_item
                 initial_sasrec_frames.append(file_path)
-                initialization_profile_iq = np.genfromtxt(file_path)  # Load profile from file
+                initialization_profile_iq = np.genfromtxt(file_path, invalid_raise=False, usecols=(0, 1, 2))  # Load profile from file
                 unknown_component_profiles_iq_init.append(initialization_profile_iq)  # Append NumPy array (loaded from file)
                 print(f"  Loading initial guess profile from file: {file_path}")
         print(f"Using user-provided initial Sasrec inputs (frames or files): {initial_sasrec_frames}")
@@ -210,7 +937,7 @@ def setup_deconvolution(parsed_args):
 
     if known_profiles_files:
         known_profiles_files_list = known_profiles_files.split(',')
-        known_profiles_iq = [np.genfromtxt(f) for f in known_profiles_files_list]
+        known_profiles_iq = [np.genfromtxt(f, invalid_raise=False, usecols=(0, 1, 2)) for f in known_profiles_files_list]
         if known_profile_types_str:
             known_profile_types = known_profile_types_str.split(',')
         else:
@@ -270,6 +997,7 @@ def setup_deconvolution(parsed_args):
         'callback': None,
         'update_visualization': parsed_args["visualize"],
         'plot_update_frequency': parsed_args["plot_update_frequency"],
+        'fit_frame_number': parsed_args["fit_frame_number"],
         'verbose': parsed_args["verbose"]
     }
 
@@ -300,6 +1028,7 @@ class ShannonDeconvolution:
                  callback=None,
                  update_visualization=False,
                  plot_update_frequency=10,
+                 fit_frame_number=None,
                  verbose=True):
         """
         Initializes the ShannonDeconvolution class.
@@ -375,12 +1104,17 @@ class ShannonDeconvolution:
         self.unknown_component_nsh = []
         self.initial_params = None
         self.known_profiles_Iq = []
+        self.unknown_component_profiles_iq_init_loaded = []
         self.plot_counter = 0
-        self.fit_frame_number = mixture_stack.shape[0] // 2
+        if fit_frame_number is None:
+            self.fit_frame_number = mixture_stack.shape[0] // 2
+        else:
+            self.fit_frame_number = int(fit_frame_number)
 
         # --- Initialization Steps (Data is assumed to be loaded and preprocessed already) ---
         self._load_profiles()
         self._initialize_known_profiles()  # Process known profiles (no file loading here anymore)
+        self._preprocess_profiles() # Perform any necessary interpolation onto common q grid here
         self._initialize_sasrecs_and_params()  # Initialize Sasrecs (automatic frame selection still inside)
         self.parameter_bounds = self._create_parameter_bounds_In_only()
 
@@ -424,7 +1158,7 @@ class ShannonDeconvolution:
                 profile_file_path = profile_iq  # now profile_iq is just the file path string from self.known_profiles_iq
                 if isinstance(profile_file_path, str):
                     try:
-                        loaded_profile = np.genfromtxt(profile_file_path)  # Load from file path
+                        loaded_profile = np.genfromtxt(profile_file_path, invalid_raise=False, usecols=(0, 1, 2))  # Load from file path
                         if loaded_profile.shape[1] < 2:
                             raise ValueError(
                                 f"Known profile file '{profile_file_path}' must have at least 2 columns: [q, I, (errors), ...].")
@@ -451,10 +1185,170 @@ class ShannonDeconvolution:
             self.known_profile_types = []
             self.known_profile_names = []
 
+    def _interpolate_profile_to_q_grid(self, source_q, source_I, target_q, profile_name="profile"):
+        """
+        Helper function to interpolate a profile to a target q-grid.
+
+        Parameters:
+        -----------
+        source_q : ndarray
+            Source q values
+        source_I : ndarray
+            Source intensity values
+        target_q : ndarray
+            Target q values for interpolation
+        profile_name : str
+            Name of the profile for logging
+
+        Returns:
+        --------
+        ndarray
+            Interpolated intensity values
+        """
+        from scipy.interpolate import interp1d
+
+        # Ensure q values are sorted
+        sort_idx = np.argsort(source_q)
+        source_q_sorted = source_q[sort_idx]
+        source_I_sorted = source_I[sort_idx]
+
+        # Check if q ranges are compatible
+        if source_q_sorted[0] > target_q[0] or source_q_sorted[-1] < target_q[-1]:
+            if self.verbose:
+                print(
+                    f"  WARNING: {profile_name} q-range ({source_q_sorted[0]:.5f}-{source_q_sorted[-1]:.5f}) does not fully cover target q-range ({target_q[0]:.5f}-{target_q[-1]:.5f})")
+                print(f"  Extrapolation may cause artifacts in regions outside the profile's q-range.")
+
+        # Use linear interpolation within range, nearest extrapolation outside
+        interp_func = interp1d(source_q_sorted, source_I_sorted,
+                               kind='linear',
+                               bounds_error=False,
+                               fill_value=(source_I_sorted[0], source_I_sorted[-1]))
+
+        # Apply interpolation
+        interpolated_I = interp_func(target_q)
+
+        if self.verbose:
+            print(f"  Successfully interpolated {profile_name} to {len(target_q)} points on target q-grid")
+
+        return interpolated_I
+
+    def _preprocess_profiles(self):
+        """
+        Preprocesses all profiles to ensure they're on the same q-grid as the mixture stack.
+        This step happens before any other initialization to ensure consistent q-grids.
+        """
+        if self.verbose:
+            print("\nPreprocessing profiles to ensure consistent q-grid...")
+            print(f"Mixture stack q-grid: {len(self.q)} points from {self.q[0]:.5f} to {self.q[-1]:.5f}")
+
+        # 1. Preprocess known profiles
+        if self.known_profiles_iq_loaded:
+            for i, profile_iq in enumerate(self.known_profiles_iq_loaded):
+                profile_name = self.known_profile_names[i] if i < len(self.known_profile_names) else f"known_{i + 1}"
+
+                # Extract q and I from the profile
+                profile_q = profile_iq[:, 0]
+                profile_I = profile_iq[:, 1]
+
+                # Check if q-grid matches
+                if len(profile_q) != len(self.q) or not np.allclose(profile_q, self.q):
+                    if self.verbose:
+                        print(f"  Interpolating known profile '{profile_name}' to mixture stack q-grid...")
+
+                    # Interpolate to the mixture stack q-grid
+                    interpolated_I = self._interpolate_profile_to_q_grid(
+                        profile_q, profile_I, self.q, f"known profile '{profile_name}'")
+
+                    # Replace the profile with interpolated version
+                    # Create a new array with the mixture stack q values and interpolated intensities
+                    interpolated_profile = np.zeros((len(self.q), profile_iq.shape[1]))
+                    interpolated_profile[:, 0] = self.q
+                    interpolated_profile[:, 1] = interpolated_I
+                    if profile_iq.shape[1] > 2:  # If there are error values
+                        # Interpolate errors too
+                        profile_errors = profile_iq[:, 2]
+                        interpolated_errors = self._interpolate_profile_to_q_grid(
+                            profile_q, profile_errors, self.q, f"errors for known profile '{profile_name}'")
+                        interpolated_profile[:, 2] = interpolated_errors
+
+                    # Update the stored profile
+                    self.known_profiles_iq_loaded[i] = interpolated_profile
+                else:
+                    if self.verbose:
+                        print(f"  Known profile '{profile_name}' already on correct q-grid.")
+
+        # 2. Preprocess unknown component initialization profiles
+        if self.unknown_component_profiles_iq_init is not None:
+            self.unknown_component_profiles_iq_init_loaded = []  # Clear any previous values
+
+            for i, profile_iq in enumerate(self.unknown_component_profiles_iq_init):
+                component_name = self.unknown_component_names[i] if i < len(
+                    self.unknown_component_names) else f"component_{i + 1}"
+
+                # Handle different input types
+                if isinstance(profile_iq, np.ndarray):
+                    # It's a preloaded array
+                    profile_q = profile_iq[:, 0]
+                    profile_I = profile_iq[:, 1]
+
+                    # Check if q-grid matches
+                    if len(profile_q) != len(self.q) or not np.allclose(profile_q, self.q):
+                        if self.verbose:
+                            print(f"  Interpolating initial profile for '{component_name}' to mixture stack q-grid...")
+
+                        # Interpolate to the mixture stack q-grid
+                        interpolated_I = self._interpolate_profile_to_q_grid(
+                            profile_q, profile_I, self.q, f"initial profile for '{component_name}'")
+
+                        # Create a new array with the mixture stack q values and interpolated intensities
+                        interpolated_profile = np.zeros((len(self.q), 3))  # q, I, error
+                        interpolated_profile[:, 0] = self.q
+                        interpolated_profile[:, 1] = interpolated_I
+                        interpolated_profile[:, 2] = np.ones_like(self.q)  # Default errors to 1.0
+
+                        # If original profile had errors, interpolate those too
+                        if profile_iq.shape[1] > 2:
+                            profile_errors = profile_iq[:, 2]
+                            interpolated_errors = self._interpolate_profile_to_q_grid(
+                                profile_q, profile_errors, self.q, f"errors for '{component_name}'")
+                            interpolated_profile[:, 2] = interpolated_errors
+
+                        # Store the interpolated profile
+                        self.unknown_component_profiles_iq_init_loaded.append(interpolated_profile)
+                    else:
+                        if self.verbose:
+                            print(f"  Initial profile for '{component_name}' already on correct q-grid.")
+                        # Still need to ensure it has the right format (q, I, error)
+                        if profile_iq.shape[1] < 3:
+                            # Add error column if missing
+                            full_profile = np.zeros((len(self.q), 3))
+                            full_profile[:, :profile_iq.shape[1]] = profile_iq
+                            full_profile[:, 2] = np.ones_like(self.q)  # Default errors to 1.0
+                            self.unknown_component_profiles_iq_init_loaded.append(full_profile)
+                        else:
+                            # It's already in the right format
+                            self.unknown_component_profiles_iq_init_loaded.append(profile_iq)
+
+                elif isinstance(profile_iq, (int, str)):
+                    # It's a frame index or file path - will be handled in _initialize_sasrecs_and_params
+                    self.unknown_component_profiles_iq_init_loaded.append(profile_iq)
+
+                else:
+                    # Unsupported type
+                    if self.verbose:
+                        print(
+                            f"  WARNING: Unsupported type for initial profile of '{component_name}': {type(profile_iq)}")
+                    self.unknown_component_profiles_iq_init_loaded.append(None)
+
+        if self.verbose:
+            print("Profile preprocessing complete.")
+
     def _initialize_sasrecs_and_params(self):
         """Initializes Sasrecs for unknown components and sets initial parameters."""
         n_components = len(self.unknown_component_Ds)
 
+        # Handle automatic frame selection if needed
         if self.initial_sasrec_frames is None:
             # Default frames: evenly spaced
             initial_sasrec_frames = np.linspace(0, self.mixture_stack.shape[0] - 1, n_components)
@@ -462,51 +1356,175 @@ class ShannonDeconvolution:
         elif len(self.initial_sasrec_frames) != n_components:
             raise ValueError("Length of initial_sasrec_frames must match the number of unknown components.")
 
-        water_profile_Iq = None  # ... (water profile loading logic - same as before) ...
+        # Find water profile for subtraction (if available)
+        water_profile_I = None
         for i_known_profile, profile_type in enumerate(self.known_profile_types):
             if profile_type == 'water':
-                water_profile_Iq = self.known_profiles_iq_loaded[i_known_profile]  # Found water profile
+                water_profile_I = self.known_profiles_Iq[i_known_profile]
+                break
 
-        self.unknown_component_profiles_iq_init_loaded = self.unknown_component_profiles_iq_init  # <--- ASSUME ALREADY NUMPY ARRAYS, just assign
+        # Process each component
+        for i_component in range(n_components):
+            # Get the initialization profile (already on the correct q-grid from _preprocess_profiles)
+            if i_component < len(self.unknown_component_profiles_iq_init_loaded):
+                initialization_source = self.unknown_component_profiles_iq_init_loaded[i_component]
 
-        for i_component in range(n_components):  # Loop through components
-            initialization_Iq = self.unknown_component_profiles_iq_init_loaded[
-                i_component]  # Get profile from preloaded list
-            initialization_profile = initialization_Iq[:, 1]  # Extract I(q) - assuming (q, I, errors) format
+                # Handle different input types
+                if isinstance(initialization_source, np.ndarray):
+                    # It's already a preprocessed array
+                    initialization_Iq = initialization_source
+                    if self.verbose:
+                        print(f"  Using preprocessed profile for component {i_component + 1}")
 
-            # Subtract water background roughly
-            if water_profile_Iq is not None: # Use the water_profile_Iq we found
-                water_peak_mini = denss.find_nearest_i(self.q, self.water_peak_range[0])
-                water_peak_maxi = denss.find_nearest_i(self.q, self.water_peak_range[1])
-                initialization_profile_water_peak_int = np.mean(initialization_profile[water_peak_mini:water_peak_maxi])
-                water_peak_int = np.mean(water_profile_Iq[:,1][water_peak_mini:water_peak_maxi])
-                print(f"  _initialize_sasrecs_and_params: component {i_component}, water_peak_int = {water_peak_int:.6e}") # DEBUG PRINT
-                if water_peak_int > 0:
-                    water_background_sf = initialization_profile_water_peak_int / water_peak_int
-                    print(f"  _initialize_sasrecs_and_params: component {i_component}, water_background_sf = {water_background_sf:.6e}") # DEBUG PRINT
-                    initialization_profile -= water_profile_Iq[:,1] * (water_background_sf * 0.99)
+                elif isinstance(initialization_source, (int, str)):
+                    # It's a frame index or was a file path
+                    if isinstance(initialization_source, int) or initialization_source.isdigit():
+                        # It's a frame index
+                        frame_index = int(initialization_source)
+                        initialization_profile = np.copy(self.mixture_stack[frame_index])
+                        if self.verbose:
+                            print(f"  Using frame {frame_index} for component {i_component + 1}")
+                    else:
+                        # It must be a string but not a digit string - assume it was a file path
+                        # We should have already loaded and preprocessed it, but just in case:
+                        if self.verbose:
+                            print(
+                                f"  WARNING: File path found in initialization source, should have been preprocessed: {initialization_source}")
+                        # Use a default frame as fallback
+                        frame_index = self.initial_sasrec_frames[i_component]
+                        initialization_profile = np.copy(self.mixture_stack[frame_index])
+
+                    # Subtract water background if available
+                    if water_profile_I is not None:
+                        water_peak_mini = denss.find_nearest_i(self.q, self.water_peak_range[0])
+                        water_peak_maxi = denss.find_nearest_i(self.q, self.water_peak_range[1])
+
+                        initialization_profile_water_peak_int = np.mean(
+                            initialization_profile[water_peak_mini:water_peak_maxi])
+                        water_peak_int = np.mean(water_profile_I[water_peak_mini:water_peak_maxi])
+
+                        if water_peak_int > 0:
+                            water_background_sf = initialization_profile_water_peak_int / water_peak_int
+                            initialization_profile -= water_profile_I * (water_background_sf * 0.99)
+
+                    # Create a complete Iq array
+                    initialization_Iq = np.vstack((
+                        self.q,
+                        initialization_profile,
+                        np.ones_like(initialization_profile)  # Default errors to 1.0
+                    )).T
+
                 else:
-                    print("Warning: Water profile has zero intensity in the water peak region. Water background subtraction skipped.")
+                    # Unsupported type or None - use a default frame
+                    if self.verbose:
+                        print(
+                            f"  WARNING: Unsupported initialization source type for component {i_component + 1}, using default frame")
+                    frame_index = self.initial_sasrec_frames[i_component]
+                    initialization_profile = np.copy(self.mixture_stack[frame_index])
 
-            initialization_Iq = np.vstack((self.q, initialization_profile, np.ones_like(initialization_profile))).T
+                    # Create a complete Iq array
+                    initialization_Iq = np.vstack((
+                        self.q,
+                        initialization_profile,
+                        np.ones_like(initialization_profile)  # Default errors to 1.0
+                    )).T
 
-            # Now append the initialization_Iq to self.unknown_component_profiles_iq_init_loaded
-            self.unknown_component_profiles_iq_init_loaded.append(initialization_Iq)
+            else:
+                # No initialization profile provided, use default frame
+                if self.verbose:
+                    print(f"  No initialization provided for component {i_component + 1}, using default frame")
+                frame_index = self.initial_sasrec_frames[i_component]
+                initialization_profile = np.copy(self.mixture_stack[frame_index])
 
-            sasrec = denss.Sasrec(initialization_Iq, D=self.unknown_component_Ds[i_component], qc=self.q,
-                                  alpha=0, extrapolate=False)
+                # Create a complete Iq array
+                initialization_Iq = np.vstack((
+                    self.q,
+                    initialization_profile,
+                    np.ones_like(initialization_profile)  # Default errors to 1.0
+                )).T
+
+            # Store the final initialization profile
+            if i_component < len(self.unknown_component_profiles_iq_init_loaded):
+                self.unknown_component_profiles_iq_init_loaded[i_component] = initialization_Iq
+            else:
+                self.unknown_component_profiles_iq_init_loaded.append(initialization_Iq)
+
+            # Create the Sasrec object
+            sasrec = denss.Sasrec(
+                initialization_Iq,
+                D=self.unknown_component_Ds[i_component],
+                qc=self.q,
+                alpha=0,
+                extrapolate=False
+            )
             self.unknown_component_sasrecs.append(sasrec)
-            print(f"  Component {self.unknown_component_names[i_component]}: Nsh = {sasrec.n}")
 
+            if self.verbose:
+                print(f"  Component {self.unknown_component_names[i_component]}: Nsh = {sasrec.n}")
+
+        # Extract B matrices and Shannon channels
         self.unknown_component_Bns = [sasrec.B for sasrec in self.unknown_component_sasrecs]
         self.unknown_component_nsh = [sasrec.n for sasrec in self.unknown_component_sasrecs]
+
+        # Create initial parameters
         self.initial_params = self._dict2params_In_only(self._create_params_dict_In_only())
 
     def _initialize_known_profiles(self):
-        """Initializes known profiles, extracting I(q) values."""
+        """
+        Initializes known profiles, extracting and interpolating I(q) values to match the mixture stack q-grid.
+        """
         self.known_profiles_Iq = []
-        for profile_iq in self.known_profiles_iq_loaded:
-            self.known_profiles_Iq.append(profile_iq[:, 1]) # Extract only I(q) values
+        if not self.known_profiles_iq_loaded:
+            return  # Nothing to do if no known profiles were loaded
+
+        # Print original profiles info
+        if self.verbose:
+            print("\nInterpolating known profiles to mixture stack q-grid:")
+            print(f"  Mixture stack q-grid has {len(self.q)} points from {self.q[0]:.5f} to {self.q[-1]:.5f}")
+
+        for i, profile_iq in enumerate(self.known_profiles_iq_loaded):
+            profile_name = self.known_profile_names[i] if i < len(self.known_profile_names) else f"known_{i + 1}"
+            profile_type = self.known_profile_types[i] if i < len(self.known_profile_types) else "generic"
+
+            # Get q and I values from the loaded profile
+            profile_q = profile_iq[:, 0]  # First column is q
+            profile_I = profile_iq[:, 1]  # Second column is intensity
+
+            # Print info about this profile before interpolation
+            if self.verbose:
+                print(
+                    f"  Profile '{profile_name}' (type: {profile_type}) has {len(profile_q)} q-points from {profile_q[0]:.5f} to {profile_q[-1]:.5f}")
+
+            # Check if q ranges are compatible
+            if profile_q[0] > self.q[0] or profile_q[-1] < self.q[-1]:
+                print(
+                    f"  WARNING: Profile '{profile_name}' q-range ({profile_q[0]:.5f}-{profile_q[-1]:.5f}) does not fully cover mixture stack q-range ({self.q[0]:.5f}-{self.q[-1]:.5f})")
+                print(f"  Extrapolation may cause artifacts in regions outside the profile's q-range.")
+
+            # Interpolate to match the mixture stack q-grid
+            from scipy.interpolate import interp1d
+
+            # Ensure q values are sorted (just in case)
+            sort_idx = np.argsort(profile_q)
+            profile_q_sorted = profile_q[sort_idx]
+            profile_I_sorted = profile_I[sort_idx]
+
+            # Use linear interpolation for values inside the range
+            # Use nearest extrapolation for values outside (safer than linear extrapolation)
+            interp_func = interp1d(profile_q_sorted, profile_I_sorted,
+                                   kind='linear',
+                                   bounds_error=False,
+                                   fill_value=(profile_I_sorted[0], profile_I_sorted[-1]))
+
+            # Apply interpolation to get profile on mixture stack q-grid
+            interpolated_I = interp_func(self.q)
+
+            # Store the interpolated profile
+            self.known_profiles_Iq.append(interpolated_I)
+
+            # Print confirmation of successful interpolation
+            if self.verbose:
+                print(f"  Successfully interpolated '{profile_name}' to {len(self.q)} points on mixture stack q-grid")
 
     def _initialize_target_similarity(self):
         """Calculates and initializes the target_similarity, if not provided."""
@@ -668,44 +1686,100 @@ class ShannonDeconvolution:
         return fraction_sum_penalty
 
     def _calculate_water_penalty(self, estimated_fractions):
-        """
-        Calculates the water background intensity penalty, now finding water profile
-        from known profiles based on type.
-
-        Args:
-            estimated_fractions (np.ndarray): Estimated fractions matrix (n_total_profiles x n_frames).
-
-        Returns:
-            float: Water penalty value.
-        """
+        """Calculates the water background intensity penalty."""
         water_penalty = 0.0
-        if self.water_peak_range is not None: # water_profile_iq_loaded check removed, now checking just water_peak_range
+
+        # First check if any profile has type='water' - if not, return 0 immediately
+        has_water_profile = False
+        for profile_type in self.known_profile_types:
+            if profile_type == 'water':
+                has_water_profile = True
+                break
+
+        if not has_water_profile or self.water_penalty_weight <= 0:
+            return 0.0  # No water profile or zero weight, skip calculation
+
+        if self.water_peak_range is not None and self.water_penalty_weight > 0:
             n_frames = self.mixture_stack.shape[0]
             n_unknown_components = len(self.unknown_component_nsh)
+
+            # Find indices for water peak range
             water_peak_mini_index = denss.find_nearest_i(self.q, self.water_peak_range[0])
             water_peak_maxi_index = denss.find_nearest_i(self.q, self.water_peak_range[1])
 
-            target_water_int = np.mean(self.mixture_stack[:, water_peak_mini_index:water_peak_maxi_index], axis=1)
+            # Ensure we have a valid range
+            if water_peak_mini_index >= water_peak_maxi_index:
+                if self.verbose and self.plot_counter == 0:  # Only print once
+                    print(
+                        f"WARNING: Invalid water peak range. Min index ({water_peak_mini_index}) >= Max index ({water_peak_maxi_index})")
+                return 0.0  # Skip water penalty calculation
 
-            calculated_water_int = np.zeros(n_frames) # Initialize to zeros
-            water_profile_I = None # Initialize water_profile_I to None
+            # Ensure the range contains at least one point
+            if water_peak_maxi_index - water_peak_mini_index < 1:
+                if self.verbose and self.plot_counter == 0:  # Only print once
+                    print(f"WARNING: Water peak range too narrow. Needs at least one q point.")
+                return 0.0  # Skip water penalty calculation
 
-            for i_known_profile, profile_type in enumerate(self.known_profile_types): # Iterate to find water profile
+            # Safely calculate mean water intensity in the mixture stack
+            try:
+                target_water_int = np.nanmean(self.mixture_stack[:, water_peak_mini_index:water_peak_maxi_index],
+                                              axis=1)
+            except Exception as e:
+                if self.verbose and self.plot_counter == 0:  # Only print once
+                    print(f"WARNING: Error calculating target water intensity: {e}")
+                return 0.0  # Skip water penalty calculation
+
+            # Initialize water intensity array
+            calculated_water_int = np.zeros(n_frames)
+            water_profile_I = None  # Initialize water_profile_I to None
+
+            # Find water profile (if available)
+            for i_known_profile, profile_type in enumerate(self.known_profile_types):
                 if profile_type == 'water':
-                    water_profile_I = self.known_profiles_Iq[i_known_profile] # Found water profile
+                    water_profile_I = self.known_profiles_Iq[i_known_profile]
+                    break
 
-            if water_profile_I is not None: # Proceed with water penalty calculation only if water profile is found
-                water_stack_component = water_profile_I[None, :] * estimated_fractions[n_unknown_components + 0][:, None] # Assuming water is the *first* known profile of type 'water' - might need adjustment if you have multiple water profiles
-                calculated_water_int += np.mean(water_stack_component[:, water_peak_mini_index:water_peak_maxi_index], axis=1) # Accumulate water intensity
+            if water_profile_I is not None:
+                try:
+                    # Calculate water component contribution
+                    water_stack_component = water_profile_I[None, :] * estimated_fractions[n_unknown_components + 0][:,
+                                                                       None]
+                    # Safely calculate mean water intensity in calculated mixture
+                    calculated_water_int = np.nanmean(
+                        water_stack_component[:, water_peak_mini_index:water_peak_maxi_index], axis=1)
 
-                water_error = np.sum(np.sqrt((target_water_int - calculated_water_int)**2))
-                water_penalty = water_error * self.water_penalty_weight
+                    # Safely calculate water error (handling potential NaN values)
+                    water_error = np.nansum(np.sqrt(np.square(np.nan_to_num(target_water_int - calculated_water_int))))
+                    water_penalty = water_error * self.water_penalty_weight
+
+                    # If we still have NaN, set penalty to zero
+                    if np.isnan(water_penalty):
+                        if self.verbose and self.plot_counter == 0:  # Only print once
+                            print("WARNING: NaN detected in water penalty calculation. Setting penalty to zero.")
+                        water_penalty = 0.0
+
+                except Exception as e:
+                    if self.verbose and self.plot_counter == 0:  # Only print once
+                        print(f"WARNING: Error in water penalty calculation: {e}")
+                    water_penalty = 0.0
 
         return water_penalty
 
     def _calculate_profile_similarity_penalty(self, estimated_profiles):
         """Calculates the profile similarity penalty (similarity to water)."""
-        profile_similarity_error = 0.0  # Initialize to zero
+        # First check if target_similarity is set and if any profile has type='water'
+        if self.target_similarity is None or self.profile_similarity_weight <= 0:
+            return 0.0  # Skip calculation if target_similarity not set or zero weight
+
+        has_water_profile = False
+        for profile_type in self.known_profile_types:
+            if profile_type == 'water':
+                has_water_profile = True
+                break
+
+        if not has_water_profile:
+            return 0.0  # No water profile, skip calculation
+
         if self.target_similarity is not None: # water_profile_iq_loaded check removed - check only target_similarity now
             n_unknown_components = len(self.unknown_component_nsh)
             profile_similarity_to_water = np.zeros(n_unknown_components)
@@ -807,47 +1881,24 @@ class ShannonDeconvolution:
         profile_labels = []  # List to collect legend labels
 
         # Plot True Noisy and True Profiles (if available) - Dynamic Legends
-        if self.unknown_component_profiles_iq_init is not None:  # Check if true profiles are available
+        if self.unknown_component_profiles_iq_init_loaded is not None:  # Check if true profiles are available
             for i_component in range(len(self.unknown_component_names)):
                 component_name = self.unknown_component_names[i_component]
-                if i_component == 0:
-                    Iq = np.genfromtxt('SASDCK8_fit1_model1_FH_pdb.dat')
-                    sf = Iq[0,1]
-                    Iq[:,1] /= sf
-                    Iq[:, 2] /= sf
-                elif i_component == 1:
-                    Iq = np.genfromtxt('4fe9_FH_pdb.dat')
-                    sf = Iq[0,1] / 2
-                    Iq[:,1] /= sf
-                    Iq[:, 2] /= sf
-                noise = np.random.normal(loc=0, scale=Iq[:,2]*5e-2, size=Iq.shape[0])
-                # temporary
-                noisy_line, = ax[0, 0].plot(self.q, Iq[:, 1]+noise,
+                noisy_line, = ax[0, 0].plot(self.q, self.unknown_component_profiles_iq_init_loaded[i_component][:, 1],
                                             marker=markers[i_component], linestyle='None', color='gray', alpha=0.3,
-                                            mec='none', ms=4, label=f'Initial {component_name} I(q)')
-                # noisy_line, = ax[0, 0].plot(self.q, self.unknown_component_profiles_iq_init[i_component][:, 1],
-                #                             marker=markers[i_component], linestyle='None', color='gray', alpha=0.3,
-                #                             mec='none', ms=4, label=f'Initial {component_name} I(q)')
-
-                # true_line, = ax[0, 0].plot(self.q, self.unknown_component_profiles_iq_init[i_component][:, 1], color='k',
-                #                            alpha=0.8, label=f'True {component_name} I(q)')  # Black line for true profile
-                line_true_profiles_noisy.append(noisy_line)  # Store line handles
-                # line_true_profiles.append(true_line)
-                # profile_handles.extend([noisy_line, true_line])  # Add handles for legend
+                                            mec='none', ms=4, label=f'Initial {component_name}')
                 profile_handles.extend([noisy_line])  # Add handles for legend
-                # profile_labels.extend([f'True {component_name} I(q) (Noisy)', f'True {component_name} I(q)'])
-                # profile_labels.extend([f'Initial {component_name} I(q)'])
-                profile_labels.extend([f'True {component_name} I(q)'])
+                profile_labels.extend([f'Initial {component_name}'])
 
         # Dynamic data - Fitted Profiles (using dynamic component names)
         line_fitted_profiles = []  # List to hold lines for fitted profiles
         for i_component in range(len(self.unknown_component_names)):
             component_name = self.unknown_component_names[i_component]
             fitted_line, = ax[0, 0].plot(self.q, np.zeros_like(self.q), color=colors[i_component],
-                                        label=f'Fitted {component_name} I(q)')
+                                        label=f'Fitted {component_name} (D={self.unknown_component_Ds[i_component]})')
             line_fitted_profiles.append(fitted_line)  # Store fitted profile line handles
             profile_handles.append(fitted_line)  # Add fitted profile handle to legend
-            profile_labels.append(f'Fitted {component_name} I(q)')  # Add fitted profile label to legend
+            profile_labels.append(f'Fitted {component_name} (D={self.unknown_component_Ds[i_component]})')  # Add fitted profile label to legend
 
         ax[0, 0].legend(profile_handles, profile_labels, loc='upper right')  # Create legend with dynamic labels
 
@@ -892,11 +1943,11 @@ class ShannonDeconvolution:
         ax[1, 0].set_title(f"Example Fit - Frame {self.fit_frame_number}")  # Generic title
         ax[1, 0].set_ylabel("I(q)")
         ax[1, 0].set_xlabel("q")
+        ax[1, 0].semilogy()
         ax[1, 0].grid(True)
 
         example_fit_handles = []  # Legend handles for example fit
         example_fit_labels = []  # Legend labels for example fit
-
         line_example_fit_data, = ax[1, 0].plot(self.q, self.mixture_stack[self.fit_frame_number], 'o', color='gray', alpha=0.3,
                                             mec='none', ms=4, label=f'Frame {self.fit_frame_number} Data')  # Data line - generic label
         example_fit_handles.append(line_example_fit_data)  # Add data handle to legend
@@ -985,7 +2036,8 @@ class ShannonDeconvolution:
 
         # Update the image data (same as before)
         residuals_img.set_array(frame_residuals)
-        residuals_img.set_clim(vmin=-0.01, vmax=0.01)
+        rstd = np.std(frame_residuals)
+        residuals_img.set_clim(vmin=-rstd, vmax=rstd)
 
         # Use draw_idle which is more efficient than full draw()
         fig.canvas.draw_idle()
@@ -1020,7 +2072,7 @@ class ShannonDeconvolution:
             objective_function,      # Objective function
             self.initial_params,      # Initial guess parameters
             method=self.optimization_method, # Optimization method (e.g., 'L-BFGS-B')
-            # bounds=self.parameter_bounds,    # Parameter bounds
+            bounds=self.parameter_bounds,    # Parameter bounds
             callback=callback,          # Callback function
             options=optimization_options   # Optimization options
         )
@@ -1033,277 +2085,6 @@ class ShannonDeconvolution:
             print(results) # Print full results for now
 
         return results # Or return specific parts of results if you prefer
-
-# if __name__ == '__main__':
-#     # --- Load Data (replace with your actual data loading) ---
-#     lys_Iq = np.genfromtxt("SASDCK8_fit1_model1_FH_pdb.dat")
-#     cbp_Iq = np.genfromtxt("4fe9_FH_pdb.dat")
-#     # rescale to have same I(0) for now
-#     lys_Iq[:, 1] /= lys_Iq[0, 1]
-#     lys_Iq[:, 2] /= lys_Iq[0, 1]  # scale errors too
-#     cbp_Iq[:, 1] /= cbp_Iq[0, 1]
-#     cbp_Iq[:, 2] /= cbp_Iq[0, 1]  # scale errors too
-#     # make cbp 2x more scattering due to MW
-#     sf = 2.0
-#     cbp_Iq[:, 1] *= sf
-#     cbp_Iq[:, 2] *= sf  # scale errors too
-#     water = np.genfromtxt("water.dat")
-#     q = lys_Iq[:,0]
-#     water_I = np.interp(q, water[:,0], water[:,1])
-#     # should be on the same q bins, but just in case interpolate
-#     water_I = np.interp(q, water[:, 0], water[:, 1])
-#     water_I *= lys_Iq[:,1].sum() / water_I.sum()  # just put on roughly the same scale
-#
-#     # --- Synthetic Mixture Stack (replace with your actual mixture data) ---
-#     component_profiles = np.vstack((lys_Iq[:,1], cbp_Iq[:,1]))
-#     n_frames = 50
-#     n_components = component_profiles.shape[0]
-#     frames = np.arange(n_frames)
-#     frac_lys = 1-sigmoid_fraction_model(frames)
-#     frac_cbp = 1-frac_lys
-#     frac_water = np.random.normal(loc=0.4, scale=0.1, size=frac_cbp.shape)
-#     component_fractions = np.vstack((frac_lys, frac_cbp))
-#     background_fractions = [frac_water]
-#     background_stack = np.zeros((1, len(q)))
-#     background_stack[0] = water_I
-#     profiles = np.vstack((component_profiles, background_stack))
-#     fractions = np.vstack((component_fractions, background_fractions))
-#     mixture_stack = generate_evolving_mixture_stack(profiles, fractions)
-#     np.save('mixture_stack_no_noise.npy', mixture_stack)
-#
-#     noise = np.random.normal(0, scale=lys_Iq[:,2]*5e-8, size=mixture_stack.shape)
-#     mixture_stack += noise
-#     np.save('mixture_stack_noise.npy', mixture_stack)
-#     exit()
-
-
-
-#
-#     # --- Prepare Inputs for ShannonDeconvolution ---
-#     unknown_component_profiles_iq_init = [lys_Iq, cbp_Iq]
-#     unknown_component_Ds = [50.0, 100.0]
-#     known_profiles_iq = [np.vstack((q, water_I)).T]
-#     unknown_component_names = ["lys", "cbp"]
-#     known_profile_names = ["water"]
-#     known_profile_types = ['water']  # Specify the type of the known profile
-#
-#     # --- Calculate target_similarity ---
-#     # We'll need to come up with a generic solution for this. For example, alphafold prediction or something
-#     # The nice thing is the similarity measure is similar for different protein conformations
-#     target_similarity = np.zeros(n_components) # Initialize for 2 components (lys, cbp)
-#     profiles_for_similarity = np.vstack((lys_Iq[:,1], cbp_Iq[:,1]))
-#     for i_component in range(n_components):  # Loop through each component profile
-#         # Cosine similarity between component profile and water profile
-#         profile_similarity_to_water = calculate_cosine_similarity(profiles_for_similarity[i_component], water_I)
-#         target_similarity[i_component] = profile_similarity_to_water
-#         # add a small amount of variability to the target to account for conformational diversity,
-#         # it seems the same to about std=0.0012 in my tests with different conformations of the same protein
-#         # so to avoid total bias, try and add some random error to simulate a different conformation
-#         target_similarity[i_component] += np.random.normal(loc=0, scale=0.0012)
-#
-#     # --- Instantiate ShannonDeconvolution ---
-#     deconvolver = ShannonDeconvolution(
-#         unknown_component_profiles_iq_init=unknown_component_profiles_iq_init,
-#         unknown_component_Ds=unknown_component_Ds,
-#         mixture_stack=mixture_stack,
-#         q=q,
-#         known_profiles_iq=known_profiles_iq,
-#         unknown_component_names=unknown_component_names,
-#         known_profile_names=known_profile_names,
-#         known_profile_types=known_profile_types,  # Pass the known_profile_types
-#         fractions_weight=1.0,
-#         water_penalty_weight=0.0,
-#         profile_similarity_weight=10.0,
-#         target_similarity=target_similarity,
-#         update_visualization=True,
-#         verbose=True
-#     )
-
-# if __name__ == '__main__':
-#     import argparse
-#     import os  # Import os module which is used in your code
-#
-#     # --- Argument Parser Setup (Comprehensive Command Line Options) ---
-#     parser = argparse.ArgumentParser(description="Deconvolute evolving mixture SAXS data using Shannon expansion.")
-#
-#     # Essential Required Input Arguments
-#     parser.add_argument("-m", "--mixture_stack_file", required=True,
-#                         help="Path to mixture stack data file (N_frames x N_qbins).")
-#     parser.add_argument("-q", "--q_values_file", required=True, default=None,
-#                         help="Path to file containing q-values.")
-#     parser.add_argument("-d", "--d_values", required=True, help="Comma-separated D values for unknown components.")
-#
-#     # Flexible Initial Guess Profiles Input
-#     parser.add_argument("-u", "--unknown_profiles_init_input", default="auto",
-#                         help="Comma-separated frame indices (integers), file paths (strings), or 'auto' for automatic initial guess profiles. Defaults to 'auto'.")
-#
-#     # Flexible Known Profiles Input
-#     parser.add_argument("-k", "--known_profiles_files", default=None,
-#                         help="Comma-separated paths to known profiles (q, I). Optional.")
-#     parser.add_argument("--known_profile_types", default=None,
-#                         help="Comma-separated types of known profiles. Defaults to 'generic'.")
-#     parser.add_argument("--known_profile_names", default=None,
-#                         help="Comma-separated names for known profiles (for plotting). Optional.")
-#
-#     # Optimization Settings (Optional, with defaults)
-#     parser.add_argument("--optimization_method", default='L-BFGS-B',
-#                         help="Optimization method (scipy.optimize.minimize). Default: L-BFGS-B")
-#     parser.add_argument("--maxiter", type=int, default=100, help="Maximum iterations for optimization. Default: 100")
-#     parser.add_argument("--ftol", type=float, default=1e-8,
-#                         help="Function tolerance for optimization convergence. Default: 1e-8")
-#     parser.add_argument("--maxfun", type=int, default=100000, help="Maximum function evaluations. Default: 100000")
-#     parser.add_argument("--maxls", type=int, default=50, help="Maximum line search iterations. Default: 50")
-#     parser.add_argument("--eps", type=float, default=1e-8, help="Step size for numerical derivatives. Default: 1e-8")
-#
-#     # Penalty Settings (Optional, with defaults)
-#     parser.add_argument("--fractions_weight", type=float, default=1.0,
-#                         help="Weight for fraction sum penalty. Default: 1.0")
-#     parser.add_argument("--profile_similarity_weight", type=float, default=10.0,
-#                         help="Weight for profile similarity penalty. Default: 10.0")
-#     parser.add_argument("--water_penalty_weight", type=float, default=0.0,
-#                         help="Weight for water penalty. Default: 0.0")
-#     parser.add_argument("--water_peak_range", default="1.9,2.0",
-#                         help="q-range for water peak penalty (e.g., '1.9,2.0'). Default: 1.9,2.0")
-#     parser.add_argument("--target_similarity", type=str, default=None,
-#                         help="Comma-separated target profile similarity to water for each unknown component. Optional.")
-#
-#     # Output and Visualization Options (Optional)
-#     parser.add_argument("-o", "--output_params_file", default='optimization_params_flexible_fractions.npy',
-#                         help="Path to save optimized parameters (.npy file). Default: optimization_params_flexible_fractions.npy")
-#     parser.add_argument("-v", "--visualize", action="store_true",
-#                         help="Enable interactive visualization during optimization.")
-#     parser.add_argument("--plot_update_frequency", type=int, default=10,
-#                         help="Plot update frequency (iterations). Default: 10")
-#     parser.add_argument("--verbose", action="store_true", default=True,
-#                         help="Enable verbose output. Default: True")  # Default verbose to True
-#     parser.add_argument("--no-verbose", action="store_false", dest='verbose',
-#                         help="Disable verbose output.")  # Option to disable verbose output
-#
-#     args = parser.parse_args()
-#
-#
-#     # --- Data Loading from Command Line Arguments (Handling --q_values_file) ---
-#     basename, ext = os.path.splitext(args.mixture_stack_file)
-#     if ext == ".npy":
-#         mixture_stack = np.load(args.mixture_stack_file)
-#     else:
-#         mixture_stack = np.genfromtxt(args.mixture_stack_file)
-#
-#     q_values_file = args.q_values_file # Get q_values_file path from args
-#
-#     if q_values_file: # If q_values_file is provided
-#         q = np.genfromtxt(q_values_file, usecols=(1,)) # Load q-values from file
-#         mixture_stack_I = mixture_stack # Assume mixture_stack file contains only intensity data
-#         print(f"Loading q-values from: {q_values_file}") # Informative message
-#     else: # If q_values_file is NOT provided, load q from mixture_stack_file
-#         q = mixture_stack[:, 0].copy() # Load q-values from mixture_stack (1st column)
-#         mixture_stack_I = mixture_stack[:, 1:] # Mixture stack is now only intensities (from 2nd column onwards)
-#         print(f"Loading q-values from first column of: {args.mixture_stack_file}") # Informative message
-#
-#     mixture_stack = mixture_stack_I # Assign intensity data back to mixture_stack
-#
-#     d_values_str = args.d_values.split(',')
-#     unknown_component_Ds = [float(d) for d in d_values_str]
-#
-#     initial_sasrec_frames = None
-#     unknown_profiles_init_input = args.unknown_profiles_init_input
-#
-#     if unknown_profiles_init_input.lower() == "auto":
-#         initial_sasrec_frames = None
-#         print("Using automatic frame selection for initial guess profiles.")
-#     elif unknown_profiles_init_input:
-#         initial_sasrec_frames = []
-#         unknown_profiles_init_input_list = [x.strip() for x in unknown_profiles_init_input.split(',')]
-#         for input_item in unknown_profiles_init_input_list:
-#             try:
-#                 frame_index = int(input_item)
-#                 initial_sasrec_frames.append(frame_index)
-#             except ValueError:
-#                 file_path = input_item
-#                 initial_sasrec_frames.append(file_path)
-#         print(f"Using user-provided initial Sasrec inputs: {initial_sasrec_frames}")
-#     else:
-#         print("Using automatic frame selection for initial guess profiles (default).")
-#
-#     known_profiles_files = args.known_profiles_files
-#     known_profiles_iq = None
-#     known_profile_types_str = args.known_profile_types
-#     known_profile_types = None
-#     known_profile_names_str = args.known_profile_names
-#     known_profile_names = None
-#
-#     if known_profiles_files:
-#         known_profiles_files_list = known_profiles_files.split(',')
-#         known_profiles_iq = [np.genfromtxt(f) for f in known_profiles_files_list]
-#         if known_profile_types_str:
-#             known_profile_types = known_profile_types_str.split(',')
-#             if len(known_profile_types) != len(known_profiles_files_list):
-#                 parser.error(
-#                     "--known_profile_types must have the same number of entries as --known_profiles_files if both are provided.")
-#         else:
-#             known_profile_types = ['generic'] * len(known_profiles_files_list)
-#         if known_profile_names_str:  # Parse known profile names if provided
-#             known_profile_names = known_profile_names_str.split(',')
-#             if len(known_profile_names) != len(known_profiles_files_list):
-#                 parser.error(
-#                     "--known_profile_names must have the same number of entries as --known_profiles_files if both are provided.")
-#         else:
-#             known_profile_names = [f"known_{i + 1}" for i in
-#                                    range(len(known_profiles_files_list))]  # Default known profile names
-#
-#     # --- Parse penalty related arguments (now from command line) ---
-#     water_peak_range_str = args.water_peak_range.split(',')
-#     water_peak_range = tuple(float(qr) for qr in water_peak_range_str)
-#     fractions_weight = args.fractions_weight
-#     profile_similarity_weight = args.profile_similarity_weight
-#     water_penalty_weight = args.water_penalty_weight
-#
-#
-#     optimization_options = {  # Collect optimization options dictionary - ***MOVED UP HERE***
-#         'maxiter': args.maxiter,
-#         'ftol': args.ftol,
-#         'maxfun': args.maxfun,
-#         'maxls': args.maxls,
-#         'eps': args.eps
-#     }
-#
-#     # --- Prepare Inputs for ShannonDeconvolution (Corrected Order) ---
-#     unknown_component_profiles_iq_init = None
-#     n_components = len(unknown_component_Ds)
-#     unknown_component_names = [f"component_{i + 1}" for i in range(n_components)]
-#
-#     # --- Instantiate ShannonDeconvolution ---
-#     deconvolver = ShannonDeconvolution(
-#         unknown_component_profiles_iq_init=unknown_component_profiles_iq_init,
-#         unknown_component_Ds=unknown_component_Ds,
-#         mixture_stack=mixture_stack,
-#         q=q,
-#         known_profiles_iq=known_profiles_iq,
-#         known_profile_types=known_profile_types,
-#         known_profile_names=known_profile_names,
-#         fractions_weight=args.fractions_weight,
-#         water_penalty_weight=args.water_penalty_weight,
-#         profile_similarity_weight=args.profile_similarity_weight,
-#         target_similarity=args.target_similarity,  # Initialize target_similarity to None initially
-#         update_visualization=args.visualize,
-#         verbose=args.verbose,
-#         plot_update_frequency=args.plot_update_frequency,
-#         optimization_method=args.optimization_method,
-#         optimization_options=optimization_options
-#     )
-#
-#     # --- Run Optimization ---
-#     optimization_results = deconvolver.run_optimization()
-#
-#     print("\n--- Optimization Results ---")
-#     print(optimization_results)
-#
-#     # --- Keep plot window open after optimization if visualization was enabled ---
-#     if deconvolver.update_visualization:
-#         print("\nPlotting is persistent. Close the plot window to exit.")
-#         plt.show(block=True)
-#     else:
-#         print("\nPlotting was not enabled. Script finished.")
 
 
 if __name__ == '__main__':
@@ -1328,46 +2109,3 @@ if __name__ == '__main__':
     else:
         print("\nPlotting was not enabled. Script finished.")
 
-
-# if __name__ == '__main__':
-#     import numpy as np
-#     from scipy import optimize
-#     from functools import partial
-#
-#     # --- Minimal Example Data and Initial Guess ---
-#     mixture_stack = np.array([[1.0, 0.5, 0.2], [0.8, 0.4, 0.15]]) # Dummy 2x3 mixture stack
-#     q = np.array([1.0, 2.0, 3.0]) # Dummy q-values
-#     initial_params = np.array([1.0, 1.0]) # Dummy initial parameters
-#     component_nsh = [2, 2] # Dummy component_nsh
-#     component_Bns = [np.random.rand(2, len(q)), np.random.rand(2, len(q))] # Dummy Bns
-#     background_stack = np.zeros((1, len(q))) # Dummy background_stack
-#
-#     # --- Define a Simple Objective Function (for testing) ---
-#     def simple_score_function(params):
-#         print("test")
-#         residuals = np.sum(params**2) # Simple score: sum of squares of parameters
-#         gradient = 2*params
-#         return residuals, gradient
-#
-#     # --- Optimization Options with maxiter=2 ---
-#     optimization_options = {
-#         'maxiter': 3,
-#         'ftol': 1e-8,
-#         'maxfun': 10,
-#         'maxls': 2,
-#         'eps': 1e-8
-#     }
-#
-#     # --- Run Optimization ---
-#     results = optimize.minimize(
-#         partial(simple_score_function), # Objective function
-#         initial_params, # Initial guess
-#         method='L-BFGS-B',
-#         bounds=None, # No bounds for simple test
-#         callback=None,
-#         options=optimization_options,
-#         jac=True,
-#     )
-#
-#     print("\n--- Minimal Example Optimization Results ---")
-#     print(results) # Print optimization results
