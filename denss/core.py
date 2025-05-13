@@ -2586,13 +2586,17 @@ def create_lowq(q):
 
 class Sasrec(object):
     def __init__(self, Iq, D, qc=None, r=None, nr=None, alpha=0.0, ne=2, extrapolate=True):
+        # remove any rows with nans
+        Iq = Iq[~np.isnan(Iq).any(axis=1)]
+        # remove any rows with zeros in intensities or error
+        Iq = Iq[~((Iq[:, 1] == 0) | (Iq[:, 2] == 0))]
         self.Iq = Iq
         self.q = Iq[:, 0]
         self.I = Iq[:, 1]
         self.Ierr = Iq[:, 2]
-        self.q.clip(1e-10)
-        self.I[np.abs(self.I) < 1e-10] = 1e-10
-        self.Ierr.clip(1e-10)
+        # self.q.clip(1e-10)
+        # self.I[np.abs(self.I) < 1e-10] = 1e-10
+        # self.Ierr.clip(1e-10)
         self.q_data = np.copy(self.q)
         self.I_data = np.copy(self.I)
         self.Ierr_data = np.copy(self.Ierr)
@@ -2813,7 +2817,8 @@ class Sasrec(object):
     def shannon_channels(self, D, qmax=0.5, qmin=0.0):
         """Return the number of Shannon channels given a q range and maximum particle dimension"""
         width = np.pi / D
-        num_channels = int((qmax - qmin) / width)
+        num_channels_float = (qmax - qmin) / width
+        num_channels = int(num_channels_float)
         return num_channels
 
     def Bt(self, q=None):
@@ -3521,8 +3526,8 @@ class PDB(object):
             else:
                 notfound = True
             if notfound:
-                print("%s:%s not found in volumes dictionary. Calculating unique volume." % (
-                self.resname[i], self.atomname[i]))
+                # print("%s:%s not found in volumes dictionary. Calculating unique volume." % (
+                # self.resname[i], self.atomname[i]))
                 # print("Setting volume to ALA:CA.")
                 # self.unique_volume[i] = atomic_volumes['ALA']['CA']
                 self.calculate_unique_volume(atomidx=[i])
