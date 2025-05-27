@@ -53,7 +53,7 @@ def main():
     # h1.setLevel(logging.INFO)
     # h1.setFormatter(formatter)
 
-    h2 = logging.FileHandler(os.path.join('../bin', args.output + '.log'), mode='w')
+    h2 = logging.FileHandler(args.output + '.log', mode='w')
     h2.setLevel(logging.INFO)
     h2.setFormatter(formatter)
 

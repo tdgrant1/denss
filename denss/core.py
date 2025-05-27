@@ -1095,6 +1095,7 @@ def estimate_dmax(Iq, dmax=None, clean_up=True):
     Ds = np.logspace(.1, np.log10(2 * 7 * rg), 10)
     chi2 = np.zeros(len(Ds))
     for i in range(len(Ds)):
+        print(Ds[i])
         sasrec = Sasrec(Iq[:nq // 2], D=Ds[i], qc=None, alpha=0.0, extrapolate=False)
         chi2[i] = sasrec.calc_chi2()
     order = np.argsort(chi2)
@@ -1108,9 +1109,13 @@ def estimate_dmax(Iq, dmax=None, clean_up=True):
     # import matplotlib.pyplot as plt
     # plt.plot(sasrec.r,sasrec.r*0,'k--')
     # plt.plot(sasrec.r, sasrec.P,'b-')
+    # plt.plot(sasrec.q, sasrec.I,'b-')
+    # plt.plot(sasrec.qc, sasrec.Ic,'r-')
     # plt.plot(r,Pfilt,'r-')
+    # plt.show()
     # estimate D as the first position where P becomes less than 0.01*P.max(), after P.max()
     Pargmax = Pfilt.argmax()
+    print(Pargmax)
     # catch cases where the P(r) plot goes largely negative at large r values,
     # as this indicates repulsion. Set the new Pargmax, which is really just an
     # identifier for where to begin searching for Dmax, to be any P value whose
@@ -1135,6 +1140,247 @@ def estimate_dmax(Iq, dmax=None, clean_up=True):
     sasrec.update()
     return D, sasrec
 
+
+class DmaxResult:
+    """Helper class to store Dmax, chi2, and the Sasrec object."""
+
+    def __init__(self, dmax, chi2, sasrec_obj):
+        self.dmax = dmax
+        self.chi2 = chi2
+        self.sasrec_obj = sasrec_obj
+
+    def __repr__(self):
+        return f"DmaxResult(dmax={self.dmax:.4f}, chi2={self.chi2:.4e})"
+
+
+def _perform_scan_stage(Iq_cleaned, d_values_to_test, all_results_list,
+                        alpha, qc, extrapolate, verbose, stage_name="Scan"):
+    """Helper function to perform a scan over a list of Dmax values."""
+    if verbose:
+        print(f"--- Starting {stage_name} ---")
+        if not d_values_to_test.size:  # Check if the array is empty
+            print(f"No Dmax values to test in {stage_name}.")
+            return
+        print(
+            f"Testing {len(d_values_to_test)} Dmax values from {d_values_to_test[0]:.4f} to {d_values_to_test[-1]:.4f}")
+
+    num_new_tests = len(d_values_to_test)
+    for i, d_try in enumerate(d_values_to_test):
+        if verbose:
+            print(f"  {stage_name} Test {i + 1}/{num_new_tests}: Dmax = {d_try:.4f}", end="")
+        try:
+            # In a real scenario, ensure Sasrec is robust or handle its specific exceptions
+            sasrec = Sasrec(Iq_cleaned, D=d_try, qc=qc, alpha=alpha, extrapolate=extrapolate)
+            current_chi2 = sasrec.calc_chi2()
+            if verbose: print(f" -> chi2 = {current_chi2:.4e}")
+        except Exception as e:
+            if verbose: print(f" -> Error during Sasrec/chi2 calculation: {e}")
+            current_chi2 = float('inf')
+            sasrec = None  # Mark Sasrec object as None if instantiation or calc failed
+
+        all_results_list.append(DmaxResult(d_try, current_chi2, sasrec))
+
+
+def _define_refinement_range(center_dmax_val, source_dmax_grid,
+                             global_min_d, global_max_d,
+                             fallback_rel_half_width=0.1, verbose=False):
+    """
+    Defines a [low, high] range for refinement based on a center Dmax value
+    and its neighbors in a source grid. Ensures the range is valid and within global bounds.
+    """
+    source_dmax_grid_np = np.array(source_dmax_grid)  # Ensure it's a numpy array
+
+    if not source_dmax_grid_np.size:
+        if verbose: print(
+            "Warning (_define_refinement_range): source_dmax_grid is empty. Using fallback around center_dmax_val.")
+        half_width = center_dmax_val * fallback_rel_half_width
+        low_cand = center_dmax_val - half_width
+        high_cand = center_dmax_val + half_width
+    else:
+        idx_closest = np.argmin(np.abs(source_dmax_grid_np - center_dmax_val))
+
+        low_cand = source_dmax_grid_np[max(0, idx_closest - 1)]
+        high_cand = source_dmax_grid_np[min(len(source_dmax_grid_np) - 1, idx_closest + 1)]
+
+        if low_cand >= high_cand:
+            if verbose: print(
+                f"Info (_define_refinement_range): Neighbors for Dmax {center_dmax_val:.4f} in source grid (len {len(source_dmax_grid_np)}) did not form interval [{low_cand:.4f}, {high_cand:.4f}]. Using fallback.")
+            half_width = center_dmax_val * fallback_rel_half_width
+            low_cand = center_dmax_val - half_width
+            high_cand = center_dmax_val + half_width
+
+    # Ensure Dmax is positive and there's some interval
+    low_cand = max(1e-9, low_cand)  # Dmax must be positive
+    if low_cand >= high_cand:  # If still collapsed (e.g. center_dmax_val is tiny)
+        high_cand = low_cand * (1.0 + 2 * fallback_rel_half_width)
+        if high_cand <= low_cand:  # If low_cand is extremely small or zero
+            high_cand = low_cand + max(1e-9, low_cand * 0.01)  # Absolute or relative small increment
+
+    # Clip to global boundaries
+    final_low = np.clip(low_cand, global_min_d, global_max_d)
+    final_high = np.clip(high_cand, global_min_d, global_max_d)
+
+    # If clipping collapsed or inverted the interval, try to fix
+    if final_low >= final_high:
+        if final_low >= global_max_d:  # At or past upper boundary
+            final_low = max(global_min_d, global_max_d * (1.0 - fallback_rel_half_width * 0.1))
+            final_high = global_max_d  # Ensure high is at the boundary
+        elif final_high <= global_min_d:  # At or past lower boundary
+            final_high = min(global_max_d, global_min_d * (1.0 + fallback_rel_half_width * 0.1))
+            final_low = global_min_d  # Ensure low is at the boundary
+        else:  # Collapsed somewhere in the middle
+            final_high = final_low * (1.0 + fallback_rel_half_width * 0.01)  # Create small interval
+            final_high = min(final_high, global_max_d)
+
+        # Last resort if still collapsed (e.g. global_min_d == global_max_d)
+        if final_low >= final_high:
+            final_high = final_low + 1e-9  # Ensure high > low for linspace
+            final_high = min(final_high, global_max_d)  # Re-clip if necessary
+
+    if verbose:
+        print(f"Debug (_define_refinement_range): center_D={center_dmax_val:.4f}, "
+              f"source_grid_pts={len(source_dmax_grid_np)}, "
+              f"cand=[{low_cand:.4f}, {high_cand:.4f}], "
+              f"global_bounds=[{global_min_d:.4f}, {global_max_d:.4f}], "
+              f"final_range=[{final_low:.4f}, {final_high:.4f}]")
+    return final_low, final_high
+
+
+def estimate_dmax_by_chi2(Iq,
+                          dmax_min_val=1.0,
+                          num_dmax_points=30,
+                          relative_chi2_tolerance=0.05,
+                          alpha=0.0,
+                          qc=None,
+                          extrapolate=False,
+                          clean_up=True,
+                          verbose=True):
+    """
+    Estimates Dmax using a multi-stage chi-squared minimization process.
+    """
+    if clean_up:
+        Iq_cleaned = clean_up_data(Iq)
+        if Iq_cleaned.shape[0] < 2:
+            if verbose: print("Error: Insufficient data points after clean_up.")
+            return None, None
+    else:
+        Iq_cleaned = Iq
+
+    if Iq_cleaned.shape[0] < 2:
+        if verbose: print("Error: Insufficient data points in Iq (need at least 2).")
+        return None, None
+
+    q_data = Iq_cleaned[:, 0]
+    dq_values = np.diff(q_data)
+    positive_dq_values = dq_values[dq_values > 1e-9]
+    if not positive_dq_values.size:
+        if verbose: print("Error: Cannot determine a positive q-spacing (dq). Check q-values.")
+        return None, None
+    dq = np.median(positive_dq_values)
+
+    # Define initial global search boundaries
+    initial_global_d_min = max(1e-3, dmax_min_val)  # Ensure Dmax is positive
+    initial_global_d_max = np.pi / dq
+
+    if initial_global_d_min >= initial_global_d_max:
+        if verbose:
+            print(
+                f"Warning: dmax_min_val ({initial_global_d_min:.3f}) is >= calculated dmax_max_val ({initial_global_d_max:.3f}).")
+        initial_global_d_min = initial_global_d_max / 10.0
+        initial_global_d_min = max(1e-3, initial_global_d_min)  # Ensure positivity
+        if verbose: print(f"Adjusted initial_global_d_min to {initial_global_d_min:.3f}")
+
+    if initial_global_d_min >= initial_global_d_max:
+        if verbose: print(
+            f"Error: Cannot establish valid Dmax range. Min: {initial_global_d_min:.3f}, Max: {initial_global_d_max:.3f}")
+        return None, None
+
+    all_scan_results = []
+
+    # --- Stage 1: Logarithmic Scan ---
+    # d_log_scan_points = np.logspace(np.log10(initial_global_d_min), np.log10(initial_global_d_max), num_dmax_points)
+    d_log_scan_points = np.linspace(initial_global_d_min, initial_global_d_max, num_dmax_points)
+    _perform_scan_stage(Iq_cleaned, d_log_scan_points, all_scan_results,
+                        alpha, qc, extrapolate, verbose, stage_name="Logarithmic Scan")
+
+    valid_results = [r for r in all_scan_results if r.sasrec_obj is not None and np.isfinite(r.chi2)]
+    if not valid_results:
+        if verbose: print("Error: Logarithmic scan yielded no valid results.")
+        return None, None
+    best_res_after_log = min(valid_results, key=lambda r: r.chi2)
+    if verbose: print(f"Best after Log Scan: {best_res_after_log}")
+
+    exit()
+
+    # --- Stage 2: First Linear Refinement ---
+    lin1_low, lin1_high = _define_refinement_range(
+        best_res_after_log.dmax, d_log_scan_points,
+        initial_global_d_min, initial_global_d_max, verbose=verbose
+    )
+    d_linear1_scan_points = np.linspace(lin1_low, lin1_high, num_dmax_points)
+    _perform_scan_stage(Iq_cleaned, d_linear1_scan_points, all_scan_results,
+                        alpha, qc, extrapolate, verbose, stage_name="Linear Refinement 1")
+
+    valid_results = [r for r in all_scan_results if r.sasrec_obj is not None and np.isfinite(r.chi2)]
+    if not valid_results:  # Should be unlikely if previous stage was okay
+        if verbose: print("Error: No valid results after Linear Refinement 1. Returning best from Log scan.")
+        return best_res_after_log.dmax, best_res_after_log.sasrec_obj
+    best_res_after_lin1 = min(valid_results, key=lambda r: r.chi2)
+    if verbose: print(f"Best after Linear Refinement 1: {best_res_after_lin1}")
+
+    # --- Stage 3: Second Linear Refinement ---
+    lin2_low, lin2_high = _define_refinement_range(
+        best_res_after_lin1.dmax, d_linear1_scan_points,  # Use d_linear1_scan_points as source grid
+        initial_global_d_min, initial_global_d_max, verbose=verbose
+    )
+    d_linear2_scan_points = np.linspace(lin2_low, lin2_high, num_dmax_points)
+    _perform_scan_stage(Iq_cleaned, d_linear2_scan_points, all_scan_results,
+                        alpha, qc, extrapolate, verbose, stage_name="Linear Refinement 2")
+
+    # --- Final Selection ---
+    valid_results = [r for r in all_scan_results if r.sasrec_obj is not None and np.isfinite(r.chi2)]
+    if not valid_results:
+        if verbose: print("Error: All scan stages yielded no valid results.")
+        # This case might return the best from the last successful stage, handled implicitly if lin1 was the last good one.
+        # If even log scan failed, initial check handles it. If lin2 fails but lin1 good, best_res_after_lin1 is available.
+        # Fallback to best_res_after_lin1 if it exists
+        if 'best_res_after_lin1' in locals() and best_res_after_lin1:
+            return best_res_after_lin1.dmax, best_res_after_lin1.sasrec_obj
+        elif 'best_res_after_log' in locals() and best_res_after_log:  # Should always exist if we got here
+            return best_res_after_log.dmax, best_res_after_log.sasrec_obj
+        return None, None  # Should not be reached if initial checks pass
+
+    min_chi2_overall = min(r.chi2 for r in valid_results)
+    chi2_cutoff_val = min_chi2_overall * (1.0 + relative_chi2_tolerance)
+
+    sorted_valid_results = sorted(valid_results, key=lambda r: r.dmax)
+
+    optimal_result = None
+    for r_opt in sorted_valid_results:
+        if r_opt.chi2 <= chi2_cutoff_val:
+            optimal_result = r_opt
+            break
+
+    if optimal_result is None:
+        if verbose: print(
+            "Warning: No Dmax found within relative chi2 tolerance. Falling back to Dmax with absolute minimum chi2.")
+        # Find the result with the minimum chi2. If multiple have the same min_chi2, pick the one with smallest Dmax.
+        min_chi2_group = [r_m for r_m in sorted_valid_results if r_m.chi2 == min_chi2_overall]
+        optimal_result = min_chi2_group[0]  # Smallest Dmax among those with min_chi2_overall
+
+    if verbose:
+        print(f"--- Dmax Estimation Complete ---")
+        print(f"Total Dmax evaluations (includes potential duplicates if ranges overlap): {len(all_scan_results)}")
+        # print(f"Unique Dmax values tested: {len(set(r.dmax for r in all_scan_results))}")
+        print(f"Min chi2 observed overall: {min_chi2_overall:.4e}")
+        print(f"Chi2 cutoff for selection (min_chi2 * (1 + {relative_chi2_tolerance})): {chi2_cutoff_val:.4e}")
+        if optimal_result:
+            print(f"Selected Optimal Dmax: {optimal_result.dmax:.4f} (with chi2: {optimal_result.chi2:.4e})")
+        else:
+            print("Critical Error: Optimal result could not be determined despite valid results existing.")
+            return None, None  # Should be captured by earlier checks
+
+    return optimal_result.dmax, optimal_result.sasrec_obj
 
 def filter_P(r, P, sigr=None, qmax=0.5, cutoff=0.75, qmin=0.0, cutoffmin=1.25):
     """Filter P(r) and sigr of oscillations."""

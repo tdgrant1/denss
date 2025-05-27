@@ -119,7 +119,9 @@ def main():
         #note that denss.estimate_dmax does NOT extrapolate
         #the high q data, even though by default
         #denss.Sasrec does extrapolate.
-        D, sasrec = denss.estimate_dmax(Iq, clean_up=True)
+        # D, sasrec = denss.estimate_dmax(Iq, clean_up=True)
+        D, sasrec = denss.estimate_dmax_by_chi2(Iq, clean_up=True, dmax_min_val=5, num_dmax_points=100, relative_chi2_tolerance=0.05)
+
     else:
         D = args.dmax
 
