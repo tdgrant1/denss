@@ -216,8 +216,8 @@ def parse_command_line_args():
     parser.add_argument("--buffer_frames",
                         help="Semi-colon separated list of comma-separated start,end frames for buffer regions. " +
                              "Example: '0,10;90,100' for frames 0-10 and 90-100")
-    parser.add_argument("--n_buffer_components", type=int, default=2,
-                        help="Number of SVD components to extract from buffer regions (default: 2)")
+    parser.add_argument("--n_buffer_components", type=int, default=1,
+                        help="Number of SVD components to extract from buffer regions (default: 1)")
 
     # Optimization Settings (Optional, with defaults)
     parser.add_argument("--optimization_method", default='L-BFGS-B',
@@ -2558,35 +2558,65 @@ class ShannonDeconvolution:
 
         return estimated_profiles
 
+    # def _calculate_fractions(self, estimated_profiles):
+    #     """
+    #     Calculates estimated fractions for each frame using non-negative least squares.
+    #
+    #     Args:
+    #         estimated_profiles (np.ndarray): Estimated profiles matrix (n_total_profiles x n_qbins).
+    #
+    #     Returns:
+    #         np.ndarray: Estimated fractions matrix (n_total_profiles x n_frames).
+    #     """
+    #     n_frames = self.mixture_stack.shape[0]
+    #     estimated_fractions = np.zeros((len(estimated_profiles), n_frames))
+    #
+    #     # Transpose profiles for lstsq
+    #     estimated_profiles_for_lstsq = estimated_profiles.T
+    #
+    #     for i_frame in range(n_frames):
+    #         # Get data and errors for this frame
+    #         target_data_frame = self.mixture_stack[i_frame, :]
+    #         frame_errors = self.mixture_stack_errors[i_frame, :]
+    #
+    #         # Create weighted matrices for least squares
+    #         weights = 1.0 / frame_errors
+    #         weighted_profiles = estimated_profiles_for_lstsq * weights[:, np.newaxis]
+    #         weighted_target = target_data_frame * weights
+    #
+    #         # Solve weighted non-negative least squares problem
+    #         fractions_frame, residuals_frame_lstsq = optimize.nnls(
+    #             weighted_profiles,
+    #             weighted_target
+    #         )
+    #
+    #         estimated_fractions[:, i_frame] = fractions_frame
+    #
+    #     return estimated_fractions
+
     def _calculate_fractions(self, estimated_profiles):
         """
-        Calculates estimated fractions for each frame using non-negative least squares.
-
-        Args:
-            estimated_profiles (np.ndarray): Estimated profiles matrix (n_total_profiles x n_qbins).
-
-        Returns:
-            np.ndarray: Estimated fractions matrix (n_total_profiles x n_frames).
+        Simple, robust fraction calculation
         """
         n_frames = self.mixture_stack.shape[0]
         estimated_fractions = np.zeros((len(estimated_profiles), n_frames))
 
-        # Transpose profiles for lstsq
-        estimated_profiles_for_lstsq = estimated_profiles.T
-
         for i_frame in range(n_frames):
-            # Get data and errors for this frame
-            target_data_frame = self.mixture_stack[i_frame, :]
-            frame_errors = self.mixture_stack_errors[i_frame, :]
+            target = self.mixture_stack[i_frame, :]
+            errors = self.mixture_stack_errors[i_frame, :]
 
-            # Create weighted matrices for least squares
-            weights = 1.0 / frame_errors
-            weighted_profiles = estimated_profiles_for_lstsq * weights[:, np.newaxis]
-            weighted_target = target_data_frame * weights
+            # Weighted least squares
+            weights = 1.0 / errors
+            A = estimated_profiles.T * weights[:, np.newaxis]
+            b = target * weights
 
-            # Solve weighted non-negative least squares problem
-            fractions_frame, residuals_frame_lstsq = optimize.nnls(weighted_profiles, weighted_target)
-            estimated_fractions[:, i_frame] = fractions_frame
+            # Solve
+            x, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
+
+            # Project negative values to zero (soft non-negativity)
+            x = np.maximum(x, 0)
+
+            estimated_fractions[:, i_frame] = x
 
         return estimated_fractions
 
@@ -2978,7 +3008,10 @@ class ShannonDeconvolution:
             # Integrate using trapezoidal rule
             # use only high q values, highest 20%
             idx_min = int(0.6 * len(sasrec.qc))
-            smoothness_penalty = np.trapezoid(iq_second_deriv_squared[idx_min:], sasrec.qc[idx_min:])
+            try:
+                smoothness_penalty = np.trapezoid(iq_second_deriv_squared[idx_min:], sasrec.qc[idx_min:])
+            except:
+                smoothness_penalty = np.trapz(iq_second_deriv_squared[idx_min:], sasrec.qc[idx_min:])
 
             negative_penalty = np.sum(iq[iq<0])**2
 
@@ -3028,7 +3061,10 @@ class ShannonDeconvolution:
             pr_second_deriv_squared = pr_second_deriv ** 2
 
             # Integrate using trapezoidal rule
-            smoothness_penalty = np.trapezoid(pr_second_deriv_squared, sasrec.r)
+            try:
+                smoothness_penalty = np.trapezoid(pr_second_deriv_squared, sasrec.r)
+            except:
+                smoothness_penalty = np.trapz(pr_second_deriv_squared, sasrec.r)
 
             # Add to total penalty
             total_smoothness_penalty += smoothness_penalty
