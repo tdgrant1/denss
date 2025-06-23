@@ -207,18 +207,30 @@ def main():
     all_rg = np.array([denss_outputs[i][6] for i in np.arange(superargs.nmaps)])
     all_supportV = np.array([denss_outputs[i][7] for i in np.arange(superargs.nmaps)])
     final_chis = np.zeros(superargs.nmaps)
-    final_rgs = np.zeros(superargs.nmaps)
+    final_rgs = np.zeros(superargs.nmaps, dtype=np.complex128)
     final_supportVs = np.zeros(superargs.nmaps)
     for i in range(superargs.nmaps):
-        final_rgs[i] = all_rg[i,all_rg[i]>0][-1]
-        final_chis[i] = all_chis[i,all_chis[i]>0][-1]
-        final_supportVs[i] = all_supportV[i,all_supportV[i]>0][-1]
-    superlogger.info('Average Rg...............: %3.3f +- %3.3f', np.mean(final_rgs), np.std(final_rgs))
+        final_rgs[i] = all_rg[i][-1]
+        final_chis[i] = all_chis[i][-1]
+        final_supportVs[i] = all_supportV[i][-1]
+
+    # Use magnitudes for averaging
+    rg_magnitudes = np.abs(final_rgs)
+    superlogger.info('Average |Rg|.............: %3.3f +- %3.3f', np.mean(rg_magnitudes), np.std(rg_magnitudes))
     superlogger.info('Average Chi2.............: %.3e +- %.3e', np.mean(final_chis), np.std(final_chis))
     superlogger.info('Average Support Volume...: %3.3f +- %3.3f', np.mean(final_supportVs), np.std(final_supportVs))
 
     np.savetxt(output+'_chis_by_step.fit',all_chis.T,delimiter=" ",fmt="%.5e",header=",".join(chi_header))
-    np.savetxt(output+'_rg_by_step.fit',all_rg.T,delimiter=" ",fmt="%.5e",header=",".join(rg_header))
+    # Process the 2D array to format real/imaginary values
+    rg_strings = np.empty(all_rg.shape, dtype=object)
+    for i in range(all_rg.shape[0]):
+        for j in range(all_rg.shape[1]):
+            if abs(all_rg[i, j].imag) < 1e-10:  # Essentially real
+                rg_strings[i, j] = f"{all_rg[i, j].real:.5e}"
+            else:  # Essentially imaginary
+                rg_strings[i, j] = f"{all_rg[i, j].imag:.5e}j"
+
+    np.savetxt(output + '_rg_by_step.fit', rg_strings.T, delimiter=" ", fmt="%s", header=",".join(rg_header))
     np.savetxt(output+'_supportV_by_step.fit',all_supportV.T,delimiter=" ",fmt="%.5e",header=",".join(supportV_header))
 
     allrhos = np.array([denss_outputs[i][8] for i in np.arange(superargs.nmaps)])

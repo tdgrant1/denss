@@ -163,24 +163,50 @@ def main():
         color2 = plt.cm.viridis(0.5)
         color3 = plt.cm.viridis(.9)
 
-        p1, = host.plot(chis[chis>0], color=color1,label="$\chi^2$")
-        p2, = par1.plot(rg, color=color2, label="Rg")
-        p3, = par2.plot(supportV[supportV>0], color=color3, label="Support Volume")
+        from matplotlib.collections import LineCollection
+        from matplotlib.lines import Line2D
+
+        p1, = host.plot(chis, color=color1, label="$\chi^2$")
+
+        # Create the line segments for rg with varying colors
+        steps = np.arange(len(rg))
+        rg_mag = np.abs(rg)
+        points = np.array([steps, rg_mag]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+        # Assign colors based on real/imaginary
+        real_mask = np.abs(rg.imag) < 1e-10
+        colors = ['teal' if real_mask[i] else 'orange' for i in range(len(segments))]
+
+        # Create the line collection
+        lc = LineCollection(segments, colors=colors, linewidth=2)
+        par1.add_collection(lc)
+
+        # Set the limits since add_collection doesn't auto-scale
+        par1.set_xlim(0, len(rg))
+        par1.set_ylim(np.min(rg_mag), np.max(rg_mag))
+
+        # Create custom legend entries for rg
+        real_line = Line2D([0], [0], color='teal', label='Rg (real)')
+        imag_line = Line2D([0], [0], color='orange', label='Rg (imaginary)')
+
+        p3, = par2.plot(supportV, color=color3, label="Support Volume")
 
         host.semilogy()
         par2.semilogy()
 
-        lns = [p1, p2, p3]
+        # Update legend
+        lns = [p1, real_line, imag_line, p3]
         host.legend(handles=lns, loc='best')
 
         # right, left, top, bottom
         par2.spines['right'].set_position(('outward', 60))
 
         host.yaxis.label.set_color(p1.get_color())
-        par1.yaxis.label.set_color(p2.get_color())
+        par1.yaxis.label.set_color('teal')  # Use teal since that's the primary rg color
         par2.yaxis.label.set_color(p3.get_color())
 
-        plt.savefig(args.output+'_stats_by_step.png', bbox_inches='tight',dpi=150)
+        plt.savefig(args.output + '_stats_by_step.png', bbox_inches='tight', dpi=150)
         plt.close()
 
     logging.info('END')

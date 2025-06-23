@@ -1941,22 +1941,36 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
     final_chi2, exp_scale_factor, offset, fit = calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True,
                                                           return_sf=True, return_fit=True)
 
+    final_step = j+1
+
+    chi[final_step] = final_chi2
+
+    chi = chi[:final_step]
+    rg = rg[:final_step]
+    supportV = supportV[:final_step]
+
     np.savetxt(fprefix + '_map.fit', fit, delimiter=' ', fmt='%.5e',
                header='q(data),I(data),error(data),I(density); chi2=%.3f' % final_chi2)
-    np.savetxt(fprefix + '_stats_by_step.dat', np.vstack((chi, rg, supportV)).T,
-               delimiter=" ", fmt="%.5e", header='Chi2 Rg SupportVolume')
 
-    chi[j + 1] = final_chi2
+    # Create formatted strings for each column (enabling printing of complex rg values)
+    chi_str = [f"{chi[i].real:.5e}" for i in range(final_step)]
+    rg_str = [f"{rg[i].real:.5e}" if abs(rg[i].imag) < 1e-10 else f"{rg[i].imag:.5e}j"
+              for i in range(final_step)]
+    support_str = [f"{supportV[i].real:.5e}" for i in range(final_step)]
+
+    np.savetxt(fprefix + '_stats_by_step.dat',
+               np.column_stack((chi_str, rg_str, support_str)),
+               delimiter=" ", fmt="%s", header='Chi2 Rg SupportVolume')
 
     my_logger.info('Number of steps: %i', j)
-    my_logger.info('Final Chi2: %.3e', chi[j + 1])
-    my_logger.info('Final Rg: %s', np.round(rg[j + 1],3))
-    my_logger.info('Final Support Volume: %3.3f', supportV[j + 1])
+    my_logger.info('Final Chi2: %.3e', chi[-1])
+    my_logger.info('Final Rg: %s', np.round(rg[-1],3))
+    my_logger.info('Final Support Volume: %3.3f', supportV[-1])
     my_logger.info('Mean Density (all voxels): %3.5f', np.mean(rho))
     my_logger.info('Std. Dev. of Density (all voxels): %3.5f', np.std(rho))
     my_logger.info('RMSD of Density (all voxels): %3.5f', np.sqrt(np.mean(np.square(rho))))
 
-    return qdata, Idata, sigqdata, qbinsc, Imean, chi, rg.real.astype(float), supportV, rho, side, fit, final_chi2
+    return qdata, Idata, sigqdata, qbinsc, Imean, chi, rg, supportV, rho, side, fit, final_chi2
 
 
 def shrinkwrap_by_density_value(rho, absv=True, sigma=3.0, threshold=0.2, recenter=True, recenter_mode="com"):
