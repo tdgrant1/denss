@@ -1002,7 +1002,10 @@ def calc_rg_by_guinier_first_2_points(q, I, DENSS_GPU=False):
     first two data points. This is meant to be used with a
     calculated scattering profile, such as Imean from denss()."""
     m = (mylog(I[1], DENSS_GPU) - mylog(I[0], DENSS_GPU)) / (q[1] ** 2 - q[0] ** 2)
-    rg = (-3 * m) ** (0.5)
+    if m < 0:
+        rg = (-3 * m) ** (0.5)
+    else:
+        rg = (-3 * -m) ** (0.5) * 1j
     return rg
 
 
@@ -1370,7 +1373,7 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
     I *= scale_factor
     sigq *= scale_factor
 
-    if steps == 'None' or steps is None or np.int(steps) < 1:
+    if steps == 'None' or steps is None or int(steps) < 1:
         stepsarr = np.concatenate((enforce_connectivity_steps, [shrinkwrap_minstep]))
         maxec = np.max(stepsarr)
         steps = int(shrinkwrap_iter * (
@@ -1399,7 +1402,7 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
     Iq_calc = Iq_calc[Iq_calc[:, 0] <= qmax]
 
     chi = np.zeros((steps + 1))
-    rg = np.zeros((steps + 1))
+    rg = np.zeros((steps + 1), dtype=np.complex128)
     supportV = np.zeros((steps + 1))
     if support_start is not None:
         support = np.copy(support_start)
@@ -1451,6 +1454,10 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
         if erosion_width == 0:
             # make minimum of one pixel
             erosion_width = 1
+
+    # for icosahedral symmetry, just set ncs to 1 to trigger ncs averaging
+    if ncs_type == "icosahedral":
+        ncs = 1
 
     my_logger.info('q range of input data: %3.3f < q < %3.3f', q.min(), q.max())
     my_logger.info('Maximum dimension: %3.3f', D)
@@ -1583,7 +1590,8 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
         rhoprime = myirfftn(F, DENSS_GPU=DENSS_GPU).real
 
         # use Guinier's law to approximate quickly
-        rg[j] = calc_rg_by_guinier_first_2_points(qbinsc, Imean, DENSS_GPU=DENSS_GPU)
+        rg_j = calc_rg_by_guinier_first_2_points(qbinsc, Imean, DENSS_GPU=DENSS_GPU)
+        rg[j] = rg_j
 
         # Error Reduction
         newrho *= 0
@@ -1802,16 +1810,21 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
 
         supportV[j] = mysum(support, DENSS_GPU=DENSS_GPU) * dV
 
+        # convert possibly imaginary rg to string for printing
+        rg_str = (f"{rg[j].real:3.2f}" if abs(rg[j].imag) < 1e-10 else
+                  f"{rg[j].imag:3.2f}j" if abs(rg[j].real) < 1e-10 else
+                  f"{rg[j].real:3.2f}{rg[j].imag:+3.2f}j")
+
         if not quiet:
             if gui:
-                my_logger.info("% 5i % 4.2e % 3.2f       % 5i          ", j, chi[j], rg[j], supportV[j])
+                my_logger.info("% 5i % 4.2e %s       % 5i          ", j, chi[j], rg_str, supportV[j])
             else:
-                sys.stdout.write("\r% 5i  % 4.2e % 3.2f       % 5i          " % (j, chi[j], rg[j], supportV[j]))
+                sys.stdout.write("\r% 5i  % 4.2e %s       % 5i          " % (j, chi[j], rg_str, supportV[j]))
                 sys.stdout.flush()
 
         # occasionally report progress in logger
         if j % 500 == 0 and not gui:
-            my_logger.info('Step % 5i: % 4.2e % 3.2f       % 5i          ', j, chi[j], rg[j], supportV[j])
+            my_logger.info('Step % 5i: % 4.2e %s       % 5i          ', j, chi[j], rg_str, supportV[j])
 
         if j > 101 + shrinkwrap_minstep:
             if DENSS_GPU:
@@ -1937,13 +1950,13 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
 
     my_logger.info('Number of steps: %i', j)
     my_logger.info('Final Chi2: %.3e', chi[j + 1])
-    my_logger.info('Final Rg: %3.3f', rg[j + 1])
+    my_logger.info('Final Rg: %s', np.round(rg[j + 1],3))
     my_logger.info('Final Support Volume: %3.3f', supportV[j + 1])
     my_logger.info('Mean Density (all voxels): %3.5f', np.mean(rho))
     my_logger.info('Std. Dev. of Density (all voxels): %3.5f', np.std(rho))
     my_logger.info('RMSD of Density (all voxels): %3.5f', np.sqrt(np.mean(np.square(rho))))
 
-    return qdata, Idata, sigqdata, qbinsc, Imean, chi, rg, supportV, rho, side, fit, final_chi2
+    return qdata, Idata, sigqdata, qbinsc, Imean, chi, rg.real.astype(float), supportV, rho, side, fit, final_chi2
 
 
 def shrinkwrap_by_density_value(rho, absv=True, sigma=3.0, threshold=0.2, recenter=True, recenter_mode="com"):

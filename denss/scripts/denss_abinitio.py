@@ -164,7 +164,7 @@ def main():
         color3 = plt.cm.viridis(.9)
 
         p1, = host.plot(chis[chis>0], color=color1,label="$\chi^2$")
-        p2, = par1.plot(rg[rg!=0], color=color2, label="Rg")
+        p2, = par1.plot(rg, color=color2, label="Rg")
         p3, = par2.plot(supportV[supportV>0], color=color3, label="Support Volume")
 
         host.semilogy()
