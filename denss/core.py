@@ -1945,10 +1945,6 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
 
     chi[final_step] = final_chi2
 
-    chi = chi[:final_step]
-    rg = rg[:final_step]
-    supportV = supportV[:final_step]
-
     np.savetxt(fprefix + '_map.fit', fit, delimiter=' ', fmt='%.5e',
                header='q(data),I(data),error(data),I(density); chi2=%.3f' % final_chi2)
 
