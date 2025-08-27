@@ -2,6 +2,7 @@ import os
 import sys, time
 import re
 import glob
+import warnings
 import numpy as np
 from scipy import optimize, interpolate
 from scipy.interpolate import interp1d
@@ -208,7 +209,7 @@ def parse_command_line_args():
     parser.add_argument("-k", "--known_profiles_files", default=None,
                         help="Comma-separated paths to known profiles (q, I). Optional.")
     parser.add_argument("--known_profile_types", default=None,
-                        help="Comma-separated types of known profiles. Defaults to 'generic'.")
+                        help="Comma-separated types of known profiles ('generic' or 'water'). Defaults to 'generic'.")
     parser.add_argument("--known_profile_names", default=None,
                         help="Comma-separated names for known profiles (for plotting). Optional.")
 
@@ -232,10 +233,10 @@ def parse_command_line_args():
     # Penalty Settings (Optional, with defaults)
     parser.add_argument("--i0_constraint_weight", type=float, default=1.0,
                         help="Weight for I(0) constraint penalty to prevent scale ambiguity.")
-    parser.add_argument("--fractions_weight", type=float, default=1.0,
-                        help="Weight for fraction sum penalty. Default: 1.0")
-    parser.add_argument("--profile_similarity_weight", type=float, default=1.0,
-                        help="Weight for profile similarity penalty. Default: 10.0")
+    parser.add_argument("--fractions_weight", type=float, default=0.0,
+                        help="Weight for fraction sum penalty. Default: 0.0")
+    parser.add_argument("--profile_similarity_weight", type=float, default=0.0,
+                        help="Weight for profile similarity penalty. Default: 0.0")
     parser.add_argument("--water_peak_range", default="1.9,2.0",
                         help="q-range for water peak (e.g., '1.9,2.0'). Default: 1.9,2.0")
     parser.add_argument("--target_similarity", type=str, default=None,
@@ -254,12 +255,18 @@ def parse_command_line_args():
     parser.add_argument("--iq_negative_weight", type=float, default=0.0,
                         help="Weight for negative I(q) penalty. Higher values ensure positive I(q) functions. Default: 0.0")
 
+    # Rg Penalty
+    parser.add_argument("--target_rg", type=str, default=None,
+                        help="Target Rg values for each unknown component. Default: None")
+    parser.add_argument("--rg_weight", type=float, default=0.0,
+                        help="Weight for Rg penalty. Default: 0.0")
+
     parser.add_argument("--fraction_shape_constraints", default=None,
                         help="Comma-separated shape constraints for each component. Options: 'linear', 'exponential', 'sigmoid', 'smooth', 'none'. Default: none for all components.")
     parser.add_argument("--fractions_smoothness_weight", type=float, default=0.0,
                         help="Weight for fraction smoothness penalty. Higher values produce smoother fraction profiles. Default: 0.0")
-    parser.add_argument("--fraction_shape_penalty_weight", type=float, default=1.0,
-                        help="Weight for fraction shape constraint penalty. Default: 1.0")
+    parser.add_argument("--fraction_shape_penalty_weight", type=float, default=0.0,
+                        help="Weight for fraction shape constraint penalty. Default: 0.0")
     parser.add_argument("--global_smoothness", action="store_true", default=False,
                         help="Apply smoothness constraint to all components regardless of individual constraints. Default: False")
 
@@ -1783,6 +1790,9 @@ def setup_deconvolution(parsed_args):
             if len(target_similarity) < len(unknown_component_Ds):
                 target_similarity.extend([None] * (len(unknown_component_Ds) - len(target_similarity)))
 
+    target_rg_str = parsed_args["target_rg"].split(',')
+    target_rg = [float(rg) for rg in target_rg_str]
+
     # If buffer frames are specified
     if "buffer_frames" in parsed_args and parsed_args["buffer_frames"]:
         # Parse buffer frame ranges
@@ -1833,6 +1843,8 @@ def setup_deconvolution(parsed_args):
         'pr_smoothness_weight': parsed_args.get("pr_smoothness_weight", 0.0),
         'iq_smoothness_weight': parsed_args.get("iq_smoothness_weight", 0.0),
         'iq_negative_weight': parsed_args.get("iq_negative_weight", 0.0),
+        'target_rg': target_rg,
+        'rg_weight': parsed_args.get("rg_weight", 0.0),
         'optimization_method': parsed_args["optimization_method"],
         'optimization_options': optimization_options,
         'use_basin_hopping': False,
@@ -1863,15 +1875,17 @@ class ShannonDeconvolution:
                  water_peak_range=(1.9, 2.0),
                  target_similarity=None,
                  i0_constraint_weight=1.0,
-                 fractions_weight=1.0,
+                 fractions_weight=0.0,
                  fraction_shape_constraints=None,
                  fractions_smoothness_weight=0.0,
                  fraction_shape_penalty_weight=0.0,
                  global_smoothness=False,
-                 profile_similarity_weight=10.0,
+                 profile_similarity_weight=0.0,
                  pr_smoothness_weight=0.0,
                  iq_smoothness_weight=0.0,
                  iq_negative_weight=0.0,
+                 target_rg=None,
+                 rg_weight=0.0,
                  optimization_method='L-BFGS-B',
                  optimization_options=None,
                  use_basin_hopping=False,
@@ -1949,6 +1963,8 @@ class ShannonDeconvolution:
         self.pr_smoothness_weight = pr_smoothness_weight
         self.iq_smoothness_weight = iq_smoothness_weight
         self.iq_negative_weight = iq_negative_weight
+        self.target_rg = target_rg
+        self.rg_weight = rg_weight
         self.profile_similarity_weight = profile_similarity_weight
         self.optimization_method = optimization_method
         self.optimization_options = optimization_options
@@ -2525,6 +2541,23 @@ class ShannonDeconvolution:
         P = np.einsum('n,nr->r', Ish, Sn)
         return P
 
+    def Ish2I0(self, Ish, sasrec):
+        """Calculate I0 from Shannon intensities"""
+        I0 = 2 * np.sum(Ish * (-1) ** (sasrec.N + 1))
+        return I0
+
+    def Ish2Rg(self, Ish, sasrec):
+        """Calculate Rg from Shannon intensities"""
+        D = sasrec.D
+        I0 = self.Ish2I0(Ish, sasrec)
+        F = sasrec.F
+        summation = np.sum(Ish * F)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            rg2 = D ** 2 / I0 * summation
+            rg = np.sqrt(rg2)
+        return rg
+
     def _calculate_profiles_from_params(self, params):
         """
         Calculates estimated profiles from the parameter vector.
@@ -3072,6 +3105,40 @@ class ShannonDeconvolution:
         # Apply weight and return
         return total_smoothness_penalty * self.pr_smoothness_weight
 
+    def _calculate_rg_penalty(self, params):
+        """
+        Calculates a penalty based on the agreement of predicted Rg with the target Rg.
+
+        Args:
+            params (np.ndarray): Parameter vector containing Shannon coefficients
+
+        Returns:
+            float: Rg penalty value
+        """
+        if self.target_rg is None or self.rg_weight <= 0:
+            return 0.0  # Skip calculation if weight is zero or negative
+
+        params_dict = self._params2dict_In_only(params)
+        total_rg_penalty = 0.0
+
+        for i_component in range(len(self.unknown_component_sasrecs)):
+            # Get Shannon coefficients and sasrec instance
+            Ish = params_dict['component_In'][i_component]
+            sasrec = self.unknown_component_sasrecs[i_component]
+
+            # Calculate Rg from Shannon channels
+            rg = self.Ish2Rg(Ish, sasrec)
+
+            # Calculate penalty as absolute difference of calculated Rg and target Rg
+            # as a ratio to the target Rg to put in percentage
+            rg_penalty = np.abs(rg - self.target_rg[i_component]) / self.target_rg[i_component]
+
+            # Add to total penalty
+            total_rg_penalty += np.nan_to_num(rg_penalty)
+
+        # Apply weight and return
+        return total_rg_penalty * self.rg_weight
+
     def calc_score_from_In(self, params, update_viz=False):
         """Calculates the score function from In parameters."""
         n_frames = self.mixture_stack.shape[0]
@@ -3110,16 +3177,20 @@ class ShannonDeconvolution:
         # g. I(0) Constraint Penalty
         i0_constraint_penalty = self._calculate_i0_constraint_penalty(estimated_profiles)
 
+        # h. Rg Penalty
+        rg_penalty = self._calculate_rg_penalty(params)
+
         # Total Score
         score = (residuals + fraction_sum_penalty + fraction_shape_penalty + fraction_smoothness_penalty +
                  profile_similarity_penalty + pr_smoothness_penalty + iq_smoothness_penalty +
-                 i0_constraint_penalty)
+                 i0_constraint_penalty + rg_penalty)
 
         if self.verbose:
             sys.stdout.write(f"\r {self.plot_counter:06d} | {residuals:.6e} | {fraction_sum_penalty:.6e} "
                              f"| {fraction_shape_penalty:.6e} | {fraction_smoothness_penalty:.6e} "
                              f"| {profile_similarity_penalty:.6e} | {pr_smoothness_penalty:.6e} "
-                             f"| {iq_smoothness_penalty:.6e} | {i0_constraint_penalty:.6e} | {score:.6e} ")
+                             f"| {iq_smoothness_penalty:.6e} | {i0_constraint_penalty:.6e} "
+                             f"| {rg_penalty:.6e} | {score:.6e} ")
             sys.stdout.flush()
 
         # Visualization Update
@@ -3173,9 +3244,9 @@ class ShannonDeconvolution:
                 component_name = self.unknown_component_names[i_component]
                 noisy_line, = ax[0, 0].plot(self.q, self.unknown_component_profiles_iq_init_loaded[i_component][:, 1],
                                             marker=markers[i_component], linestyle='None', color='gray', alpha=0.3,
-                                            mec='none', ms=4, label=f'Initial {component_name}')
+                                            mec='none', ms=4, label=f'Initial guess {component_name}')
                 profile_handles.extend([noisy_line])  # Add handles for legend
-                profile_labels.extend([f'Initial {component_name}'])
+                profile_labels.extend([f'Initial guess {component_name}'])
 
         # Dynamic data - Fitted Profiles (using dynamic component names)
         line_fitted_profiles = []  # List to hold lines for fitted profiles
@@ -3455,7 +3526,8 @@ class ShannonDeconvolution:
 
         print(f"\r {'Step':^6s} | {'Residuals':^12s} | {'Fract Sum':^12s} | "
               f"{'Frac Shape':^12s} | {'Frac Smooth':^12s} | "
-              f"{'Similarity':^12s} | {'Pr Smooth':^12s} | {'Iq SmoothPos':^12s} | {'I0 Drift':^12s} | {'Score':^12s}")
+              f"{'Similarity':^12s} | {'Pr Smooth':^12s} | {'Iq SmoothPos':^12s} | "
+              f"{'I0 Drift':^12s} | {'Rg':^12s} | {'Score':^12s}")
 
         # 3. Callback function (initially None or a placeholder)
         callback = self.callback # Use callback from __init__, can be None
