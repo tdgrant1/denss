@@ -3944,8 +3944,21 @@ class PDB2MRC(object):
                  quiet=False,
                  run_all_on_init=False,
                  logger=None,
+
                  PArhoinvacuosf =1,
+                 PApowersf =1,
+                 PAsf_ex =1,
+                 PAsf_sh =1,
+
         self.PArhoinvacuosf=PArhoinvacuosf,
+        self.PApowersf =PApowersf,
+        self.PAsf_ex =PAsf_ex,
+        self.PAsf_sh =PAsf_sh,
+
+        # self.sf_ex = sf_ex  * float(self.PAsf_ex)
+        # self.sf_sh = sf_sh  * float(self.PAsf_sh)
+        # self.rho_insolvent = float(self.PArhoinvacuosf)*self.rho_invacuo - sf_ex * self.rho_exvol + sf_sh * self.rho_shell
+        # self.rho_insolvent = self.rho_insolvent**float(self.PApowersf)
 
         self.quiet = quiet
         self.pdb = pdb
@@ -4715,11 +4728,10 @@ class PDB2MRC(object):
             sf_sh = params[1] / self.shell_contrast
         else:
             sf_sh = 1.0
-        self.sf_ex = sf_ex
-        self.sf_sh = sf_sh
+        self.sf_ex = sf_ex  * float(self.PAsf_ex)
+        self.sf_sh = sf_sh  * float(self.PAsf_sh)
         self.rho_insolvent = float(self.PArhoinvacuosf)*self.rho_invacuo - sf_ex * self.rho_exvol + sf_sh * self.rho_shell
-        # print('**', type(self.PAscalefactor))
-        # self.rho_insolvent *= float(self.PAscalefactor)
+        self.rho_insolvent = self.rho_insolvent**float(self.PApowersf)
 
     def calculate_excluded_volume_in_A3(self):
         """Calculate the excluded volume of the particle in angstroms cubed."""
