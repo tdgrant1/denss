@@ -111,6 +111,7 @@ def main():
     parser.add_argument("--print_timings", default=False, action="store_true", help="Print timings for each step of the script.")
     parser.add_argument("-o", "--output", default=None, help="Output filename prefix (default=basename_pdb)")
     parser.add_argument("--write_shannon", dest="write_shannon", action="store_true", help=argparse.SUPPRESS) # help="Write a file containing only the Shannon intensities.")
+    parser.add_argument("--PAscalefactor", default=1, help="PA: scale final mrc by this value (default=1)")
     parser.set_defaults(fast = False)
     parser.set_defaults(ignore_waters = True)
     parser.set_defaults(center = True)
@@ -250,6 +251,7 @@ def main():
         min_opts=args.minopts,
         fast=args.fast,
         use_sasrec_during_fitting=args.use_sasrec_during_fitting,
+        PAscalefactor=args.PAscalefactor,
         )
 
     t.append(time.time())
