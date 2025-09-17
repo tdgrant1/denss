@@ -3,7 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-sas1 = np.loadtxt('./193lsf_100_insolvent.mrc2sas.dat')
+sas1 = np.loadtxt('./193linvac_10_insolvent.mrc2sas.dat')
+sas2 = np.loadtxt('./193linvac_05_insolvent.mrc2sas.dat')
 plt.figure()
 
 stds = []
