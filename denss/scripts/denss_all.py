@@ -50,7 +50,9 @@ def multi_denss(niter, superargs_dict, args_dict):
         # Processing keyword args for compatibility with RAW GUI
         args_dict['path'] = '.'
 
-        args_dict['output'] = args_dict['output'] + '_' + str(niter)
+        #args_dict['output'] = args_dict['output'] + '_' + str(niter)
+        args_dict['output'] = args_dict['output'].split('-')[0] + '-' + str(niter) #fix for multiprocessing overwrites
+
         np.random.seed(niter + int(time.time()))
         args_dict['seed'] = np.random.randint(2 ** 31 - 1)
         args_dict['quiet'] = True
