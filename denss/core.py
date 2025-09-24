@@ -1959,9 +1959,12 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
                delimiter=" ", fmt="%s", header='Chi2 Rg SupportVolume')
 
     my_logger.info('Number of steps: %i', j)
-    my_logger.info('Final Chi2: %.3e', chi[-1])
-    my_logger.info('Final Rg: %s', np.round(rg[-1],3))
-    my_logger.info('Final Support Volume: %3.3f', supportV[-1])
+    my_logger.info('Final Chi2: %.3e', chi[final_step])
+    final_rg = rg[final_step]
+    if np.isclose(final_rg.imag, 0):
+        final_rg = final_rg.real
+    my_logger.info('Final Rg: %s', np.round(final_rg,3))
+    my_logger.info('Final Support Volume: %3.3f', supportV[final_step])
     my_logger.info('Mean Density (all voxels): %3.5f', np.mean(rho))
     my_logger.info('Std. Dev. of Density (all voxels): %3.5f', np.std(rho))
     my_logger.info('RMSD of Density (all voxels): %3.5f', np.sqrt(np.mean(np.square(rho))))

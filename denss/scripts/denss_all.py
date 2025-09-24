@@ -210,9 +210,9 @@ def main():
     final_rgs = np.zeros(superargs.nmaps, dtype=np.complex128)
     final_supportVs = np.zeros(superargs.nmaps)
     for i in range(superargs.nmaps):
-        final_rgs[i] = all_rg[i][-1]
-        final_chis[i] = all_chis[i][-1]
-        final_supportVs[i] = all_supportV[i][-1]
+        final_rgs[i] = all_rg[i][np.where(all_rg[i] != 0)[0][-1]]
+        final_chis[i] = all_chis[i][np.where(all_chis[i] != 0)[0][-1]]
+        final_supportVs[i] = all_supportV[i][np.where(all_supportV[i] != 0)[0][-1]]
 
     # Use magnitudes for averaging
     rg_magnitudes = np.abs(final_rgs)
