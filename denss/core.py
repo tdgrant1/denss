@@ -3657,7 +3657,7 @@ class PDB(object):
             # also correct for limited voxel size
             self.unique_volume[i] = minigrid.sum() * dV * correction
 
-    def lookup_unique_volume(self):
+    def lookup_unique_volume(self, quiet=False):
         self.unique_volume = np.zeros(self.natoms)
         for i in range(self.natoms):
             notfound = False
@@ -3669,8 +3669,9 @@ class PDB(object):
             else:
                 notfound = True
             if notfound:
-                print("%s:%s not found in volumes dictionary. Calculating unique volume." % (
-                self.resname[i], self.atomname[i]))
+                if not quiet:
+                    print("%s:%s not found in volumes dictionary. Calculating unique volume." % (
+                    self.resname[i], self.atomname[i]))
                 # print("Setting volume to ALA:CA.")
                 # self.unique_volume[i] = atomic_volumes['ALA']['CA']
                 self.calculate_unique_volume(atomidx=[i])
