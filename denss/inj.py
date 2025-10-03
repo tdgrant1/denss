@@ -78,6 +78,7 @@ except ImportError:
 PYFFTW = False
 
 
+print('IMPORTED INJECTED CODE')
 
 def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
                                                  ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
