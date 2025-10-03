@@ -763,7 +763,7 @@ def loadDatFile(filename):
 
     return q, i, err, i, results
 
-
+#reconstruct_abinitio_from_scattering_profile
 def loadFitFile(filename):
     ''' Loads a four column .fit format file (q, I, err, fit). Taken from the BioXTAS RAW software package,
     used with permission under the GPL license.'''
@@ -1277,7 +1277,10 @@ def get_icosahedral_matrices():
     return rotations
 
 
-def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
+
+from inj import reconstruct_abinitio_from_scattering_profile
+
+def reconstruct_abinitio_from_scattering_profile_OLD(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
                                                  ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
                                                  recenter_mode="com", positivity=True, positivity_steps=None, extrapolate=True, output="map",
                                                  steps=None, seed=None, rho_start=None, support_start=None, add_noise=None,
@@ -4735,7 +4738,9 @@ class PDB2MRC(object):
         self.sf_ex = sf_ex  * float(self.PAsf_ex[0])
         self.sf_sh = sf_sh  * float(self.PAsf_sh[0])
         self.rho_insolvent = float(self.PArhoinvacuosf[0])*self.rho_invacuo - sf_ex * self.rho_exvol + sf_sh * self.rho_shell
-        self.rho_insolvent = self.rho_insolvent**float(self.PApowersf[0])
+        neg_loc = np.where(self.rho_insolvent <0)
+        self.rho_insolvent = np.abs(self.rho_insolvent)**float(self.PApowersf[0])
+        self.rho_insolvent[neg_loc] *=-1
 
     def calculate_excluded_volume_in_A3(self):
         """Calculate the excluded volume of the particle in angstroms cubed."""

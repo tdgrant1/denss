@@ -5,9 +5,10 @@ import numpy as np
 
 
 a_params = [1]
-d_params = [1]
+c_params = [1]
 b_params = [1]
-c_params = [i for i in np.arange(0.5, 2.5, 0.1)]
+# d_params = [0.8, 0.9, 1, 1.1, 1.2]
+d_params = np.arange(0.8, 1.2, 0.02)
 
 
 
