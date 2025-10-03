@@ -1,5 +1,8 @@
 
+
 from __future__ import print_function, division, unicode_literals
+
+from .core import *
 
 try:
     from builtins import object, range, map, zip, str
@@ -79,6 +82,8 @@ PYFFTW = False
 
 
 print('IMPORTED INJECTED CODE')
+
+# from .core import mybinmean, myrfftn, abs2, mysqrt, mysum, myirfftn
 
 def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
                                                  ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
