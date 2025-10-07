@@ -1290,7 +1290,7 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
                                                  write_xplor_format=False, write_freq=100, enforce_connectivity=True,
                                                  enforce_connectivity_steps=[500], enforce_connectivity_max_features=1, cutout=True, quiet=False, ncs=0,
                                                  ncs_steps=[500], ncs_axis=1, ncs_type="cyclical", abort_event=None, my_logger=logging.getLogger(),
-                                                 path='.', gui=False, DENSS_GPU=False):
+                                                 path='.', gui=False, DENSS_GPU=False, PA_outdir=None):
     """Calculate electron density from scattering data."""
     if abort_event is not None:
         if abort_event.is_set():

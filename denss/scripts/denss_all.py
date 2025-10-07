@@ -96,6 +96,8 @@ def main():
     parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center reference PDB map.")
     parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center reference PDB map (default).")
     parser.add_argument("-r", "--resolution", default=15.0, type=float, help="Resolution of map calculated from reference PDB file (default 15 angstroms).")
+
+    parser.add_argument("--PA_outdir", default='', type=str, help="PA: output directory parent")
     parser.set_defaults(enan = True)
     parser.set_defaults(center = True)
     superargs = dopts.parse_arguments(parser)
@@ -133,10 +135,12 @@ def main():
     else:
         output = superargs.output
 
-    out_dir = output
+    # out_dir = output
+    out_dir = args.PA_outdir + output #PA FIX
     dirn = 0
     while os.path.isdir(out_dir):
-        out_dir = output + "_" + str(dirn)
+        # out_dir = output + "_" + str(dirn)
+        out_dir = args.PA_outdir + output + "_" + str(dirn) #PA FIX
         dirn += 1
 
     print(out_dir)
@@ -166,6 +170,7 @@ def main():
 
     for arg in vars(args):
         denss_inputs[arg]= getattr(args, arg)
+    # del denss_inputs['PA_outdir']
 
     pool = multiprocessing.Pool(superargs.cores)
 
