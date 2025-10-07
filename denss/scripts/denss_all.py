@@ -77,7 +77,13 @@ def multi_denss(niter, superargs_dict, args_dict):
         logger.info('Data filename: %s', superargs_dict['file'])
         logger.info('Output prefix: %s', args_dict['output'])
         logger.info('Mode: %s', superargs_dict['mode'])
-        result = denss.reconstruct_abinitio_from_scattering_profile(**args_dict)
+        if args_dict['PA_cont']:
+            fn_args_dict = dict(args_dict)
+            result = denss.reconstruct_abinitio_from_scattering_profile_PA(**fn_args_dict)
+        else:
+            fn_args_dict = dict(args_dict)
+            del fn_args_dict['PA_cont']
+            result = denss.reconstruct_abinitio_from_scattering_profile(**fn_args_dict)
         logger.info('END')
         return result
 
@@ -97,7 +103,9 @@ def main():
     parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center reference PDB map (default).")
     parser.add_argument("-r", "--resolution", default=15.0, type=float, help="Resolution of map calculated from reference PDB file (default 15 angstroms).")
 
-    parser.add_argument("--PA_outdir", default='', type=str, help="PA: output directory parent")
+    parser.add_argument("--PA_outdir", default='./', type=str, help="PA: output directory parent")
+
+    parser.add_argument("--PA_cont", default=False, type=bool, help="PA: Run with new constraint")
     parser.set_defaults(enan = True)
     parser.set_defaults(center = True)
     superargs = dopts.parse_arguments(parser)

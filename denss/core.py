@@ -1279,8 +1279,8 @@ def get_icosahedral_matrices():
 
 
 
-#NEW
-def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
+#bana: old function
+def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
                                                  ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
                                                  recenter_mode="com", positivity=True, positivity_steps=None, extrapolate=True, output="map",
                                                  steps=None, seed=None, rho_start=None, support_start=None, add_noise=None,
@@ -1292,7 +1292,6 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
                                                  ncs_steps=[500], ncs_axis=1, ncs_type="cyclical", abort_event=None, my_logger=logging.getLogger(),
                                                  path='.', gui=False, DENSS_GPU=False, PA_outdir=None):
     """Calculate electron density from scattering data."""
-    print('YAHOO ITS USING THE RIGHT FUNTION')
     if abort_event is not None:
         if abort_event.is_set():
             my_logger.info('Aborted!')
@@ -5741,8 +5740,8 @@ def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=T
 
 
 
-#ORI
-def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
+#oran: new function
+def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
                                                  ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
                                                  recenter_mode="com", positivity=True, positivity_steps=None, extrapolate=True, output="map",
                                                  steps=None, seed=None, rho_start=None, support_start=None, add_noise=None,
@@ -5752,8 +5751,11 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
                                                  write_xplor_format=False, write_freq=100, enforce_connectivity=True,
                                                  enforce_connectivity_steps=[500], enforce_connectivity_max_features=1, cutout=True, quiet=False, ncs=0,
                                                  ncs_steps=[500], ncs_axis=1, ncs_type="cyclical", abort_event=None, my_logger=logging.getLogger(),
-                                                 path='.', gui=False, DENSS_GPU=False, PA_outdir=None):
+                                                 path='.', gui=False, DENSS_GPU=False, PA_outdir=None, PA_cont=True):
     """Calculate electron density from scattering data."""
+
+
+    print('THIS IS THE NEW FUNCTION')
     if abort_event is not None:
         if abort_event.is_set():
             my_logger.info('Aborted!')
@@ -6021,7 +6023,6 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
                 my_logger.info('Aborted!')
                 return []
 
-        # F = myfftn(rho, DENSS_GPU=DENSS_GPU)
         F = myrfftn(rho, DENSS_GPU=DENSS_GPU)
 
         # sometimes, when using denss_refine.py with non-random starting rho,
@@ -6031,7 +6032,6 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
 
         # APPLY RECIPROCAL SPACE RESTRAINTS
         # calculate spherical average of intensities from 3D Fs
-        # I3D = myabs(F, DENSS_GPU=DENSS_GPU)**2
         I3D = abs2(F)
         Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=DENSS_GPU)
 
