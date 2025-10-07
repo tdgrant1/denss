@@ -83,6 +83,7 @@ def multi_denss(niter, superargs_dict, args_dict):
         else:
             fn_args_dict = dict(args_dict)
             del fn_args_dict['PA_cont']
+            del fn_args_dict['Ds']
             result = denss.reconstruct_abinitio_from_scattering_profile(**fn_args_dict)
         logger.info('END')
         return result
@@ -104,8 +105,8 @@ def main():
     parser.add_argument("-r", "--resolution", default=15.0, type=float, help="Resolution of map calculated from reference PDB file (default 15 angstroms).")
 
     parser.add_argument("--PA_outdir", default='./', type=str, help="PA: output directory parent")
-
     parser.add_argument("--PA_cont", default=False, type=bool, help="PA: Run with new constraint")
+    parser.add_argument("--Ds", nargs='*', type=float, help="PA: list of d params")
     parser.set_defaults(enan = True)
     parser.set_defaults(center = True)
     superargs = dopts.parse_arguments(parser)
@@ -178,15 +179,12 @@ def main():
 
     for arg in vars(args):
         denss_inputs[arg]= getattr(args, arg)
-    # del denss_inputs['PA_outdir']
 
     pool = multiprocessing.Pool(superargs.cores)
 
     superlogger.info('Starting DENSS runs')
 
     try:
-        #mapfunc = partial(multi_denss, **denss_inputs)
-        # denss_outputs = pool.map(mapfunc, list(range(superargs.nmaps)))
         mapfunc = partial(multi_denss, superargs_dict=vars(superargs), args_dict=vars(args))
         denss_outputs = pool.map(mapfunc, list(range(superargs.nmaps)))
         print("\r Finishing denss job: %i / %i" % (superargs.nmaps,superargs.nmaps))

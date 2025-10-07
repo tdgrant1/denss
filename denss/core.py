@@ -5751,11 +5751,11 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
                                                  write_xplor_format=False, write_freq=100, enforce_connectivity=True,
                                                  enforce_connectivity_steps=[500], enforce_connectivity_max_features=1, cutout=True, quiet=False, ncs=0,
                                                  ncs_steps=[500], ncs_axis=1, ncs_type="cyclical", abort_event=None, my_logger=logging.getLogger(),
-                                                 path='.', gui=False, DENSS_GPU=False, PA_outdir=None, PA_cont=True):
+                                                 path='.', gui=False, DENSS_GPU=False, PA_outdir=None, PA_cont=True, Ds=[1]):
     """Calculate electron density from scattering data."""
 
 
-    print('THIS IS THE NEW FUNCTION')
+    print(f'THIS IS THE NEW FUNCTION: {Ds}')
     if abort_event is not None:
         if abort_event.is_set():
             my_logger.info('Aborted!')
