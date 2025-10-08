@@ -79,11 +79,14 @@ def multi_denss(niter, superargs_dict, args_dict):
         logger.info('Mode: %s', superargs_dict['mode'])
         if args_dict['PA_cont']:
             fn_args_dict = dict(args_dict)
+
+            if fn_args_dict['PA_dparams'] is None: ##hack if --PA_cont is set but theres no PA_dparams set
+                fn_args_dict['PA_dparams'] = [1.0]
             result = denss.reconstruct_abinitio_from_scattering_profile_PA(**fn_args_dict)
         else:
             fn_args_dict = dict(args_dict)
             del fn_args_dict['PA_cont']
-            del fn_args_dict['Ds']
+            del fn_args_dict['PA_dparams']
             result = denss.reconstruct_abinitio_from_scattering_profile(**fn_args_dict)
         logger.info('END')
         return result
@@ -106,7 +109,10 @@ def main():
 
     parser.add_argument("--PA_outdir", default='./', type=str, help="PA: output directory parent")
     parser.add_argument("--PA_cont", default=False, type=bool, help="PA: Run with new constraint")
-    parser.add_argument("--Ds", nargs='*', type=float, help="PA: list of d params")
+    parser.add_argument("--PA_dparams", nargs='*', type=float, help="PA: list of d params")
+
+    # parser.add_argument("--PA_Ifiles", nargs='*', type=str, help="PA: list of intensity files")
+
     parser.set_defaults(enan = True)
     parser.set_defaults(center = True)
     superargs = dopts.parse_arguments(parser)
