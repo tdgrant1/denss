@@ -5752,11 +5752,23 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
                                                  enforce_connectivity_steps=[500], enforce_connectivity_max_features=1, cutout=True, quiet=False, ncs=0,
                                                  ncs_steps=[500], ncs_axis=1, ncs_type="cyclical", abort_event=None, my_logger=logging.getLogger(),
                                                  path='.', gui=False, DENSS_GPU=False,
-                                                 PA_outdir=None, PA_cont=True, PA_dparams=[1]):
+                                                 PA_outdir=None, PA_cont=True, PA_dparams=[1], PA_files=None):
     """Calculate electron density from scattering data."""
 
 
     print(f'THIS IS THE NEW FUNCTION: {PA_dparams}')
+
+    PA_qs = []
+    PA_Is = []
+    PA_sigqs = []
+    for PA_fname in PA_files:
+        PA_loaded_array = np.load(fname)
+        PA_qs.append(PA_loaded_array[:,0])
+        PA_Is.append(PA_loaded_array[:,1])
+        PA_sigqs.append(PA_loaded_array[:,2])
+
+
+    # # print(f'THIS IS THE NEW FUNCTION: {PA_files}')
     if abort_event is not None:
         if abort_event.is_set():
             my_logger.info('Aborted!')
@@ -5818,17 +5830,20 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     # allow for any range of q data
     qdata = qbinsc[np.where((qbinsc >= q.min()) & (qbinsc <= q.max()))]
 
+    
+    # PA_Idatas = []
+    # for PA_fname in PA_files:
+        # PA_loaded_array = np.loadtxt(PA_fname)
+        # PA_Idatas.append(PA_loaded_array[:, 1])
+
     ##apple
+    # Idata = np.interp(qdata, q, I)
 
+    PA_Iinterps = []
+    for PA_q, PA_Idata in zip(PA_qs, PA_Idatas):
+        PA_Iinterps.append(np.interp(qdata, PA_q, PA_Idata ))
 
-    Idata = np.interp(qdata, q, I) 
-    if extrapolate:
-        qextend = qbinsc[qbinsc >= qdata.max()]
-        Iextend = qextend ** -4
-        Iextend = Iextend / Iextend[0] * Idata[-1]
-        qdata = np.concatenate((qdata, qextend[1:]))
-        Idata = np.concatenate((Idata, Iextend[1:]))
-
+    
     # create list of qbin indices just in region of data for later F scaling
     qbin_args = np.in1d(qbinsc, qdata, assume_unique=True)
     qba = qbin_args  # just for brevity when using it later
@@ -5836,15 +5851,19 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     # start with bins in corners
     # qba[qbinsc>qx_.max()] = False
 
-    sigqdata = np.interp(qdata, q, sigq)
+    # sigqdata = np.interp(qdata, q, sigq)
 
-    scale_factor = ne ** 2 / Idata[0]
-    sigqdata *= scale_factor
-    sigq *= scale_factor
+    PA_sigqdata = []
+    for PA_q, PA_sigq in PA_qs, PA_sigqs:
+        PA_sigqdata.append(np.interp(qdata, PA_q, PA_sigq))
 
-    #apple
-    I *= scale_factor
-    Idata *= scale_factor
+
+    
+#     scale_factor = ne ** 2 / Idata[0]
+    # Idata *= scale_factor
+    # sigqdata *= scale_factor
+    # I *= scale_factor
+    # sigq *= scale_factor
 
     if steps == 'None' or steps is None or int(steps) < 1:
         stepsarr = np.concatenate((enforce_connectivity_steps, [shrinkwrap_minstep]))
@@ -5861,14 +5880,23 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     #apple
     Imean = np.zeros((len(qbins)))
 
+    PA_Imeans = []
+    for _ in PA_Is:
+        PA_Imeans.append(np.zeros(len(qbins)))
+
+
+
     if qraw is None:
         qraw = q
 
     #apple
-    if Iraw is None:
-        Iraw = I
-    if sigqraw is None:
-        sigqraw = sigq
+    # if Iraw is None:
+        # Iraw = I
+    # if sigqraw is None:
+        # sigqraw = sigq
+
+    PA_Iraws = PA_Is
+    PA_sigqraws = PA_sigqs
 
     #apple
     Iq_exp = np.vstack((qraw, Iraw, sigqraw)).T
