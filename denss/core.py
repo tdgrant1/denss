@@ -5758,11 +5758,13 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
 
     print(f'THIS IS THE NEW FUNCTION: {PA_dparams}')
 
+    # q = q[:-1]
+
     PA_qs = []
     PA_Is = []
     PA_sigqs = []
     for PA_fname in PA_files:
-        PA_loaded_array = np.load(fname)
+        PA_loaded_array = np.loadtxt(PA_fname)
         PA_qs.append(PA_loaded_array[:,0])
         PA_Is.append(PA_loaded_array[:,1])
         PA_sigqs.append(PA_loaded_array[:,2])
@@ -5774,14 +5776,14 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
             my_logger.info('Aborted!')
             return []
 
-    if DENSS_GPU and CUPY_LOADED:
-        DENSS_GPU = True
-    elif DENSS_GPU:
-        if gui:
-            my_logger.info("GPU option set, but CuPy failed to load")
-        else:
-            print("GPU option set, but CuPy failed to load")
-        DENSS_GPU = False
+#     if DENSS_GPU and CUPY_LOADED:
+        # DENSS_GPU = True
+    # elif DENSS_GPU:
+        # if gui:
+            # my_logger.info("GPU option set, but CuPy failed to load")
+        # else:
+            # print("GPU option set, but CuPy failed to load")
+        # DENSS_GPU = False
 
     fprefix = os.path.join(path, output)
 
@@ -5813,8 +5815,12 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     qx, qy, qz = np.meshgrid(qx_, qx_, qz_, indexing='ij')
     qr = np.sqrt(qx ** 2 + qy ** 2 + qz ** 2)
     qmax = np.max(qr)
+
+
+    # print('#####qmax', qmax)
     qstep = np.min(qr[qr > 0]) - 1e-8  # subtract a tiny bit to deal with floating point error
     nbins = int(qmax / qstep)
+
     qbins = np.linspace(0, nbins * qstep, nbins + 1)
 
     # create an array labeling each voxel according to which qbin it belongs
@@ -5830,6 +5836,8 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     # allow for any range of q data
     qdata = qbinsc[np.where((qbinsc >= q.min()) & (qbinsc <= q.max()))]
 
+
+    print('$$$$$',  qdata.shape)
     
     # PA_Idatas = []
     # for PA_fname in PA_files:
@@ -5839,9 +5847,11 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     ##apple
     # Idata = np.interp(qdata, q, I)
 
-    PA_Iinterps = []
-    for PA_q, PA_Idata in zip(PA_qs, PA_Idatas):
-        PA_Iinterps.append(np.interp(qdata, PA_q, PA_Idata ))
+    PA_Idatas = []
+    for PA_q, PA_I in zip(PA_qs, PA_Is):
+        PA_Idatas.append(np.interp(qdata, PA_q, PA_I ))
+
+    print('####', PA_Idatas[-1].shape)
 
     
     # create list of qbin indices just in region of data for later F scaling
@@ -5858,7 +5868,7 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
         PA_sigqdata.append(np.interp(qdata, PA_q, PA_sigq))
 
 
-    
+   ######ne = 10000 
 #     scale_factor = ne ** 2 / Idata[0]
     # Idata *= scale_factor
     # sigqdata *= scale_factor
@@ -5878,7 +5888,7 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
         steps = int(steps)
 
     #apple
-    Imean = np.zeros((len(qbins)))
+    # Imean = np.zeros((len(qbins)))
 
     PA_Imeans = []
     for _ in PA_Is:
@@ -5886,8 +5896,8 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
 
 
 
-    if qraw is None:
-        qraw = q
+    # if qraw is None:
+        # qraw = q
 
     #apple
     # if Iraw is None:
@@ -5895,21 +5905,36 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     # if sigqraw is None:
         # sigqraw = sigq
 
+    qraw = q
     PA_Iraws = PA_Is
     PA_sigqraws = PA_sigqs
 
     #apple
-    Iq_exp = np.vstack((qraw, Iraw, sigqraw)).T
-    Iq_calc = np.vstack((qbinsc, Imean, Imean)).T
-    idx = np.where(Iraw > 0)
-    Iq_exp = Iq_exp[idx]
-    qmax = np.min([Iq_exp[:, 0].max(), Iq_calc[:, 0].max()])
-    Iq_exp = Iq_exp[Iq_exp[:, 0] <= qmax]
-    Iq_calc = Iq_calc[Iq_calc[:, 0] <= qmax]
+
+    PA_Iq_exps = []
+    PA_Iq_calcs = []
+
+    for i in range(len(PA_Is)):
+        Iq_exp = np.vstack((qraw, PA_Iraws[i], PA_sigqraws[i])).T
+        Iq_calc = np.vstack((qbinsc, PA_Imeans[i], PA_Imeans[i])).T
+        idx = np.where(PA_Iraws[i] > 0)
+        Iq_exp = Iq_exp[idx]
+        qmax = np.min([Iq_exp[:, 0].max(), Iq_calc[:, 0].max()])
+        Iq_exp = Iq_exp[Iq_exp[:, 0] <= qmax]
+        Iq_calc = Iq_calc[Iq_calc[:, 0] <= qmax]
+
+        PA_Iq_exps.append(Iq_exp)
+        PA_Iq_calcs.append(Iq_calc)
 
     chi = np.zeros((steps + 1))
-    rg = np.zeros((steps + 1), dtype=np.complex128)
+    rg = np.zeros(( steps + 1), dtype=np.complex128)
     supportV = np.zeros((steps + 1))
+
+
+    #Is this needed?
+    # chi = np.zeros((len(PA_Is, steps + 1))
+    # rg = np.zeros(( len(PA_Is, steps + 1), dtype=np.complex128)
+    # supportV = np.zeros(( len(PA_Is, steps + 1))
     if support_start is not None:
         support = np.copy(support_start)
     else:
@@ -6015,47 +6040,47 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
             print("\n Step     Chi2     Rg    Support Volume")
             print(" ----- --------- ------- --------------")
 
-    if PYFFTW:
-        a = np.copy(rho)
-        rho = pyfftw.empty_aligned(a.shape, dtype='complex64')
-        rho[:] = a
-        rhoprime = pyfftw.empty_aligned(a.shape, dtype='complex64')
-        newrho = pyfftw.empty_aligned(a.shape, dtype='complex64')
-        try:
-            # Try to plan our transforms with the wisdom we have already
-            fftw_object = pyfftw.FFTW(rho,
-                                      rhoprime,
-                                      direction="FFTW_FORWARD",
-                                      flags=("FFTW_WISDOM_ONLY",))
-        except RuntimeError as e:
-            # If we don't have enough wisdom, print a warning and proceed.
-            print(e)
-            start = time.perf_counter()
-            fftw_object = pyfftw.FFTW(rho,
-                                      rhoprime,
-                                      direction="FFTW_FORWARD",
-                                      flags=("FFTW_MEASURE",))
-            print("Generating wisdom took {}s".format(time.perf_counter() - start))
-            with open("fft.wisdom", "wb") as the_file:
-                wisdom = pyfftw.export_wisdom()
-                pickle.dump(wisdom, the_file)
+#     if PYFFTW:
+        # a = np.copy(rho)
+        # rho = pyfftw.empty_aligned(a.shape, dtype='complex64')
+        # rho[:] = a
+        # rhoprime = pyfftw.empty_aligned(a.shape, dtype='complex64')
+        # newrho = pyfftw.empty_aligned(a.shape, dtype='complex64')
+        # try:
+            # # Try to plan our transforms with the wisdom we have already
+            # fftw_object = pyfftw.FFTW(rho,
+                                      # rhoprime,
+                                      # direction="FFTW_FORWARD",
+                                      # flags=("FFTW_WISDOM_ONLY",))
+        # except RuntimeError as e:
+            # # If we don't have enough wisdom, print a warning and proceed.
+            # print(e)
+            # start = time.perf_counter()
+            # fftw_object = pyfftw.FFTW(rho,
+                                      # rhoprime,
+                                      # direction="FFTW_FORWARD",
+                                      # flags=("FFTW_MEASURE",))
+            # print("Generating wisdom took {}s".format(time.perf_counter() - start))
+            # with open("fft.wisdom", "wb") as the_file:
+                # wisdom = pyfftw.export_wisdom()
+                # pickle.dump(wisdom, the_file)
 
-    if DENSS_GPU:
-        rho = cp.array(rho)
-        qbin_labels = cp.array(qbin_labels)
-        qbins = cp.array(qbins)
-        qbinsc = cp.array(qbinsc)
-        qbin_args = cp.array(qbin_args)
-        sigqdata = cp.array(sigqdata)
-        support = cp.array(support)
-        chi = cp.array(chi)
-        supportV = cp.array(supportV)
-        newrho = cp.array(newrho)
-        qblravel = cp.array(qblravel)
-        xcount = cp.array(xcount)
-        #apple
-        Idata = cp.array(Idata)
-        Imean = cp.array(Imean)
+    # if DENSS_GPU:
+        # rho = cp.array(rho)
+        # qbin_labels = cp.array(qbin_labels)
+        # qbins = cp.array(qbins)
+        # qbinsc = cp.array(qbinsc)
+        # qbin_args = cp.array(qbin_args)
+        # sigqdata = cp.array(sigqdata)
+        # support = cp.array(support)
+        # chi = cp.array(chi)
+        # supportV = cp.array(supportV)
+        # newrho = cp.array(newrho)
+        # qblravel = cp.array(qblravel)
+        # xcount = cp.array(xcount)
+        # #apple
+        # Idata = cp.array(Idata)
+        # Imean = cp.array(Imean)
 
 
     for j in range(steps):
@@ -6076,9 +6101,12 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
             PA_rhod = np.abs(rho)**PA_dparam
             PA_rhod[PA_neg_loc] *= -1
 
+            print(PA_rhod.shape, PA_rhod.dtype)
 
             #continue as normal with this scaled version of rho
             F = myrfftn(PA_rhod, DENSS_GPU=DENSS_GPU)
+
+            print(F.shape, F.dtype)
 
             # sometimes, when using denss_refine.py with non-random starting rho,
             # the resulting Fs result in zeros in some locations and the algorithm to break
@@ -6088,25 +6116,45 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
             # APPLY RECIPROCAL SPACE RESTRAINTS
             # calculate spherical average of intensities from 3D Fs
             I3D = abs2(F)
+
+            print(I3D.shape, I3D.dtype)
+
+
+
             Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=DENSS_GPU)
+
+            print('##', qblravel.max()) ##why is qblravel max 56?
+
             
             #apple
             # scale Fs to match data
-            factors = mysqrt(Idata / Imean, DENSS_GPU=DENSS_GPU)
+            # factors = mysqrt(Idata / Imean, DENSS_GPU=DENSS_GPU)
+
+
+            print(PA_Idatas[PA_i_dparam].shape, Imean.shape) ## 33, 56. Something ti wrong here. The Imean qmax is 1.666, which is increasing the number of bins? 
+            ### manualling setting qmax, nbins for I mean also doesn't work, it somehow effects the Idata shape.
+
+      #       plt.figure()
+            # plt.plot(PA_Idatas[PA_i_dparam])
+            # plt.plot(Imean)
+            # plt.yscale('log')
+            # plt.show()
+            factors = mysqrt(PA_Idatas[PA_i_dparam]/ Imean, DENSS_GPU=DENSS_GPU)
             # do not scale bins outside of desired range
             # so set those factors to 1.0
             factors[~qba] = 1.0
             F *= factors[qbin_labels]
 
-            try:
-                #apple
-                Iq_calc[:, 1] = Imean[qbinsc <= qmax]
-                chi[j] = calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True, return_sf=False,
-                                   return_fit=False)
-            except:
-                #apple
-                # in case the interpolation fails for whatever reason, like the GPU status or something
-                chi[j] = mysum(((Imean[qba] - Idata[qba]) / sigqdata[qba]) ** 2, DENSS_GPU=DENSS_GPU) / Idata[qba].size
+          #   try:
+                # #apple
+                # # Iq_calc[:, 1] = Imean[qbinsc <= qmax]
+                # PA_Iq_calcs[PA_i_dparam][:,1] = Imean[qbinsc <= qmax]
+                # chi[j] = calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True, return_sf=False,
+                                   # return_fit=False)
+            # except:
+                # #apple
+                # # in case the interpolation fails for whatever reason, like the GPU status or something
+                # chi[j] = mysum(((Imean[qba] - Idata[qba]) / sigqdata[qba]) ** 2, DENSS_GPU=DENSS_GPU) / Idata[qba].size
 
             #Save this version of the scaled rho
             PA_rhods[PA_i_dparam] = myirfftn(F, DENSS_GPU=DENSS_GPU).real
@@ -6126,8 +6174,8 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
         ##dloopend
 
         # use Guinier's law to approximate quickly
-        rg_j = calc_rg_by_guinier_first_2_points(qbinsc, Imean, DENSS_GPU=DENSS_GPU)
-        rg[j] = rg_j
+        # rg_j = calc_rg_by_guinier_first_2_points(qbinsc, Imean, DENSS_GPU=DENSS_GPU)
+        # rg[j] = rg_j
 
         # Error Reduction
         newrho *= 0

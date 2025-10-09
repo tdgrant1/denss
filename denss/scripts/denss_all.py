@@ -84,12 +84,10 @@ def multi_denss(niter, superargs_dict, args_dict):
                 fn_args_dict['PA_dparams'] = [1.0]
 
             # if fn_args_dict['PA_files'] is None: ##hack if --PA_cont is set but theres no PA_dparams set
-                # fn_args_dict['PA_files'] =
+                # fn_args_dict['PA_files'] = fn_args
             result = denss.reconstruct_abinitio_from_scattering_profile_PA(**fn_args_dict)
         else:
             fn_args_dict = dict(args_dict)
-            print(fn_args_dict['sigq'])
-            quit()
             del fn_args_dict['PA_cont']
             del fn_args_dict['PA_dparams']
             del fn_args_dict['PA_files']
