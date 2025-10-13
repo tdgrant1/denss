@@ -5857,7 +5857,8 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     # sigqdata = np.interp(qdata, q, sigq)
 
     PA_sigqdata = []
-    for PA_q, PA_sigq in PA_qs, PA_sigqs:
+    print()
+    for PA_q, PA_sigq in zip(PA_qs, PA_sigqs):
         PA_sigqdata.append(np.interp(qdata, PA_q, PA_sigq))
 
 

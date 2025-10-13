@@ -146,9 +146,7 @@ def main():
 
     __spec__ = None
 
-    if superargs.nmaps<2:
-        print("Not enough maps to align")
-        sys.exit(1)
+
 
     fname_nopath = os.path.basename(superargs.file)
     basename, ext = os.path.splitext(fname_nopath)
@@ -210,7 +208,9 @@ def main():
         sys.exit(1)
 
 
-    sys.exit(0)
+    if superargs.nmaps<2:
+        print("Not enough maps to align")
+        sys.exit(0)
 
 
 
