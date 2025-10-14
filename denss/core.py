@@ -5754,8 +5754,11 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
                                                  enforce_connectivity_steps=[500], enforce_connectivity_max_features=1, cutout=True, quiet=False, ncs=0,
                                                  ncs_steps=[500], ncs_axis=1, ncs_type="cyclical", abort_event=None, my_logger=logging.getLogger(),
                                                  path='.', gui=False, DENSS_GPU=False,
-                                                 PA_outdir=None, PA_cont=True, PA_dparams=[1], PA_files=None):
+                                                 PA_outdir=None, PA_cont=True, PA_dparams=[1], PA_files=None, PA_initmrc=None):
     """Calculate electron density from scattering data."""
+
+    import time
+    PA_time1 = time.time()
 
 
 
@@ -5810,13 +5813,12 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     df = 1 / side
     qx_ = np.fft.fftfreq(x_.size) * n * df * 2 * np.pi
     qz_ = np.fft.rfftfreq(x_.size) * n * df * 2 * np.pi
-    # qx, qy, qz = np.meshgrid(qx_,qx_,qx_,indexing='ij')
+
     qx, qy, qz = np.meshgrid(qx_, qx_, qz_, indexing='ij')
     qr = np.sqrt(qx ** 2 + qy ** 2 + qz ** 2)
     qmax = np.max(qr)
 
 
-    # print('#####qmax', qmax)
     qstep = np.min(qr[qr > 0]) - 1e-8  # subtract a tiny bit to deal with floating point error
     nbins = int(qmax / qstep)
 
@@ -5836,8 +5838,6 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     qdata = qbinsc[np.where((qbinsc >= q.min()) & (qbinsc <= q.max()))]
 
 
-    ##apple
-    # Idata = np.interp(qdata, q, I)
 
     PA_Idatas = []
     for PA_q, PA_I in zip(PA_qs, PA_Is):
@@ -5854,16 +5854,13 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     qba = qbin_args  # just for brevity when using it later
 
 
-    # sigqdata = np.interp(qdata, q, sigq)
 
     PA_sigqdata = []
-    print()
     for PA_q, PA_sigq in zip(PA_qs, PA_sigqs):
         PA_sigqdata.append(np.interp(qdata, PA_q, PA_sigq))
 
 
-   ######ne = 10000 
-#     scale_factor = ne ** 2 / Idata[0]
+    # scale_factor = ne ** 2 / Idata[0]
     # Idata *= scale_factor
     # sigqdata *= scale_factor
     # I *= scale_factor
@@ -5881,8 +5878,6 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     else:
         steps = int(steps)
 
-    #apple
-    # Imean = np.zeros((len(qbins)))
 
     PA_Imeans = []
     for _ in PA_Is:
@@ -5890,45 +5885,22 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
 
 
 
-    # if qraw is None:
-        # qraw = q
 
-    #apple
-    # if Iraw is None:
-        # Iraw = I
-    # if sigqraw is None:
-        # sigqraw = sigq
 
     qraw = q
     PA_Iraws = PA_Is
     PA_sigqraws = PA_sigqs
 
-    #apple
-
     PA_Iq_exps = []
     PA_Iq_calcs = []
 
-    # for i in range(len(PA_Is)):
-        # Iq_exp = np.vstack((qraw, PA_Iraws[i], PA_sigqraws[i])).T
-        # Iq_calc = np.vstack((qbinsc, PA_Imeans[i], PA_Imeans[i])).T
-        # idx = np.where(PA_Iraws[i] > 0)
-        # Iq_exp = Iq_exp[idx]
-        # qmax = np.min([Iq_exp[:, 0].max(), Iq_calc[:, 0].max()])
-        # Iq_exp = Iq_exp[Iq_exp[:, 0] <= qmax]
-        # Iq_calc = Iq_calc[Iq_calc[:, 0] <= qmax]
+    # chi = np.zeros((steps + 1))
+    chi =  np.zeros( (len(PA_Is), steps+1))
 
-        # PA_Iq_exps.append(Iq_exp)
-        # PA_Iq_calcs.append(Iq_calc)
-
-    chi = np.zeros((steps + 1))
     rg = np.zeros(( steps + 1), dtype=np.complex128)
     supportV = np.zeros((steps + 1))
 
 
-    #Is this needed?
-    # chi = np.zeros((len(PA_Is, steps + 1))
-    # rg = np.zeros(( len(PA_Is, steps + 1), dtype=np.complex128)
-    # supportV = np.zeros(( len(PA_Is, steps + 1))
     if support_start is not None:
         support = np.copy(support_start)
     else:
@@ -5943,7 +5915,14 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
 
     prng = np.random.RandomState(seed)
 
+
+
     if rho_start is not None:
+        print('')
+        print('hell yeah')
+        print(rho_start.min())
+        print(rho_start.max())
+
         rho = rho_start  # *dV
         if add_noise is not None:
             noise_factor = rho.max() * add_noise
@@ -5951,6 +5930,11 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
             rho += noise
     else:
         rho = prng.random_sample(size=x.shape)  # - 0.5
+
+
+    print('####', rho.shape)
+
+
     newrho = np.zeros_like(rho)
 
     sigma = shrinkwrap_sigma_start
@@ -6072,7 +6056,6 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
         newrho = cp.array(newrho)
         qblravel = cp.array(qblravel)
         xcount = cp.array(xcount)
-        #apple
         Idata = cp.array(Idata)
         Imean = cp.array(Imean)
 
@@ -6084,10 +6067,10 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
                 return []
 
 
-        ##dloopstart
 
         # array to hold the scaled rhos
         PA_rhods = np.zeros( (len(PA_dparams), rho.shape[0], rho.shape[1], rho.shape[2]))
+
         for PA_i_dparam, PA_dparam in enumerate(PA_dparams):
 
             # get a scaled version of rho
@@ -6115,14 +6098,6 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
             Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=DENSS_GPU)
 
 
-            
-            #apple
-            # scale Fs to match data
-            # factors = mysqrt(Idata / Imean, DENSS_GPU=DENSS_GPU)
-
-
-            # print(PA_Idatas[PA_i_dparam].shape, Imean.shape) ## 33, 56. Something ti wrong here. The Imean qmax is 1.666, which is increasing the number of bins? 
-            ### manualling setting qmax, nbins for I mean also doesn't work, it somehow effects the Idata shape.
 
             factors = mysqrt(PA_Idatas[PA_i_dparam]/ Imean, DENSS_GPU=DENSS_GPU)
             # do not scale bins outside of desired range
@@ -6141,6 +6116,11 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
                 # # in case the interpolation fails for whatever reason, like the GPU status or something
                 # chi[j] = mysum(((Imean[qba] - Idata[qba]) / sigqdata[qba]) ** 2, DENSS_GPU=DENSS_GPU) / Idata[qba].size
 
+            # PA_Iq_calcs[PA_i_dparam][:,1] = Imean[qbinsc <= qmax]
+            # chi[PA_i_dparam, j] = calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True, return_sf=False,)
+
+            chi[PA_i_dparam][j] = mysum(((Imean[qba] - PA_Idatas[PA_i_dparam][qba]) / PA_sigqdata[PA_i_dparam][qba]) ** 2, DENSS_GPU=DENSS_GPU) / PA_Idatas[PA_i_dparam][qba].size
+
             #Save this version of the scaled rho
             PA_rhods[PA_i_dparam] = myirfftn(F, DENSS_GPU=DENSS_GPU).real
 
@@ -6156,11 +6136,11 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
 
 
 
-        ##dloopend
-
         # use Guinier's law to approximate quickly
         # rg_j = calc_rg_by_guinier_first_2_points(qbinsc, Imean, DENSS_GPU=DENSS_GPU)
-        # rg[j] = rg_j
+
+        rg_j = -1000
+        rg[j] = rg_j
 
         # Error Reduction
         newrho *= 0
@@ -6379,21 +6359,23 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
 
         supportV[j] = mysum(support, DENSS_GPU=DENSS_GPU) * dV
 
+
         # convert possibly imaginary rg to string for printing
         rg_str = (f"{rg[j].real:3.2f}" if abs(rg[j].imag) < 1e-10 else
                   f"{rg[j].imag:3.2f}j" if abs(rg[j].real) < 1e-10 else
                   f"{rg[j].real:3.2f}{rg[j].imag:+3.2f}j")
 
-        if not quiet:
-            if gui:
-                my_logger.info("% 5i % 4.2e %s       % 5i          ", j, chi[j], rg_str, supportV[j])
-            else:
-                sys.stdout.write("\r% 5i  % 4.2e %s       % 5i          " % (j, chi[j], rg_str, supportV[j]))
-                sys.stdout.flush()
+      #   if not quiet:
+            # if gui:
+                # my_logger.info("% 5i % 4.2e %s       % 5i          ", j, chi[j], rg_str, supportV[j])
+            # else:
+                # sys.stdout.write("\r% 5i  % 4.2e %s       % 5i          " % (j, chi[j], rg_str, supportV[j]))
+                # sys.stdout.flush()
 
         # occasionally report progress in logger
         if j % 500 == 0 and not gui:
-            my_logger.info('Step % 5i: % 4.2e %s       % 5i          ', j, chi[j], rg_str, supportV[j])
+            # my_logger.info('Step % 5i: % 4.2e %s       % 5i          ', j, chi[j], rg_str, supportV[j])
+            pass
 
         if j > 101 + shrinkwrap_minstep:
             if DENSS_GPU:
@@ -6494,6 +6476,25 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     write_mrc(rho, side, fprefix + ".mrc")
     write_mrc(np.ones_like(rho) * support, side, fprefix + "_support.mrc")
 
+
+    PA_time2 = time.time()
+
+    print('######')
+    print((PA_time2 - PA_time1)/60)
+    print('######')
+    import matplotlib.pyplot as plt
+    plt.figure()
+    for i_c, c in enumerate(chi):
+        plt.plot(c, label=PA_dparams[i_c])
+    plt.yscale('log')
+    plt.legend()
+    plt.xlabel('Iteration')
+    plt.ylabel('Chi')
+    plt.show()
+
+
+    
+
 #     # return original unscaled values of Idata (and therefore Imean) for comparison with real data
     # Idata /= scale_factor
     # sigqdata /= scale_factor
@@ -6501,7 +6502,7 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     # I /= scale_factor
     # sigq /= scale_factor
 
-   #  # Write some more output files
+  #  #  # Write some more output files
     # Iq_exp = np.vstack((qraw, Iraw, sigqraw)).T
     # Iq_calc = np.vstack((qbinsc, Imean, Imean * 0.01)).T
     # idx = np.where(Iraw > 0)
@@ -6509,13 +6510,14 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     # qmax = np.min([Iq_exp[:, 0].max(), Iq_calc[:, 0].max()])
     # Iq_exp = Iq_exp[Iq_exp[:, 0] <= qmax]
     # Iq_calc = Iq_calc[Iq_calc[:, 0] <= qmax]
-    # final_chi2, exp_scale_factor, offset, fit = calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True,
-                                                          # return_sf=True, return_fit=True)
+    # # final_chi2, exp_scale_factor, offset, fit = calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True,
+                                            #               # return_sf=True, return_fit=True)
 
+    fit = -120
+    final_chi2 = 123456789
     # final_step = j+1
 
     # chi[final_step] = final_chi2
-    # final_ch2 = 123456789
 
     # np.savetxt(fprefix + '_map.fit', fit, delimiter=' ', fmt='%.5e',
                # header='q(data),I(data),error(data),I(density); chi2=%.3f' % final_chi2)
@@ -6540,8 +6542,9 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     # my_logger.info('RMSD of Density (all voxels): %3.5f', np.sqrt(np.mean(np.square(rho))))
 
 
-    return None
+    # return None
 
-    # return qdata, Idata, sigqdata, qbinsc, Imean, chi, rg, supportV, rho, side, fit, final_chi2
+
+    return qdata, Idata, sigqdata, qbinsc, Imean, chi, rg, supportV, rho, side, fit, final_chi2
 
 
