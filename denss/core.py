@@ -4015,6 +4015,9 @@ class PDB2MRC(object):
         # calculate some optimal grid values
         self.optimal_side = estimate_side_from_pdb(self.pdb, use_convex_hull=True)
         self.D = self.optimal_side/3 + 2*(1.7+2.8*2)
+        print(f'{self.D=}')
+        # self.D =  61.96488641388
+        # self.D =  90.527105
         self.optimal_voxel = 1.0
         self.optimal_nsamples = np.ceil(self.optimal_side / self.optimal_voxel).astype(int)
         self.nsamples_limit = 256
@@ -5787,6 +5790,7 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
             print("GPU option set, but CuPy failed to load")
         DENSS_GPU = False
 
+
     fprefix = os.path.join(path, output)
 
     D = dmax
@@ -5794,6 +5798,10 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     # Initialize variables
 
     side = oversampling * D
+
+
+    print()
+    print('###', D, oversampling)
     halfside = side / 2
 
     n = int(side / voxel)

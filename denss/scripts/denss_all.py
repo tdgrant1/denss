@@ -45,7 +45,6 @@ from denss import options as dopts
 
 def multi_denss(niter, superargs_dict, args_dict):
     try:
-        # time.sleep(1)
 
         # Processing keyword args for compatibility with RAW GUI
         args_dict['path'] = '.'
@@ -84,9 +83,13 @@ def multi_denss(niter, superargs_dict, args_dict):
                 fn_args_dict['PA_dparams'] = [1.0]
 
 
-            # if fn_args_dict['rho_start']:
-            # rho_init, _ = denss.read_mrc(fn_args_dict['PA_initmrc'],)
-            # fn_args_dict['rho_start']= rho_init
+            rho_init, _ = denss.read_mrc(fn_args_dict['PA_initmrc'],)
+
+
+            fn_args_dict['rho_start']= rho_init
+
+            print('rhoinit',rho_init.shape)
+            # fn_args_dict['dmax'] = 61.96488641388
 
 
             result = denss.reconstruct_abinitio_from_scattering_profile_PA(**fn_args_dict)
@@ -120,7 +123,7 @@ def main():
     parser.add_argument("--PA_cont", default=False, type=bool, help="PA: Run with new constraint")
     parser.add_argument("--PA_dparams", nargs='*', type=float, help="PA: list of d params")
     parser.add_argument("--PA_files", nargs='*', type=str, help="PA: list of files to read in")
-    parser.add_argument("--PA_initmrc", default=None, type=str, help="PA: list of files to read in")
+    parser.add_argument("--PA_initmrc", default='', type=str, help="PA: list of files to read in")
 
 
 
