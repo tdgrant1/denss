@@ -45,12 +45,13 @@ from denss import options as dopts
 
 def multi_denss(niter, superargs_dict, args_dict):
     try:
-        # time.sleep(1)
 
         # Processing keyword args for compatibility with RAW GUI
         args_dict['path'] = '.'
 
-        args_dict['output'] = args_dict['output'] + '_' + str(niter)
+        #args_dict['output'] = args_dict['output'] + '_' + str(niter)
+        args_dict['output'] = args_dict['output'].split('-')[0] + '-' + str(niter) #fix for multiprocessing overwrites
+
         np.random.seed(niter + int(time.time()))
         args_dict['seed'] = np.random.randint(2 ** 31 - 1)
         args_dict['quiet'] = True
@@ -75,7 +76,30 @@ def multi_denss(niter, superargs_dict, args_dict):
         logger.info('Data filename: %s', superargs_dict['file'])
         logger.info('Output prefix: %s', args_dict['output'])
         logger.info('Mode: %s', superargs_dict['mode'])
-        result = denss.reconstruct_abinitio_from_scattering_profile(**args_dict)
+        if args_dict['PA_cont']:
+            fn_args_dict = dict(args_dict)
+
+            if fn_args_dict['PA_dparams'] is None: ##hack if --PA_cont is set but theres no PA_dparams set
+                fn_args_dict['PA_dparams'] = [1.0]
+
+
+            rho_init, _ = denss.read_mrc(fn_args_dict['PA_initmrc'],)
+
+
+            fn_args_dict['rho_start']= rho_init
+
+            print('rhoinit',rho_init.shape)
+            # fn_args_dict['dmax'] = 61.96488641388
+
+
+            result = denss.reconstruct_abinitio_from_scattering_profile_PA(**fn_args_dict)
+        else:
+            fn_args_dict = dict(args_dict)
+
+            del fn_args_dict['PA_cont']
+            del fn_args_dict['PA_dparams']
+            del fn_args_dict['PA_files']
+            result = denss.reconstruct_abinitio_from_scattering_profile(**fn_args_dict)
         logger.info('END')
         return result
 
@@ -94,6 +118,15 @@ def main():
     parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center reference PDB map.")
     parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center reference PDB map (default).")
     parser.add_argument("-r", "--resolution", default=15.0, type=float, help="Resolution of map calculated from reference PDB file (default 15 angstroms).")
+
+    parser.add_argument("--PA_outdir", default='./', type=str, help="PA: output directory parent")
+    parser.add_argument("--PA_cont", default=False, type=bool, help="PA: Run with new constraint")
+    parser.add_argument("--PA_dparams", nargs='*', type=float, help="PA: list of d params")
+    parser.add_argument("--PA_files", nargs='*', type=str, help="PA: list of files to read in")
+    parser.add_argument("--PA_initmrc", default='', type=str, help="PA: list of files to read in")
+
+
+
     parser.set_defaults(enan = True)
     parser.set_defaults(center = True)
     superargs = dopts.parse_arguments(parser)
@@ -120,9 +153,7 @@ def main():
 
     __spec__ = None
 
-    if superargs.nmaps<2:
-        print("Not enough maps to align")
-        sys.exit(1)
+
 
     fname_nopath = os.path.basename(superargs.file)
     basename, ext = os.path.splitext(fname_nopath)
@@ -131,10 +162,12 @@ def main():
     else:
         output = superargs.output
 
-    out_dir = output
+    # out_dir = output
+    out_dir = args.PA_outdir + output #PA FIX
     dirn = 0
     while os.path.isdir(out_dir):
-        out_dir = output + "_" + str(dirn)
+        # out_dir = output + "_" + str(dirn)
+        out_dir = args.PA_outdir + output + "_" + str(dirn) #PA FIX
         dirn += 1
 
     print(out_dir)
@@ -170,8 +203,6 @@ def main():
     superlogger.info('Starting DENSS runs')
 
     try:
-        #mapfunc = partial(multi_denss, **denss_inputs)
-        # denss_outputs = pool.map(mapfunc, list(range(superargs.nmaps)))
         mapfunc = partial(multi_denss, superargs_dict=vars(superargs), args_dict=vars(args))
         denss_outputs = pool.map(mapfunc, list(range(superargs.nmaps)))
         print("\r Finishing denss job: %i / %i" % (superargs.nmaps,superargs.nmaps))
@@ -182,6 +213,16 @@ def main():
         pool.terminate()
         pool.close()
         sys.exit(1)
+
+
+    if superargs.nmaps<2:
+        print("Not enough maps to align")
+        sys.exit(0)
+
+
+
+
+
 
     superlogger.info('Finished DENSS runs')
 
