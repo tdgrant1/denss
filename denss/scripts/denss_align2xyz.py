@@ -10,8 +10,8 @@
 #
 #    Tested using Anaconda / Python 2.7
 #
-#    Authors: Thomas D. Grant, Nhan D. Nguyen
-#    Email:  <tgrant@hwi.buffalo.edu>, <ndnguyen20@wabash.edu>
+#    Authors: Thomas D. Grant
+#    Email:  <tdgrant@buffalo.edu>
 #    Copyright 2018 The Research Foundation for SUNY
 #
 #    This program is free software: you can redistribute it and/or modify

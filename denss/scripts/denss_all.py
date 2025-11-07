@@ -9,8 +9,8 @@
 #
 #    Tested using Anaconda / Python 2.7
 #
-#    Authors: Thomas D. Grant, Nhan D. Nguyen
-#    Email:  <tgrant@hwi.buffalo.edu>, <ndnguyen20@wabash.edu>
+#    Authors: Thomas D. Grant
+#    Email:  <tdgrant@buffalo.edu>
 #    Copyright 2018 The Research Foundation for SUNY
 #
 #    This program is free software: you can redistribute it and/or modify
@@ -47,35 +47,43 @@ def multi_denss(niter, superargs_dict, args_dict):
     try:
         # time.sleep(1)
 
-        # Processing keyword args for compatibility with RAW GUI
-        args_dict['path'] = '.'
+        # --- Make a local copy of the dictionary ---
+        # This prevents mutations from persisting between tasks
+        # in the same worker process.
+        local_args_dict = args_dict.copy()
 
-        args_dict['output'] = args_dict['output'] + '_' + str(niter)
+        # Processing keyword args for compatibility with RAW GUI
+        local_args_dict['path'] = '.'
+
+        # Now, all modifications are made to the local copy
+        local_args_dict['output'] = local_args_dict['output'] + '_' + str(niter)
         np.random.seed(niter + int(time.time()))
-        args_dict['seed'] = np.random.randint(2 ** 31 - 1)
-        args_dict['quiet'] = True
+        local_args_dict['seed'] = np.random.randint(2 ** 31 - 1)
+        local_args_dict['quiet'] = True
 
         if niter <= superargs_dict['nmaps'] - 1:
             sys.stdout.write("\r Running denss job: %i / %i " % (niter + 1, superargs_dict['nmaps']))
             sys.stdout.flush()
 
-        fname = args_dict['output'] + '.log'
-        logger = logging.getLogger(args_dict['output'])
+        fname = local_args_dict['output'] + '.log'
+        logger = logging.getLogger(local_args_dict['output'])  # Use the unique name
         logger.setLevel(logging.INFO)
         fh = logging.FileHandler(fname)
         formatter = logging.Formatter('%(asctime)s - %(message)s')
         fh.setFormatter(formatter)
         logger.addHandler(fh)
 
-        args_dict['my_logger'] = logger
+        local_args_dict['my_logger'] = logger
 
         logger.info('BEGIN')
         logger.info('Script name: %s', sys.argv[0])
         logger.info('DENSS Version: %s', denss.__version__)
         logger.info('Data filename: %s', superargs_dict['file'])
-        logger.info('Output prefix: %s', args_dict['output'])
+        logger.info('Output prefix: %s', local_args_dict['output'])
         logger.info('Mode: %s', superargs_dict['mode'])
-        result = denss.reconstruct_abinitio_from_scattering_profile(**args_dict)
+
+        # Pass the local, modified dictionary
+        result = denss.reconstruct_abinitio_from_scattering_profile(**local_args_dict)
         logger.info('END')
         return result
 
@@ -88,14 +96,18 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-nm", "--nmaps",default = 20,type =int, help="Number of maps to be generated (default 20)")
     parser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
+    parser.add_argument("--disable_alignment_and_averaging", action = "store_true", help="Do not perform alignment and averaging (e.g., if you just want to run multiple ab initio reconstructions). ")
     parser.add_argument("-en_on", "--enantiomer_on", action = "store_true", dest="enan", help="Generate and select best enantiomers (default). ")
     parser.add_argument("-en_off", "--enantiomer_off", action = "store_false", dest="enan", help="Do not generate and select best enantiomers.")
+    parser.add_argument("--thorough_alignment", action="store_true", help="Perform thorough alignment (slower, default: False). ")
     parser.add_argument("-ref", "--ref", default=None, type=str, help="Input reference model (.mrc or .pdb file, optional).")
     parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center reference PDB map.")
     parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center reference PDB map (default).")
     parser.add_argument("-r", "--resolution", default=15.0, type=float, help="Resolution of map calculated from reference PDB file (default 15 angstroms).")
     parser.set_defaults(enan = True)
     parser.set_defaults(center = True)
+    parser.set_defaults(thorough_alignment = True)
+    parser.set_defaults(disable_alignment_and_averaging = False)
     superargs = dopts.parse_arguments(parser)
 
     #these are arguments specifically for the denss() function
@@ -117,6 +129,8 @@ def main():
     del args.shrinkwrap_sigma_end_in_A
     del args.shrinkwrap_sigma_start_in_vox
     del args.shrinkwrap_sigma_end_in_vox
+    del args.thorough_alignment
+    del args.disable_alignment_and_averaging
 
     __spec__ = None
 
@@ -233,160 +247,163 @@ def main():
     np.savetxt(output + '_rg_by_step.fit', rg_strings.T, delimiter=" ", fmt="%s", header=",".join(rg_header))
     np.savetxt(output+'_supportV_by_step.fit',all_supportV.T,delimiter=" ",fmt="%.5e",header=",".join(supportV_header))
 
-    allrhos = np.array([denss_outputs[i][8] for i in np.arange(superargs.nmaps)])
-    sides = np.array([denss_outputs[i][9] for i in np.arange(superargs.nmaps)])
+    # Perform alignment and averaging
+    if not superargs.disable_alignment_and_averaging:
+        allrhos = np.array([denss_outputs[i][8] for i in np.arange(superargs.nmaps)])
+        sides = np.array([denss_outputs[i][9] for i in np.arange(superargs.nmaps)])
 
-    if superargs.ref is not None:
-        #allow input of reference structure
-        if superargs.ref.endswith('.pdb'):
-            reffname_nopath = os.path.basename(superargs.ref)
-            refbasename, refext = os.path.splitext(reffname_nopath)
-            refoutput = refbasename+"_centered.pdb"
-            refside = sides[0]
-            voxel = (refside/allrhos[0].shape)[0]
-            halfside = refside/2
-            n = int(refside/voxel)
-            dx = refside/n
-            x_ = np.linspace(-halfside,halfside,n)
-            x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
-            xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
-            pdb = denss.PDB(superargs.ref)
-            if superargs.center:
-                pdb.coords -= pdb.coords.mean(axis=0)
-                pdb.write(filename=refoutput)
-            pdb2mrc = denss.PDB2MRC(
-                pdb=pdb,
-                center_coords=False, #done above
-                voxel=dx,
-                side=refside,
-                nsamples=n,
-                ignore_warnings=True,
-                )
-            pdb2mrc.scale_radii()
-            pdb2mrc.make_grids()
-            pdb2mrc.calculate_global_B()
-            pdb2mrc.calculate_invacuo_density()
-            pdb2mrc.calculate_excluded_volume()
-            pdb2mrc.calculate_hydration_shell()
-            pdb2mrc.calculate_structure_factors()
-            pdb2mrc.calc_rho_with_modified_params(pdb2mrc.params)
-            refrho = pdb2mrc.rho_insolvent
-            refrho = refrho*np.sum(allrhos[0])/np.sum(refrho)
-            denss.write_mrc(refrho,pdb2mrc.side,filename=refbasename+'_pdb.mrc')
-        if superargs.ref.endswith('.mrc'):
-            refrho, refside = denss.read_mrc(superargs.ref)
+        if superargs.ref is not None:
+            #allow input of reference structure
+            if superargs.ref.endswith('.pdb'):
+                reffname_nopath = os.path.basename(superargs.ref)
+                refbasename, refext = os.path.splitext(reffname_nopath)
+                refoutput = refbasename+"_centered.pdb"
+                refside = sides[0]
+                voxel = (refside/allrhos[0].shape)[0]
+                halfside = refside/2
+                n = int(refside/voxel)
+                dx = refside/n
+                x_ = np.linspace(-halfside,halfside,n)
+                x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
+                xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
+                pdb = denss.PDB(superargs.ref)
+                if superargs.center:
+                    pdb.coords -= pdb.coords.mean(axis=0)
+                    pdb.write(filename=refoutput)
+                pdb2mrc = denss.PDB2MRC(
+                    pdb=pdb,
+                    center_coords=False, #done above
+                    voxel=dx,
+                    side=refside,
+                    nsamples=n,
+                    ignore_warnings=True,
+                    )
+                pdb2mrc.scale_radii()
+                pdb2mrc.make_grids()
+                pdb2mrc.calculate_global_B()
+                pdb2mrc.calculate_invacuo_density()
+                pdb2mrc.calculate_excluded_volume()
+                pdb2mrc.calculate_hydration_shell()
+                pdb2mrc.calculate_structure_factors()
+                pdb2mrc.calc_rho_with_modified_params(pdb2mrc.params)
+                refrho = pdb2mrc.rho_insolvent
+                refrho = refrho*np.sum(allrhos[0])/np.sum(refrho)
+                denss.write_mrc(refrho,pdb2mrc.side,filename=refbasename+'_pdb.mrc')
+            if superargs.ref.endswith('.mrc'):
+                refrho, refside = denss.read_mrc(superargs.ref)
 
-    if superargs.enan:
+        if superargs.enan:
+            print()
+            print(" Selecting best enantiomers...")
+            superlogger.info('Selecting best enantiomers')
+            try:
+                allrhos, scores = denss.select_best_enantiomers(allrhos, thorough=superargs.thorough_alignment, cores=superargs.cores)
+            except KeyboardInterrupt:
+                sys.exit(1)
+            for i in range(superargs.nmaps):
+                ioutput = output+"_"+str(i)+"_enan"
+                denss.write_mrc(allrhos[i], sides[0], ioutput+".mrc")
+
+        if superargs.ref is None:
+            print()
+            print(" Generating reference...")
+            superlogger.info('Generating reference')
+            try:
+                # refrho = denss.binary_average(allrhos, cores=superargs.cores, thorough=superargs.thorough_alignment)
+                refrho = denss.iterative_average(allrhos, cores=superargs.cores, thorough=superargs.thorough_alignment)
+                denss.write_mrc(refrho, sides[0], output+"_reference.mrc")
+            except KeyboardInterrupt:
+                sys.exit(1)
+
         print()
-        print(" Selecting best enantiomers...")
-        superlogger.info('Selecting best enantiomers')
+        print(" Aligning all maps to reference...")
+        superlogger.info('Aligning all maps to reference')
         try:
-            allrhos, scores = denss.select_best_enantiomers(allrhos, cores=superargs.cores)
+            aligned, scores = denss.align_multiple(refrho, allrhos, superargs.cores, thorough=superargs.thorough_alignment)
         except KeyboardInterrupt:
             sys.exit(1)
+
+        #filter rhos with scores below the mean - 2*standard deviation.
+        mean = np.mean(scores)
+        std = np.std(scores)
+        threshold = mean - 2*std
+        filtered = np.empty(len(scores),dtype=str)
+        print("Mean of correlation scores: %.3f" % mean)
+        print("Standard deviation of scores: %.3f" % std)
         for i in range(superargs.nmaps):
-            ioutput = output+"_"+str(i)+"_enan"
-            denss.write_mrc(allrhos[i], sides[0], ioutput+".mrc")
+            if scores[i] < threshold:
+                filtered[i] = 'Filtered'
+            else:
+                filtered[i] = ' '
+            ioutput = output+"_"+str(i)+"_aligned"
+            denss.write_mrc(aligned[i], sides[0], ioutput+".mrc")
+            print("%s.mrc written. Score = %0.3f %s " % (ioutput,scores[i],filtered[i]))
+            superlogger.info('Correlation score to reference: %s.mrc %.3f %s', ioutput, scores[i], filtered[i])
 
-    if superargs.ref is None:
-        print()
-        print(" Generating reference...")
-        superlogger.info('Generating reference')
-        try:
-            refrho = denss.binary_average(allrhos, superargs.cores)
-            denss.write_mrc(refrho, sides[0], output+"_reference.mrc")
-        except KeyboardInterrupt:
-            sys.exit(1)
+        idx_keep = np.where(scores>threshold)
+        kept_ids = np.arange(superargs.nmaps)[idx_keep]
+        aligned = aligned[idx_keep]
+        average_rho = np.mean(aligned,axis=0)
 
-    print()
-    print(" Aligning all maps to reference...")
-    superlogger.info('Aligning all maps to reference')
-    try:
-        aligned, scores = denss.align_multiple(refrho, allrhos, superargs.cores)
-    except KeyboardInterrupt:
-        sys.exit(1)
+        superlogger.info('Mean of correlation scores: %.3f', mean)
+        superlogger.info('Standard deviation of the scores: %.3f', std)
+        superlogger.info('Total number of input maps for alignment: %i',allrhos.shape[0])
+        superlogger.info('Number of aligned maps accepted: %i', aligned.shape[0])
+        superlogger.info('Correlation score between average and reference: %.3f', -denss.rho_overlap_score(average_rho, refrho))
+        superlogger.info('Mean Density of Avg Map (all voxels): %3.5f', np.mean(average_rho))
+        superlogger.info('Std. Dev. of Density (all voxels): %3.5f', np.std(average_rho))
+        superlogger.info('RMSD of Density (all voxels): %3.5f', np.sqrt(np.mean(np.square(average_rho))))
+        denss.write_mrc(average_rho, sides[0], output+'_avg.mrc')
 
-    #filter rhos with scores below the mean - 2*standard deviation.
-    mean = np.mean(scores)
-    std = np.std(scores)
-    threshold = mean - 2*std
-    filtered = np.empty(len(scores),dtype=str)
-    print("Mean of correlation scores: %.3f" % mean)
-    print("Standard deviation of scores: %.3f" % std)
-    for i in range(superargs.nmaps):
-        if scores[i] < threshold:
-            filtered[i] = 'Filtered'
+        #rather than compare two halves, average all fsc's to the reference
+        fscs = []
+        resns = []
+        for calc_map in range(len(aligned)):
+            fsc_map = denss.calc_fsc(aligned[calc_map],refrho,sides[0])
+            fscs.append(fsc_map)
+            resn_map = denss.fsc2res(fsc_map)
+            resns.append(resn_map)
+
+        fscs = np.array(fscs)
+
+        #save a file containing all fsc curves
+        fscs_header = ['res(1/A)']
+        for i in kept_ids:
+            ioutput = output+"_"+str(i)+"_aligned"
+            fscs_header.append(ioutput)
+        #add the resolution as the first column
+        fscs_for_file = np.vstack((fscs[0,:,0],fscs[:,:,1])).T
+        np.savetxt(output+'_allfscs.dat',fscs_for_file,delimiter=" ",fmt="%.5e",header=",".join(fscs_header))
+
+        resns = np.array(resns)
+        fsc = np.mean(fscs,axis=0)
+        resn, x, y, resx = denss.fsc2res(fsc, return_plot=True)
+        resn_sd = np.std(resns)
+        if np.min(fsc[:,1]) > 0.5:
+            print("Resolution: < %.1f +- %.1f A (maximum possible)" % (resn,resn_sd))
         else:
-            filtered[i] = ' '
-        ioutput = output+"_"+str(i)+"_aligned"
-        denss.write_mrc(aligned[i], sides[0], ioutput+".mrc")
-        print("%s.mrc written. Score = %0.3f %s " % (ioutput,scores[i],filtered[i]))
-        superlogger.info('Correlation score to reference: %s.mrc %.3f %s', ioutput, scores[i], filtered[i])
+            print("Resolution: %.1f +- %.1f A " % (resn,resn_sd))
 
-    idx_keep = np.where(scores>threshold)
-    kept_ids = np.arange(superargs.nmaps)[idx_keep]
-    aligned = aligned[idx_keep]
-    average_rho = np.mean(aligned,axis=0)
+        np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC; Resolution=%.1f +- %.1f A" % (resn,resn_sd))
 
-    superlogger.info('Mean of correlation scores: %.3f', mean)
-    superlogger.info('Standard deviation of the scores: %.3f', std)
-    superlogger.info('Total number of input maps for alignment: %i',allrhos.shape[0])
-    superlogger.info('Number of aligned maps accepted: %i', aligned.shape[0])
-    superlogger.info('Correlation score between average and reference: %.3f', -denss.rho_overlap_score(average_rho, refrho))
-    superlogger.info('Mean Density of Avg Map (all voxels): %3.5f', np.mean(average_rho))
-    superlogger.info('Std. Dev. of Density (all voxels): %3.5f', np.std(average_rho))
-    superlogger.info('RMSD of Density (all voxels): %3.5f', np.sqrt(np.mean(np.square(average_rho))))
-    denss.write_mrc(average_rho, sides[0], output+'_avg.mrc')
+        superlogger.info('Resolution = %.1f +- %.1f A' % (resn,resn_sd))
+        superlogger.info('END')
 
-    #rather than compare two halves, average all fsc's to the reference
-    fscs = []
-    resns = []
-    for calc_map in range(len(aligned)):
-        fsc_map = denss.calc_fsc(aligned[calc_map],refrho,sides[0])
-        fscs.append(fsc_map)
-        resn_map = denss.fsc2res(fsc_map)
-        resns.append(resn_map)
-
-    fscs = np.array(fscs)
-
-    #save a file containing all fsc curves
-    fscs_header = ['res(1/A)']
-    for i in kept_ids:
-        ioutput = output+"_"+str(i)+"_aligned"
-        fscs_header.append(ioutput)
-    #add the resolution as the first column
-    fscs_for_file = np.vstack((fscs[0,:,0],fscs[:,:,1])).T
-    np.savetxt(output+'_allfscs.dat',fscs_for_file,delimiter=" ",fmt="%.5e",header=",".join(fscs_header))
-
-    resns = np.array(resns)
-    fsc = np.mean(fscs,axis=0)
-    resn, x, y, resx = denss.fsc2res(fsc, return_plot=True)
-    resn_sd = np.std(resns)
-    if np.min(fsc[:,1]) > 0.5:
-        print("Resolution: < %.1f +- %.1f A (maximum possible)" % (resn,resn_sd))
-    else:
-        print("Resolution: %.1f +- %.1f A " % (resn,resn_sd))
-
-    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC; Resolution=%.1f +- %.1f A" % (resn,resn_sd))
-
-    superlogger.info('Resolution = %.1f +- %.1f A' % (resn,resn_sd))
-    superlogger.info('END')
-
-    if superargs.plot:
-        import matplotlib.pyplot as plt
-        plt.plot(fsc[:,0],fsc[:,0]*0+0.5,'k--')
-        for i in range(len(aligned)):
-            plt.plot(fscs[i,:,0],fscs[i,:,1],'k--',alpha=0.1)
-        plt.plot(fsc[:,0],fsc[:,1],'bo-')
-        #plt.plot(x,y,'k-')
-        plt.plot([resx],[0.5],'ro',label=r'Resolution = %.2f $\mathrm{\AA}$'%resn)
-        plt.legend()
-        plt.xlabel(r'Resolution (1/$\mathrm{\AA}$)')
-        plt.ylabel('Fourier Shell Correlation')
-        pltoutput = os.path.splitext(output)[0]
-        print(pltoutput)
-        plt.savefig(pltoutput+'_fsc.png',dpi=150)
-        plt.close()
+        if superargs.plot:
+            import matplotlib.pyplot as plt
+            plt.plot(fsc[:,0],fsc[:,0]*0+0.5,'k--')
+            for i in range(len(aligned)):
+                plt.plot(fscs[i,:,0],fscs[i,:,1],'k--',alpha=0.1)
+            plt.plot(fsc[:,0],fsc[:,1],'bo-')
+            #plt.plot(x,y,'k-')
+            plt.plot([resx],[0.5],'ro',label=r'Resolution = %.2f $\mathrm{\AA}$'%resn)
+            plt.legend()
+            plt.xlabel(r'Resolution (1/$\mathrm{\AA}$)')
+            plt.ylabel('Fourier Shell Correlation')
+            pltoutput = os.path.splitext(output)[0]
+            print(pltoutput)
+            plt.savefig(pltoutput+'_fsc.png',dpi=150)
+            plt.close()
 
 
 if __name__ == "__main__":

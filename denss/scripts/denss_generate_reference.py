@@ -9,8 +9,8 @@
 #
 #    Tested using Anaconda / Python 2.7
 #
-#    Authors: Thomas D. Grant, Nhan D. Nguyen
-#    Email:  <tgrant@hwi.buffalo.edu>, <ndnguyen20@wabash.edu>
+#    Authors: Thomas D. Grant
+#    Email:  <tdgrant@buffalo.edu>
 #    Copyright 2018 The Research Foundation for SUNY
 #
 #    This program is free software: you can redistribute it and/or modify
@@ -68,7 +68,8 @@ def main():
 
     print(" Generating reference...")
     try:
-        refrho = denss.binary_average(allrhos, args.cores)
+        #refrho = denss.binary_average(allrhos, args.cores)
+        refrho = denss.iterative_average(allrhos, args.cores)
         denss.write_mrc(refrho, sides[0], output+"_reference.mrc")
     except KeyboardInterrupt:
         sys.exit(1)

@@ -7,7 +7,7 @@
 #    Tested using Anaconda / Python 2.7
 #
 #    Author: Thomas D. Grant
-#    Email:  <tgrant@hwi.buffalo.edu>
+#    Email:  <tdgrant@buffalo.edu>
 #    Copyright 2017 The Research Foundation for SUNY
 #
 #    This program is free software: you can redistribute it and/or modify

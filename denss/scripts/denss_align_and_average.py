@@ -9,8 +9,8 @@
 #
 #    Tested using Anaconda / Python 2.7
 #
-#    Authors: Thomas D. Grant, Nhan D. Nguyen
-#    Email:  <tgrant@hwi.buffalo.edu>, <ndnguyen20@wabash.edu>
+#    Authors: Thomas D. Grant
+#    Email:  <tdgrant@buffalo.edu>
 #    Copyright 2018 The Research Foundation for SUNY
 #
 #    This program is free software: you can redistribute it and/or modify
@@ -42,6 +42,7 @@ def main():
     parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB.")
     parser.add_argument("-en_on", "--enantiomer_on", action = "store_true", dest="enan", help="Generate and select best enantiomers (default). ")
     parser.add_argument("-en_off", "--enantiomer_off", action = "store_false", dest="enan", help="Do not generate and select best enantiomers.")
+    parser.add_argument("--thorough_alignment", action="store_true", help="Perform thorough alignment (slower, default: False). ")
     parser.add_argument("-r", "--resolution", default=15.0, type=float, help="Desired resolution (i.e. Gaussian width sigma) of map calculated from PDB file.")
     parser.add_argument("--ignore_pdb_waters", dest="ignore_waters", action="store_true", help="Ignore waters if PDB file given.")
     parser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
@@ -49,6 +50,7 @@ def main():
     parser.set_defaults(enan = True)
     parser.set_defaults(center = True)
     parser.set_defaults(ignore_waters = False)
+    parser.set_defaults(thorough_alignment = False)
     args = parser.parse_args()
 
     __spec__ = None
@@ -134,23 +136,24 @@ def main():
         print(" Selecting best enantiomers...")
         try:
             if args.ref:
-                allrhos, scores = denss.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores)
+                allrhos, scores = denss.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores, thorough=args.thorough_alignment)
             else:
-                allrhos, scores = denss.select_best_enantiomers(allrhos, refrho=allrhos[0], cores=args.cores)
+                allrhos, scores = denss.select_best_enantiomers(allrhos, refrho=allrhos[0], cores=args.cores, thorough=args.thorough_alignment)
         except KeyboardInterrupt:
             sys.exit(1)
 
     if args.ref is None:
         print(" Generating reference...")
         try:
-            refrho = denss.binary_average(allrhos, args.cores)
+            # refrho = denss.binary_average(allrhos, cores=args.cores, thorough=args.thorough_alignment)
+            refrho = denss.iterative_average(allrhos, cores=args.cores, thorough=args.thorough_alignment)
             denss.write_mrc(refrho, sides[0], output+"_reference.mrc")
         except KeyboardInterrupt:
             sys.exit(1)
 
     print(" Aligning all maps to reference...")
     try:
-        aligned, scores = denss.align_multiple(refrho, allrhos, args.cores)
+        aligned, scores = denss.align_multiple(refrho, allrhos, args.cores, thorough=args.thorough_alignment)
     except KeyboardInterrupt:
         sys.exit(1)
 
