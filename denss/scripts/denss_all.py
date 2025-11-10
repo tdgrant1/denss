@@ -49,7 +49,7 @@ def multi_denss(niter, superargs_dict, args_dict):
         # Processing keyword args for compatibility with RAW GUI
         args_dict['path'] = '.'
 
-        #args_dict['output'] = args_dict['output'] + '_' + str(niter)
+        #don't have tags with '-'
         args_dict['output'] = args_dict['output'].split('-')[0] + '-' + str(niter) #fix for multiprocessing overwrites
 
         np.random.seed(niter + int(time.time()))
@@ -76,30 +76,48 @@ def multi_denss(niter, superargs_dict, args_dict):
         logger.info('Data filename: %s', superargs_dict['file'])
         logger.info('Output prefix: %s', args_dict['output'])
         logger.info('Mode: %s', superargs_dict['mode'])
-        if args_dict['PA_cont']:
-            fn_args_dict = dict(args_dict)
 
-            if fn_args_dict['PA_dparams'] is None: ##hack if --PA_cont is set but theres no PA_dparams set
-                fn_args_dict['PA_dparams'] = [1.0]
+        fn_args_dict = dict(args_dict)
 
+        if fn_args_dict['PA_cont']: ## if "use the PA constraint"
+            fn = denss.reconstruct_abinitio_from_scattering_profile_PA
 
-            rho_init, _ = denss.read_mrc(fn_args_dict['PA_initmrc'],)
+            print(fn_args_dict['PA_initmrc'])
 
+            if fn_args_dict['PA_initmrc']:
+                rho_init, _  = denss.read_mrc(fn_args_dict['PA_initmrc'])
 
-            fn_args_dict['rho_start']= rho_init
-
-            print('rhoinit',rho_init.shape)
-            # fn_args_dict['dmax'] = 61.96488641388
-
-
-            result = denss.reconstruct_abinitio_from_scattering_profile_PA(**fn_args_dict)
-        else:
-            fn_args_dict = dict(args_dict)
-
+        else: # the setting is not used, 
+            #
             del fn_args_dict['PA_cont']
             del fn_args_dict['PA_dparams']
             del fn_args_dict['PA_files']
-            result = denss.reconstruct_abinitio_from_scattering_profile(**fn_args_dict)
+            del fn_args_dict['PA_initmrc']
+
+            fn = denss.reconstruct_abinitio_from_scattering_profile
+
+
+            # if fn_args_dict['PA_dparams'] is None: ##hack if --PA_cont is set but theres no PA_dparams set
+                # fn_args_dict['PA_dparams'] = [1.0]
+            # rho_init, _ = denss.read_mrc(fn_args_dict['PA_initmrc'],)
+
+
+            # fn_args_dict['rho_start']= rho_init
+
+            # print('rhoinit',rho_init.shape)
+            # # fn_args_dict['dmax'] = 61.96488641388
+
+
+            # result = denss.reconstruct_abinitio_from_scattering_profile_PA(**fn_args_dict)
+        # else:
+            # fn_args_dict = dict(args_dict)
+
+            # del fn_args_dict['PA_cont']
+            # del fn_args_dict['PA_dparams']
+            # del fn_args_dict['PA_files']
+            # result = denss.reconstruct_abinitio_from_scattering_profile(**fn_args_dict)
+
+        result = fn(**fn_args_dict)
         logger.info('END')
         return result
 
@@ -124,7 +142,6 @@ def main():
     parser.add_argument("--PA_dparams", nargs='*', type=float, help="PA: list of d params")
     parser.add_argument("--PA_files", nargs='*', type=str, help="PA: list of files to read in")
     parser.add_argument("--PA_initmrc", default='', type=str, help="PA: list of files to read in")
-
 
 
     parser.set_defaults(enan = True)

@@ -1292,6 +1292,10 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
                                                  ncs_steps=[500], ncs_axis=1, ncs_type="cyclical", abort_event=None, my_logger=logging.getLogger(),
                                                  path='.', gui=False, DENSS_GPU=False, PA_outdir=None):
     """Calculate electron density from scattering data."""
+    print('')
+    print('!!')
+    print('Using original DENSS recon')
+    print('!!')
     if abort_event is not None:
         if abort_event.is_set():
             my_logger.info('Aborted!')
@@ -5745,8 +5749,9 @@ def denss_3DFs(rho_start, dmax, ne=None, voxel=5., oversampling=3., positivity=T
 
 
 
+
 #oran: new function
-def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
+def reconstruct_abinitio_from_scattering_profile_PA_old(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
                                                  ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
                                                  recenter_mode="com", positivity=True, positivity_steps=None, extrapolate=True, output="map",
                                                  steps=None, seed=None, rho_start=None, support_start=None, add_noise=None,
@@ -5758,10 +5763,12 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
                                                  ncs_steps=[500], ncs_axis=1, ncs_type="cyclical", abort_event=None, my_logger=logging.getLogger(),
                                                  path='.', gui=False, DENSS_GPU=False,
                                                  PA_outdir=None, PA_cont=True, PA_dparams=[1], PA_files=None, PA_initmrc=None):
+
     """Calculate electron density from scattering data."""
 
-    import time
-    PA_time1 = time.time()
+    print('##')
+    print('Using new DENSS recon')
+    print('##')
 
 
 
@@ -5800,8 +5807,6 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     side = oversampling * D
 
 
-    print()
-    print('###', D, oversampling)
     halfside = side / 2
 
     n = int(side / voxel)
@@ -6485,10 +6490,7 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
     write_mrc(np.ones_like(rho) * support, side, fprefix + "_support.mrc")
 
 
-    PA_time2 = time.time()
 
-    print('######')
-    print((PA_time2 - PA_time1)/60)
     print('######')
     import matplotlib.pyplot as plt
     plt.figure()
