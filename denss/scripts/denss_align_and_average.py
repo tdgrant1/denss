@@ -33,24 +33,35 @@ import numpy as np
 
 import denss
 
+
 def main():
-    parser = argparse.ArgumentParser(description="A tool for aligning and averaging multiple electron density maps.", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
+    parser = argparse.ArgumentParser(description="A tool for aligning and averaging multiple electron density maps.",
+                                     formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("--version", action="version", version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files")
-    parser.add_argument("-ref", "--ref",default = None, type=str, help="Reference filename (.mrc or .pdb file, optional)")
+    parser.add_argument("-ref", "--ref", default=None, type=str,
+                        help="Reference filename (.mrc or .pdb file, optional)")
     parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB (default).")
     parser.add_argument("-c_off", "--center_off", dest="center", action="store_false", help="Do not center PDB.")
-    parser.add_argument("-en_on", "--enantiomer_on", action = "store_true", dest="enan", help="Generate and select best enantiomers (default). ")
-    parser.add_argument("-en_off", "--enantiomer_off", action = "store_false", dest="enan", help="Do not generate and select best enantiomers.")
-    parser.add_argument("--thorough_alignment", action="store_true", help="Perform thorough alignment (slower, default: False). ")
-    parser.add_argument("-r", "--resolution", default=15.0, type=float, help="Desired resolution (i.e. Gaussian width sigma) of map calculated from PDB file.")
-    parser.add_argument("--ignore_pdb_waters", dest="ignore_waters", action="store_true", help="Ignore waters if PDB file given.")
-    parser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
+    parser.add_argument("-en_on", "--enantiomer_on", action="store_true", dest="enan",
+                        help="Generate and select best enantiomers (default). ")
+    parser.add_argument("-en_off", "--enantiomer_off", action="store_false", dest="enan",
+                        help="Do not generate and select best enantiomers.")
+    parser.add_argument("--thorough_alignment_on", action="store_true", dest="thorough_alignment",
+                        help="Perform thorough alignment (uses Nelder-Mead) (default: on). ")
+    parser.add_argument("--thorough_alignment_off", action="store_false", dest="thorough_alignment",
+                        help="Do not perform thorough alignment (uses simple gradient descent). ")
+    parser.add_argument("-r", "--resolution", default=15.0, type=float,
+                        help="Desired resolution (i.e. Gaussian width sigma) of map calculated from PDB file.")
+    parser.add_argument("--ignore_pdb_waters", dest="ignore_waters", action="store_true",
+                        help="Ignore waters if PDB file given.")
+    parser.add_argument("-j", "--cores", type=int, default=1,
+                        help="Number of cores used for parallel processing. (default: 1)")
     parser.add_argument("-o", "--output", type=str, help="output filename prefix")
-    parser.set_defaults(enan = True)
-    parser.set_defaults(center = True)
-    parser.set_defaults(ignore_waters = False)
-    parser.set_defaults(thorough_alignment = False)
+    parser.set_defaults(enan=True)
+    parser.set_defaults(center=True)
+    parser.set_defaults(ignore_waters=False)
+    parser.set_defaults(thorough_alignment=True)
     args = parser.parse_args()
 
     __spec__ = None
@@ -62,11 +73,10 @@ def main():
     else:
         output = args.output
 
-    logging.basicConfig(filename=output+'_final.log',level=logging.INFO,filemode='w',
+    logging.basicConfig(filename=output + '_final.log', level=logging.INFO, filemode='w',
                         format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %I:%M:%S %p')
     logging.info('BEGIN')
     logging.info('Command: %s', ' '.join(sys.argv))
-    #logging.info('Script name: %s', sys.argv[0])
     logging.info('DENSS Version: %s', denss.__version__)
     logging.info('Map filename(s): %s', args.files)
     logging.info('Reference filename: %s', args.ref)
@@ -83,38 +93,39 @@ def main():
     allrhos = np.array(allrhos)
     sides = np.array(sides)
 
-    if nmaps<2:
+    if nmaps < 2:
         print("Not enough maps to align. Please input more maps again...")
         sys.exit(1)
 
+    refrho = None  # Initialize refrho, will be loaded or generated
     if args.ref is not None:
-        #allow input of reference structure
+        # allow input of reference structure
         if args.ref.endswith('.pdb'):
             logging.info('Center PDB reference: %s', args.center)
             logging.info('PDB reference map resolution: %.2f', args.resolution)
             reffname_nopath = os.path.basename(args.ref)
             refbasename, refext = os.path.splitext(reffname_nopath)
-            refoutput = refbasename+"_centered.pdb"
+            refoutput = refbasename + "_centered.pdb"
             refside = sides[0]
-            voxel = (refside/allrhos[0].shape)[0]
-            halfside = refside/2
-            n = int(refside/voxel)
-            dx = refside/n
-            x_ = np.linspace(-halfside,halfside,n)
-            x,y,z = np.meshgrid(x_,x_,x_,indexing='ij')
-            xyz = np.column_stack((x.ravel(),y.ravel(),z.ravel()))
+            voxel = (refside / allrhos[0].shape)[0]
+            halfside = refside / 2
+            n = int(refside / voxel)
+            dx = refside / n
+            x_ = np.linspace(-halfside, halfside, n)
+            x, y, z = np.meshgrid(x_, x_, x_, indexing='ij')
+            xyz = np.column_stack((x.ravel(), y.ravel(), z.ravel()))
             pdb = denss.PDB(args.ref)
             if args.center:
                 pdb.coords -= pdb.coords.mean(axis=0)
                 pdb.write(filename=refoutput)
             pdb2mrc = denss.PDB2MRC(
                 pdb=pdb,
-                center_coords=False, #done above
+                center_coords=False,  # done above
                 voxel=dx,
                 side=refside,
                 nsamples=n,
                 ignore_warnings=True,
-                )
+            )
             pdb2mrc.scale_radii()
             pdb2mrc.make_grids()
             pdb2mrc.calculate_global_B()
@@ -124,44 +135,69 @@ def main():
             pdb2mrc.calculate_structure_factors()
             pdb2mrc.calc_rho_with_modified_params(pdb2mrc.params)
             refrho = pdb2mrc.rho_insolvent
-            refrho = refrho*np.sum(allrhos[0])/np.sum(refrho)
-            denss.write_mrc(refrho,pdb2mrc.side,filename=refbasename+'_pdb.mrc')
+            refrho = refrho * np.sum(allrhos[0]) / np.sum(refrho)
+            denss.write_mrc(refrho, pdb2mrc.side, filename=refbasename + '_pdb.mrc')
         if args.ref.endswith('.mrc'):
             refrho, refside = denss.read_mrc(args.ref)
         if (not args.ref.endswith('.mrc')) and (not args.ref.endswith('.pdb')):
             print("Invalid reference filename given. .mrc or .pdb file required")
             sys.exit(1)
 
-    if args.enan:
-        print(" Selecting best enantiomers...")
-        try:
-            if args.ref:
-                allrhos, scores = denss.select_best_enantiomers(allrhos, refrho=refrho, cores=args.cores, thorough=args.thorough_alignment)
-            else:
-                allrhos, scores = denss.select_best_enantiomers(allrhos, refrho=allrhos[0], cores=args.cores, thorough=args.thorough_alignment)
-        except KeyboardInterrupt:
-            sys.exit(1)
-
-    if args.ref is None:
-        print(" Generating reference...")
-        try:
-            # refrho = denss.binary_average(allrhos, cores=args.cores, thorough=args.thorough_alignment)
-            refrho = denss.iterative_average(allrhos, cores=args.cores, thorough=args.thorough_alignment)
-            denss.write_mrc(refrho, sides[0], output+"_reference.mrc")
-        except KeyboardInterrupt:
-            sys.exit(1)
-
-    print(" Aligning all maps to reference...")
+    # This is the main processing step to get the robust reference.
+    print("Generating robust reference via iterative averaging...")
     try:
-        aligned, scores = denss.align_multiple(refrho, allrhos, args.cores, thorough=args.thorough_alignment)
+        # This function performs the full iterative averaging.
+        # If args.enan is True, it will robustly select enantiomers inside its loop
+        # using return_aligned=True internally for its own averaging.
+
+        # We only need the final reference map (refrho) from this.
+        # We discard the 'aligned' and 'scores' maps (using _, _)
+        # because they are products of multiple interpolations.
+        refrho, _, _ = denss.iterative_average(
+            allrhos,
+            cores=args.cores,
+            thorough=args.thorough_alignment,
+            enan=args.enan,
+            refrho_start=refrho  # Pass the loaded ref (or None if no ref was given)
+        )
+
+        if refrho is None:  # Handle abort
+            print("Averaging was aborted.")
+            sys.exit(1)
+
+        # This is the average of ALL maps from the final iteration
+        denss.write_mrc(refrho, sides[0], output + "_reference.mrc")
     except KeyboardInterrupt:
         sys.exit(1)
 
-    #filter rhos with scores below the mean - 2*standard deviation.
+    # This is the single, final alignment (and interpolation) step.
+    # We align the *original* (pristine) maps to the new robust reference.
+    print("Performing final alignment to reference...")
+    try:
+        if args.enan:
+            # Select enantiomer AND return the final ALIGNED map
+            aligned, scores = denss.select_best_enantiomers(
+                allrhos, refrho, args.cores,
+                thorough=args.thorough_alignment,
+                return_aligned=True  # <-- Get the final (once-interpolated) aligned map
+            )
+        else:
+            # Just align (no enantiomer check)
+            aligned, scores = denss.align_multiple(
+                refrho, allrhos, args.cores,
+                thorough=args.thorough_alignment
+            )
+    except KeyboardInterrupt:
+        sys.exit(1)
+
+    # Now we filter and average the 'aligned' maps from the step above
+    print(" Filtering and saving results...")
+
+    # filter rhos with scores below the mean - 2*standard deviation.
     mean = np.mean(scores)
     std = np.std(scores)
-    threshold = mean - 2*std
-    filtered = np.empty(len(scores),dtype=str)
+    threshold = mean - 2 * std
+    filtered = np.empty(len(scores), dtype=str)
     print()
     print("Mean of correlation scores: %.3e" % mean)
     print("Standard deviation of scores: %.3e" % std)
@@ -172,60 +208,61 @@ def main():
             filtered[i] = ' '
         fname_nopath = os.path.basename(args.files[i])
         basename, ext = os.path.splitext(fname_nopath)
-        ioutput = basename+"_aligned"
-        denss.write_mrc(aligned[i], sides[0], ioutput+'.mrc')
-        print("%s.mrc written. Score = %0.3e %s " % (ioutput,scores[i],filtered[i]))
+        ioutput = basename + "_aligned"
+        denss.write_mrc(aligned[i], sides[0], ioutput + '.mrc')
+        print("%s.mrc written. Score = %0.3e %s " % (ioutput, scores[i], filtered[i]))
         logging.info('Correlation score to reference: %s.mrc %.3e %s', ioutput, scores[i], filtered[i])
 
-    idx_keep = np.where(scores>threshold)
+    idx_keep = np.where(scores > threshold)
     kept_ids = np.arange(nmaps)[idx_keep]
     aligned = aligned[idx_keep]
-    average_rho = np.mean(aligned,axis=0)
+
+    # This is the average of only the high-scoring, filtered maps
+    average_rho = np.mean(aligned, axis=0)
 
     logging.info('Mean of correlation scores: %.3e', mean)
     logging.info('Standard deviation of the scores: %.3e', std)
-    logging.info('Total number of input maps for alignment: %i',allrhos.shape[0])
+    logging.info('Total number of input maps for alignment: %i', allrhos.shape[0])
     logging.info('Number of aligned maps accepted: %i', aligned.shape[0])
     logging.info('Correlation score between average and reference: %.3e', -denss.rho_overlap_score(average_rho, refrho))
-    denss.write_mrc(average_rho, sides[0], output+'_avg.mrc')
+    denss.write_mrc(average_rho, sides[0], output + '_avg.mrc')
     logging.info('END')
 
-
-    #rather than compare two halves, average all fsc's to the reference
+    # rather than compare two halves, average all fsc's to the reference
     fscs = []
     resns = []
     for calc_map in range(len(aligned)):
-        fsc_map = denss.calc_fsc(aligned[calc_map],refrho,sides[0])
+        fsc_map = denss.calc_fsc(aligned[calc_map], refrho, sides[0])
         fscs.append(fsc_map)
         resn_map = denss.fsc2res(fsc_map)
         resns.append(resn_map)
 
     fscs = np.array(fscs)
 
-    #save a file containing all fsc curves
+    # save a file containing all fsc curves
     fscs_header = ['res(1/A)']
     for i in kept_ids:
-        ioutput = output+"_"+str(i)+"_aligned"
+        ioutput = output + "_" + str(i) + "_aligned"
         fscs_header.append(ioutput)
-    #add the resolution as the first column
-    fscs_for_file = np.vstack((fscs[0,:,0],fscs[:,:,1])).T
-    np.savetxt(output+'_allfscs.dat',fscs_for_file,delimiter=" ",fmt="%.5e",header=",".join(fscs_header))
+    # add the resolution as the first column
+    fscs_for_file = np.vstack((fscs[0, :, 0], fscs[:, :, 1])).T
+    np.savetxt(output + '_allfscs.dat', fscs_for_file, delimiter=" ", fmt="%.5e", header=",".join(fscs_header))
 
     resns = np.array(resns)
-    fsc = np.mean(fscs,axis=0)
+    fsc = np.mean(fscs, axis=0)
     resn, x, y, resx = denss.fsc2res(fsc, return_plot=True)
     resn_sd = np.std(resns)
-    if np.min(fsc[:,1]) > 0.5:
-        print("Resolution: < %.1f +- %.1f A (maximum possible)" % (resn,resn_sd))
+    if np.min(fsc[:, 1]) > 0.5:
+        print("Resolution: < %.1f +- %.1f A (maximum possible)" % (resn, resn_sd))
     else:
-        print("Resolution: %.1f +- %.1f A " % (resn,resn_sd))
+        print("Resolution: %.1f +- %.1f A " % (resn, resn_sd))
 
-    np.savetxt(output+'_fsc.dat',fsc,delimiter=" ",fmt="%.5e",header="1/resolution, FSC; Resolution=%.1f +- %.1f A" % (resn,resn_sd))
+    np.savetxt(output + '_fsc.dat', fsc, delimiter=" ", fmt="%.5e",
+               header="1/resolution, FSC; Resolution=%.1f +- %.1f A" % (resn, resn_sd))
 
-    logging.info('Resolution: %.1f A', resn )
+    logging.info('Resolution: %.1f A', resn)
     logging.info('END')
 
 
 if __name__ == "__main__":
     main()
-

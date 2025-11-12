@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-#    denss_align_and_average.py
+#    denss_generate_reference.py
 #    A tool for aligning and averaging multiple electron density maps.
 #
 #    Part of DENSS
@@ -35,13 +35,25 @@ import denss
 
 
 def main():
-    parser = argparse.ArgumentParser(description="A tool for generating a reference from multiple electron density maps.", formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--version", action="version",version="%(prog)s v{version}".format(version=denss.__version__))
+    parser = argparse.ArgumentParser(
+        description="A tool for generating a reference from multiple electron density maps.",
+        formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("--version", action="version", version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files")
     parser.add_argument("-o", "--output", type=str, help="output filename prefix")
-    parser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
-    parser.set_defaults(enan = True)
-    parser.set_defaults(center = True)
+    parser.add_argument("-j", "--cores", type=int, default=1,
+                        help="Number of cores used for parallel processing. (default: 1)")
+    parser.add_argument("-en_on", "--enantiomer_on", action="store_true", dest="enan",
+                        help="Generate and select best enantiomers (default). ")
+    parser.add_argument("-en_off", "--enantiomer_off", action="store_false", dest="enan",
+                        help="Do not generate and select best enantiomers.")
+    parser.add_argument("--thorough_alignment_on", action="store_true", dest="thorough_alignment",
+                        help="Perform thorough alignment (uses Nelder-Mead) (default: on). ")
+    parser.add_argument("--thorough_alignment_off", action="store_false", dest="thorough_alignment",
+                        help="Do not perform thorough alignment (uses simple gradient descent). ")
+
+    parser.set_defaults(enan=True)
+    parser.set_defaults(thorough_alignment=True)
     args = parser.parse_args()
 
     if args.output is None:
@@ -62,19 +74,31 @@ def main():
     allrhos = np.array(allrhos)
     sides = np.array(sides)
 
-    if nmaps<2:
+    if nmaps < 2:
         print("Not enough maps to generate reference. Please input more maps again...")
         sys.exit(1)
 
     print(" Generating reference...")
     try:
-        #refrho = denss.binary_average(allrhos, args.cores)
-        refrho = denss.iterative_average(allrhos, args.cores)
-        denss.write_mrc(refrho, sides[0], output+"_reference.mrc")
+        # Pass the arguments correctly using keywords
+        # We only need the first returned value (refrho)
+        refrho, _, _ = denss.iterative_average(
+            allrhos,
+            cores=args.cores,
+            thorough=args.thorough_alignment,
+            enan=args.enan
+        )
+
+        if refrho is None:
+            print("Reference generation was aborted.")
+            sys.exit(1)
+
+        denss.write_mrc(refrho, sides[0], output + "_reference.mrc")
+        print("Reference map saved to: {}_reference.mrc".format(output))
+
     except KeyboardInterrupt:
         sys.exit(1)
 
 
 if __name__ == "__main__":
     main()
-

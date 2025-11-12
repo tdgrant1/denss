@@ -2352,36 +2352,48 @@ def align(refrho, movrho, coarse=True, thorough=False, abort_event=None):
         pass
 
 
-def select_best_enantiomer(refrho, rho, thorough=False, abort_event=None):
-    """ Generate, align and select the enantiomer that best fits the reference map."""
-    # translate refrho to center in case not already centered
-    # just use roll to approximate translation to avoid interpolation, since
-    # fine adjustments and interpolation will happen during alignment step
+def select_best_enantiomer(refrho, rho, thorough=False, abort_event=None, return_aligned=False):
+    """
+    Generate, align and select the enantiomer that best fits the reference map.
 
+    By default (return_aligned=False), returns the UN-ALIGNED, centered
+    original or flipped map to preserve a single-interpolation pipeline.
+
+    If return_aligned=True, it will return the ALIGNED (interpolated) map.
+    """
     try:
         sleep(1)
+        # Center the reference map
         c_refrho = center_rho_roll(refrho)
-        # center rho in case it is not centered. use roll to get approximate location
-        # and avoid interpolation
+
+        # Center the map to be tested
         c_rho = center_rho_roll(rho)
-        # generate an array of the enantiomers
+
+        # Generate both hands (original_centered, flipped_centered)
         enans = generate_enantiomers(c_rho)
-        # allow for abort
+
         if abort_event is not None:
             if abort_event.is_set():
                 return None, None
 
-        # align each enantiomer and store the aligned maps and scores in results list
+        # Align both hands to the centered reference
+        # results = [ (aligned_original, score_original), (aligned_flipped, score_flipped) ]
         results = [align(c_refrho, enan, thorough=thorough, abort_event=abort_event) for enan in enans]
 
-        # now select the best enantiomer
-        # rather than return the aligned and therefore interpolated enantiomer,
-        # instead just return the original enantiomer, flipped from the original map
-        # then no interpolation has taken place. So just dont overwrite enans essentially.
-        # enans = np.array([results[k][0] for k in range(len(results))])
+        # Find the index of the best-scoring hand
         enans_scores = np.array([results[k][1] for k in range(len(results))])
         best_i = np.argmax(enans_scores)
-        best_enan, best_score = enans[best_i], enans_scores[best_i]
+
+        # --- Keyword-based fix ---
+        if return_aligned:
+            # Return the ALIGNED (interpolated) map and its score
+            # Used by iterative_average for its internal loops
+            best_enan, best_score = results[best_i][0], results[best_i][1]
+        else:
+            # Return the UN-ALIGNED map (from the 'enans' list) and its score
+            # This is the default behavior, preserving the original map data
+            best_enan, best_score = enans[best_i], enans_scores[best_i]
+
         return best_enan, best_score
 
     except KeyboardInterrupt:
@@ -2390,7 +2402,7 @@ def select_best_enantiomer(refrho, rho, thorough=False, abort_event=None):
 
 
 def select_best_enantiomers(rhos, refrho=None, cores=1, thorough=False, avg_queue=None,
-                            abort_event=None, single_proc=False):
+                            abort_event=None, single_proc=False, return_aligned=False): # Added 'return_aligned'
     """ Select the best enantiomer from each map in the set (or a single map).
         refrho should not be binary averaged from the original
         denss maps, since that would likely lose handedness.
@@ -2404,7 +2416,8 @@ def select_best_enantiomers(rhos, refrho=None, cores=1, thorough=False, avg_queu
     if not single_proc:
         pool = multiprocessing.Pool(cores)
         try:
-            mapfunc = partial(select_best_enantiomer, refrho, thorough=thorough)
+            # Pass the new 'return_aligned' keyword to the parallel function
+            mapfunc = partial(select_best_enantiomer, refrho, thorough=thorough, return_aligned=return_aligned)
             results = pool.map(mapfunc, rhos)
             pool.close()
             pool.join()
@@ -2415,7 +2428,8 @@ def select_best_enantiomers(rhos, refrho=None, cores=1, thorough=False, avg_queu
             raise
 
     else:
-        results = [select_best_enantiomer(refrho=refrho, rho=rho, thorough=thorough, abort_event=abort_event) for rho in rhos]
+        # Pass the new 'return_aligned' keyword to the list comprehension
+        results = [select_best_enantiomer(refrho=refrho, rho=rho, thorough=thorough, abort_event=abort_event, return_aligned=return_aligned) for rho in rhos]
 
     best_enans = np.array([results[k][0] for k in range(len(results))])
     best_scores = np.array([results[k][1] for k in range(len(results))])
@@ -2519,7 +2533,8 @@ def binary_average(rhos, cores=1, thorough=False, abort_event=None, single_proc=
     return refrho
 
 
-def iterative_average(rhos, cycles=5, cores=1, thorough=False, abort_event=None, single_proc=False, my_logger=None):
+def iterative_average(rhos, cycles=5, cores=1, thorough=False, abort_event=None, single_proc=False, my_logger=None,
+                      enan=False, refrho_start=None):
     """
     Generate a reference map using iterative alignment and averaging.
 
@@ -2535,6 +2550,11 @@ def iterative_average(rhos, cycles=5, cores=1, thorough=False, abort_event=None,
         abort_event (multiprocessing.Event): Event to abort processing.
         single_proc (bool): Flag to force single-process execution.
         my_logger (logging.Logger): Optional logger for status updates.
+        enan (bool): If True, perform enantiomer selection (select_best_enantiomers)
+                     in each cycle. If False (default), just perform
+                     alignment (align_multiple).
+        refrho_start (np.ndarray): Optional starting reference map. If None,
+                                   the first map in rhos is used.
     """
 
     def log_info(message):
@@ -2546,52 +2566,79 @@ def iterative_average(rhos, cycles=5, cores=1, thorough=False, abort_event=None,
 
     if rhos.shape[0] < 2:
         log_info("Only one map found. Returning centered map.")
-        return center_rho_roll(rhos[0])
+        # Return all three values for consistent output
+        return center_rho_roll(rhos[0]), rhos, np.array([1.0])
 
-    # --- This is the critical step for an unbiased refinement ---
-    # We must *always* align the original, un-aligned maps at each step.
-    # We make a pristine copy to align from.
+    # Make a pristine copy of the original maps to align from at each step
     original_rhos = np.copy(rhos)
     num_maps = original_rhos.shape[0]
 
-    # 1. Select an Initial Reference (Ref 0)
-    #    We just pick the first map and center it.
-    current_reference = center_rho_roll(original_rhos[0])
-    log_info(f"Starting iterative averaging with {num_maps} maps for {cycles} cycles.")
+    # Select an Initial Reference (Ref 0)
+    if refrho_start is not None:
+        current_reference = center_rho_roll(refrho_start)
+        log_info(f"Starting iterative averaging with {num_maps} maps for {cycles} cycles (using provided reference).")
+    else:
+        current_reference = center_rho_roll(original_rhos[0])
+        log_info(f"Starting iterative averaging with {num_maps} maps for {cycles} cycles (using map 0 as initial ref).")
 
-    # 2. Start the Iteration Loop
+    # Define these variables *before* the loop
+    # so we can access the final set after the loop finishes.
+    aligned_maps = None
+    scores = None
+
+    # Start the Iteration Loop
     for cycle in range(cycles):
         log_info(f"--- Iteration Cycle {cycle + 1} / {cycles} ---")
 
         if abort_event is not None and abort_event.is_set():
             log_info("Abort event detected. Stopping averaging.")
-            return None
+            return None, None, None
 
-        # 3. Align all N *original* maps to the *current* reference
-        #    We pass a fresh copy of the originals to align_multiple,
-        #    as align_multiple modifies its input array.
-        aligned_maps, scores = align_multiple(
-            current_reference,
-            np.copy(original_rhos),  # <-- Always align the originals
-            cores=cores,
-            thorough=thorough,
-            abort_event=abort_event,
-            single_proc=single_proc
-        )
+        # Align all N *original* maps to the *current* reference
+        # This block calls one of two parallel-processing functions
+        # based on whether enantiomer selection is requested.
+
+        if enan:
+            log_info("Selecting best enantiomers against current reference...")
+            # This function aligns each map AND its flip, keeping the best
+            # We set return_aligned=True so we get ALIGNED maps to average.
+            # This interpolation is OK, as it only affects the *next* reference.
+            aligned_maps, scores = select_best_enantiomers(
+                rhos=np.copy(original_rhos),  # Always align the originals
+                refrho=current_reference,
+                cores=cores,
+                thorough=thorough,
+                abort_event=abort_event,
+                single_proc=single_proc,
+                return_aligned=True  # <-- Get ALIGNED maps for internal averaging
+            )
+        else:
+            log_info("Aligning maps to current reference...")
+            # This function aligns all maps to the reference
+            aligned_maps, scores = align_multiple(
+                current_reference,
+                np.copy(original_rhos),  # Always align the originals
+                cores=cores,
+                thorough=thorough,
+                abort_event=abort_event,
+                single_proc=single_proc
+            )
 
         if aligned_maps is None:
             log_info("Alignment was aborted.")
-            return None
+            return None, None, None
 
-        # 4. Average all N aligned maps to create the *next* reference
+        # Average all N aligned maps to create the *next* reference
         next_reference = np.mean(aligned_maps, axis=0)
 
-        # 5. Center the new reference to prevent translational drift
+        # Center the new reference to prevent translational drift
         current_reference = center_rho_roll(next_reference)
 
     log_info("Iterative averaging complete.")
-    # 6. Return the final, converged, centered reference
-    return current_reference
+
+    # Return the final converged reference, AND the last set of
+    # aligned maps and scores that created it.
+    return current_reference, aligned_maps, scores
 
 
 def calc_fsc(rho1, rho2, side):
