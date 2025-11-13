@@ -2067,7 +2067,7 @@ def coarse_then_fine_alignment(refrho, movrho, coarse=True, topn=1,
     return movrho, score
 
 
-def minimize_rho(refrho, movrho, T=np.zeros(6), thorough=False, low_pass_filter=True):
+def minimize_rho(refrho, movrho, T=np.zeros(6), thorough=True, low_pass_filter=True):
     """Optimize superposition of electron density maps. Move movrho to refrho."""
     bounds = np.zeros(12).reshape(6, 2)
     # Set bounds for +/- 10 degrees
@@ -2323,7 +2323,7 @@ def generate_enantiomers(rho):
     return enans
 
 
-def align(refrho, movrho, coarse=True, thorough=False, abort_event=None):
+def align(refrho, movrho, coarse=True, thorough=True, abort_event=None):
     """ Align second electron density map to the first."""
     if abort_event is not None:
         if abort_event.is_set():
@@ -2352,7 +2352,7 @@ def align(refrho, movrho, coarse=True, thorough=False, abort_event=None):
         pass
 
 
-def select_best_enantiomer(refrho, rho, thorough=False, abort_event=None, return_aligned=False):
+def select_best_enantiomer(refrho, rho, thorough=True, abort_event=None, return_aligned=False):
     """
     Generate, align and select the enantiomer that best fits the reference map.
 
@@ -2401,7 +2401,7 @@ def select_best_enantiomer(refrho, rho, thorough=False, abort_event=None, return
         pass
 
 
-def select_best_enantiomers(rhos, refrho=None, cores=1, thorough=False, avg_queue=None,
+def select_best_enantiomers(rhos, refrho=None, cores=1, thorough=True, avg_queue=None,
                             abort_event=None, single_proc=False, return_aligned=False): # Added 'return_aligned'
     """ Select the best enantiomer from each map in the set (or a single map).
         refrho should not be binary averaged from the original
@@ -2437,7 +2437,7 @@ def select_best_enantiomers(rhos, refrho=None, cores=1, thorough=False, avg_queu
     return best_enans, best_scores
 
 
-def align_multiple(refrho, rhos, cores=1, thorough=False, abort_event=None, single_proc=False):
+def align_multiple(refrho, rhos, cores=1, thorough=True, abort_event=None, single_proc=False):
     """ Align multiple (or a single) maps to the reference."""
     if rhos.ndim == 3:
         rhos = rhos[np.newaxis, ...]
@@ -2477,7 +2477,7 @@ def align_multiple(refrho, rhos, cores=1, thorough=False, abort_event=None, sing
     return rhos, scores
 
 
-def average_two(rho1, rho2, thorough=False, abort_event=None):
+def average_two(rho1, rho2, thorough=True, abort_event=None):
     """ Align two electron density maps and return the average."""
     rho2, score = align(rho1, rho2, thorough=thorough, abort_event=abort_event)
     average_rho = (rho1 + rho2) / 2
@@ -2494,7 +2494,7 @@ def multi_average_two(niter, **kwargs):
         pass
 
 
-def average_pairs(rhos, cores=1, thorough=False, abort_event=None, single_proc=False):
+def average_pairs(rhos, cores=1, thorough=True, abort_event=None, single_proc=False):
     """ Average pairs of electron density maps, second half to first half."""
     # create even/odd pairs, odds are the references
     rho_args = {'rho1': rhos[::2], 'rho2': rhos[1::2], 'thorough': thorough, 'abort_event': abort_event}
@@ -2518,7 +2518,7 @@ def average_pairs(rhos, cores=1, thorough=False, abort_event=None, single_proc=F
     return np.array(average_rhos)
 
 
-def binary_average(rhos, cores=1, thorough=False, abort_event=None, single_proc=False):
+def binary_average(rhos, cores=1, thorough=True, abort_event=None, single_proc=False):
     """ Generate a reference electron density map using binary averaging."""
     twos = 2 ** np.arange(20)
     nmaps = np.max(twos[twos <= rhos.shape[0]])
@@ -2533,7 +2533,7 @@ def binary_average(rhos, cores=1, thorough=False, abort_event=None, single_proc=
     return refrho
 
 
-def iterative_average(rhos, cycles=5, cores=1, thorough=False, abort_event=None, single_proc=False, my_logger=None,
+def iterative_average(rhos, cycles=5, cores=1, thorough=True, abort_event=None, single_proc=False, my_logger=None,
                       enan=False, refrho_start=None):
     """
     Generate a reference map using iterative alignment and averaging.
