@@ -912,10 +912,12 @@ def estimate_dmax(Iq, dmax=None, clean_up=True):
         # next, dmax is roughly 3.5*rg for most particles
         # so calculate P(r) using a larger dmax, say twice as large, so 7*rg
         D = 7 * rg
+        dmax_given = False
     else:
         # allow user to give an initial estimate of Dmax
         # multiply by 2 to allow for enough large r values
         D = 2 * dmax
+        dmax_given = True
     # create a calculated q range for Sasrec for low q out to q=0
     qmin = np.min(q)
     dq = (q.max() - q.min()) / (q.size - 1)
@@ -927,13 +929,14 @@ def estimate_dmax(Iq, dmax=None, clean_up=True):
     # but the sasrec rg should be more accurate, even with a screwed up guinier estimate
     # so run it again, but this time with the Dmax = 7*sasrec.rg
     # only do this if rg is significantly different
-    if np.abs(sasrec.rg - rg) > 0.2 * sasrec.rg:
-        sasrec = Sasrec(Iq[:nq // 2], D=7 * sasrec.rg, qc=None, alpha=0.0, extrapolate=False)
+    if not dmax_given:  # rg only exists if Dmax was not given initially
+        if np.abs(sasrec.rg - rg) > 0.2 * sasrec.rg:
+            sasrec = Sasrec(Iq[:nq // 2], D=7 * sasrec.rg, qc=None, alpha=0.0, extrapolate=False)
     # lets test a bunch of different dmax's on a logarithmic spacing
     # then see where chi2 is minimal. that at least gives us a good ball park of Dmax
     # the main problem is that we don't know the scale even remotely, or the units,
     # so we need to check many orders of magnitude
-    Ds = np.logspace(.1, np.log10(2 * 7 * rg), 10)
+    Ds = np.logspace(.1, np.log10(2 * 7 * sasrec.rg), 10)
     chi2 = np.zeros(len(Ds))
     for i in range(len(Ds)):
         sasrec = Sasrec(Iq[:nq // 2], D=Ds[i], qc=None, alpha=0.0, extrapolate=False)
@@ -2837,20 +2840,21 @@ class Sasrec(object):
         self.Ierr = np.hstack((self.Ierr, Ierre))
         self.qc = np.hstack((self.qc, qce))
 
-    def optimize_alpha(self):
+    def optimize_alpha(self, quiet=False):
         """Scan alpha values to find optimal alpha"""
         ideal_chi2 = self.calc_chi2()
         al = []
         chi2 = []
-        # here, alphas are actually the exponents, since the range can
-        # vary from 10^-20 upwards of 10^20. This should cover nearly all likely values
-        alphas = np.arange(-30, 30., 2)
+        #here, alphas are actually the exponents, since the range can
+        #vary from 10^-20 upwards of 10^20. This should cover nearly all likely values
+        alphas = np.arange(-30,30.,2)
         i = 0
         nalphas = len(alphas)
         for alpha in alphas:
             i += 1
-            sys.stdout.write("\rScanning alphas... {:.0%} complete".format(i * 1. / nalphas))
-            sys.stdout.flush()
+            if not quiet:
+                sys.stdout.write("\rScanning alphas... {:.0%} complete".format(i*1./nalphas))
+                sys.stdout.flush()
             try:
                 self.alpha = 10. ** alpha
                 # self.update()
