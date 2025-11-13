@@ -79,10 +79,9 @@ def multi_denss(niter, superargs_dict, args_dict):
 
         fn_args_dict = dict(args_dict)
 
+
         if fn_args_dict['PA_cont']: ## if "use the PA constraint"
             fn = denss.reconstruct_abinitio_from_scattering_profile_PA
-
-            print(fn_args_dict['PA_initmrc'])
 
             if fn_args_dict['PA_initmrc']:
                 rho_init, _  = denss.read_mrc(fn_args_dict['PA_initmrc'])
@@ -127,6 +126,7 @@ def multi_denss(niter, superargs_dict, args_dict):
 
 
 def main():
+
     parser = argparse.ArgumentParser()
     parser.add_argument("-nm", "--nmaps",default = 20,type =int, help="Number of maps to be generated (default 20)")
     parser.add_argument("-j", "--cores", type=int, default = 1, help="Number of cores used for parallel processing. (default: 1)")
@@ -169,8 +169,6 @@ def main():
     del args.shrinkwrap_sigma_end_in_vox
 
     __spec__ = None
-
-
 
     fname_nopath = os.path.basename(superargs.file)
     basename, ext = os.path.splitext(fname_nopath)

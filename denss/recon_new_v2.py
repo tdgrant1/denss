@@ -20,17 +20,13 @@ from denss.resources import resources
 
 
 
+
+# PYFFTW = False
+
 from .core import mybinmean, myrfftn, abs2, mysqrt, mysum, myirfftn, write_mrc
 from .core import shrinkwrap_by_density_value, PYFFTW, shrinkwrap_by_volume, mystd, mymean, grid_center
-from .core import calc_rg_by_guinier_first_2_points, calc_chi2
 
-
-def test_recon_old():
-    print('Hello woof')
-
-
-#bana: old function
-def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
+def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None, Iraw=None, sigqraw=None,
                                                  ne=None, voxel=5., oversampling=3., recenter=True, recenter_steps=None,
                                                  recenter_mode="com", positivity=True, positivity_steps=None, extrapolate=True, output="map",
                                                  steps=None, seed=None, rho_start=None, support_start=None, add_noise=None,
@@ -40,13 +36,31 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
                                                  write_xplor_format=False, write_freq=100, enforce_connectivity=True,
                                                  enforce_connectivity_steps=[500], enforce_connectivity_max_features=1, cutout=True, quiet=False, ncs=0,
                                                  ncs_steps=[500], ncs_axis=1, ncs_type="cyclical", abort_event=None, my_logger=logging.getLogger(),
-                                                 path='.', gui=False, DENSS_GPU=False, PA_outdir=None):
+                                                 path='.', gui=False, DENSS_GPU=False,
+                                                 PA_outdir=None, PA_cont=True, PA_dparams=[1], PA_files=None, PA_initmrc=None):
     """Calculate electron density from scattering data."""
     print('')
     print('!!')
-    print('Using original DENSS recon')
-    print('DENSS_GPU', DENSS_GPU)
+    print('Using V2 PA DENSS recon')
     print('!!')
+
+    ### PART 1
+    ### Load in the multiple sas profiles 
+
+    ### NEW
+    PA_qs = []
+    PA_Is = []
+    PA_sigqs = []
+    for PA_fname in PA_files:
+        PA_loaded_array = np.loadtxt(PA_fname)
+        PA_qs.append(PA_loaded_array[:,0])
+        PA_Is.append(PA_loaded_array[:,1])
+        PA_sigqs.append(PA_loaded_array[:,2])
+
+
+    ### PART 2
+    ### abort if needed and run with cuda if set. Also set the file path.
+
     if abort_event is not None:
         if abort_event.is_set():
             my_logger.info('Aborted!')
@@ -63,9 +77,12 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
 
     fprefix = os.path.join(path, output)
 
-    D = dmax
 
-    # Initialize variables
+
+    ### PART 3
+    ### set up the varibles ranges. How many qbins? over what range? rbins?
+
+    D = dmax
 
     side = oversampling * D
     halfside = side / 2
@@ -87,7 +104,6 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
     df = 1 / side
     qx_ = np.fft.fftfreq(x_.size) * n * df * 2 * np.pi
     qz_ = np.fft.rfftfreq(x_.size) * n * df * 2 * np.pi
-    # qx, qy, qz = np.meshgrid(qx_,qx_,qx_,indexing='ij')
     qx, qy, qz = np.meshgrid(qx_, qx_, qz_, indexing='ij')
     qr = np.sqrt(qx ** 2 + qy ** 2 + qz ** 2)
     qmax = np.max(qr)
@@ -107,7 +123,22 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
 
     # allow for any range of q data
     qdata = qbinsc[np.where((qbinsc >= q.min()) & (qbinsc <= q.max()))]
-    Idata = np.interp(qdata, q, I)
+
+    ### PART 4
+    ### In the original function, the intensity values are interpolated over the
+    ### qbined values, the original q and I varibles aren't used.
+    ### for each intensity value you read, interpolate it over qdata.
+
+
+    ### NEW 
+    PA_Idatas = []
+    for PA_q, PA_I in zip(PA_qs, PA_Is):
+        PA_Idatas.append(np.interp(qdata, PA_q, PA_I ))
+
+
+    ### PART 5
+    ### For some reason, the qdata we calculate might be bigger then the data we supplied.
+    ### in this case, we want to extend the intensity function into this q range.
 
     if extrapolate:
         qextend = qbinsc[qbinsc >= qdata.max()]
@@ -119,17 +150,18 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
     # create list of qbin indices just in region of data for later F scaling
     qbin_args = np.in1d(qbinsc, qdata, assume_unique=True)
     qba = qbin_args  # just for brevity when using it later
-    # set qba bins outside of scaling region to false.
-    # start with bins in corners
-    # qba[qbinsc>qx_.max()] = False
 
     sigqdata = np.interp(qdata, q, sigq)
 
-    scale_factor = ne ** 2 / Idata[0]
-    Idata *= scale_factor
-    sigqdata *= scale_factor
-    I *= scale_factor
-    sigq *= scale_factor
+
+    ### PART 5
+    ### I don't know what this scale factor is doing but I will comment it out
+
+    ### OLD
+    ### scale_factor = ne ** 2 / Idata[0]
+
+    #### PART 5
+    #### Work out how many step are in the recon
 
     if steps == 'None' or steps is None or int(steps) < 1:
         stepsarr = np.concatenate((enforce_connectivity_steps, [shrinkwrap_minstep]))
@@ -143,23 +175,31 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
     else:
         steps = int(steps)
 
-    Imean = np.zeros((len(qbins)))
+    ### PART 6
+    ### We need to copy Imean for each d param
+    ### raw variables are None by default, so just assign the variables without None check in original code
 
-    if qraw is None:
-        qraw = q
-    if Iraw is None:
-        Iraw = I
-    if sigqraw is None:
-        sigqraw = sigq
-    Iq_exp = np.vstack((qraw, Iraw, sigqraw)).T
-    Iq_calc = np.vstack((qbinsc, Imean, Imean)).T
-    idx = np.where(Iraw > 0)
-    Iq_exp = Iq_exp[idx]
-    qmax = np.min([Iq_exp[:, 0].max(), Iq_calc[:, 0].max()])
-    Iq_exp = Iq_exp[Iq_exp[:, 0] <= qmax]
-    Iq_calc = Iq_calc[Iq_calc[:, 0] <= qmax]
 
-    chi = np.zeros((steps + 1))
+    ### NEW
+    PA_Imeans = []
+    for _ in PA_Is:
+        PA_Imeans.append(np.zeros(len(qbins)))
+
+    qraw = q
+    PA_Iraws = PA_Is
+    PA_sigqraws = PA_sigqs
+
+
+    ### PART 7
+    ### chi is calculated for each sas profile,
+    ### rg and support is calculated for each real model (only one of those)
+
+
+    ### NEW
+    PA_chi = np.zeros( (len(PA_Is), steps + 1))
+
+
+
     rg = np.zeros((steps + 1), dtype=np.complex128)
     supportV = np.zeros((steps + 1))
     if support_start is not None:
@@ -167,6 +207,8 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
     else:
         support = np.ones(x.shape, dtype=bool)
 
+    ### PART 7
+    ### generate random seed 
     if seed is None:
         # Have to reset the random seed to get a random in different from other processes
         prng = np.random.RandomState()
@@ -176,15 +218,29 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
 
     prng = np.random.RandomState(seed)
 
+
+    ### PART 8
+    ### load in (or generate) initial density
+
+
+    ### NEW ####TODO
     if rho_start is not None:
-        rho = rho_start  # *dV
+        print('Loading a new rho start!!')
+        rho = rho_start
         if add_noise is not None:
             noise_factor = rho.max() * add_noise
             noise = prng.random_sample(size=x.shape) * noise_factor
             rho += noise
     else:
-        rho = prng.random_sample(size=x.shape)  # - 0.5
+        rho = prng.random_sample(size=x.shape)
     newrho = np.zeros_like(rho)
+
+
+
+
+
+    ### PART 9
+    ### Calculate a bunch of stuff that I don't know
 
     sigma = shrinkwrap_sigma_start
 
@@ -217,96 +273,25 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
     if ncs_type == "icosahedral":
         ncs = 1
 
-    my_logger.info('q range of input data: %3.3f < q < %3.3f', q.min(), q.max())
-    my_logger.info('Maximum dimension: %3.3f', D)
-    my_logger.info('Sampling ratio: %3.3f', oversampling)
-    my_logger.info('Requested real space voxel size: %3.3f', voxel)
-    my_logger.info('Number of electrons: %3.3f', ne)
-    my_logger.info('Recenter: %s', recenter)
-    my_logger.info('Recenter Steps: %s', recenter_steps)
-    my_logger.info('Recenter Mode: %s', recenter_mode)
-    my_logger.info('NCS: %s', ncs)
-    my_logger.info('NCS Type: %s', ncs_type)
-    my_logger.info('NCS Steps: %s', ncs_steps)
-    my_logger.info('NCS Axis: %s', ncs_axis)
-    my_logger.info('Positivity: %s', positivity)
-    # my_logger.info('Positivity Steps: %s', positivity_steps)
-    my_logger.info('Extrapolate high q: %s', extrapolate)
-    my_logger.info('Shrinkwrap: %s', shrinkwrap)
-    my_logger.info('Shrinkwrap Old Method: %s', shrinkwrap_old_method)
-    my_logger.info('Shrinkwrap sigma start (angstroms): %s', shrinkwrap_sigma_start * dx)
-    my_logger.info('Shrinkwrap sigma end (angstroms): %s', shrinkwrap_sigma_end * dx)
-    my_logger.info('Shrinkwrap sigma start (voxels): %s', shrinkwrap_sigma_start)
-    my_logger.info('Shrinkwrap sigma end (voxels): %s', shrinkwrap_sigma_end)
-    my_logger.info('Shrinkwrap sigma decay: %s', shrinkwrap_sigma_decay)
-    my_logger.info('Shrinkwrap threshold fraction: %s', shrinkwrap_threshold_fraction)
-    my_logger.info('Shrinkwrap iterations: %s', shrinkwrap_iter)
-    my_logger.info('Shrinkwrap starting step: %s', shrinkwrap_minstep)
-    my_logger.info('Enforce connectivity: %s', enforce_connectivity)
-    my_logger.info('Enforce connectivity steps: %s', enforce_connectivity_steps)
-    my_logger.info('Chi2 end fraction: %3.3e', chi_end_fraction)
-    my_logger.info('Maximum number of steps: %i', steps)
-    my_logger.info('Grid size (voxels): %i x %i x %i', n, n, n)
-    my_logger.info('Real space box width (angstroms): %3.3f', side)
-    my_logger.info('Real space box range (angstroms): %3.3f < x < %3.3f', x_.min(), x_.max())
-    my_logger.info('Real space box volume (angstroms^3): %3.3f', V)
-    my_logger.info('Real space voxel size (angstroms): %3.3f', dx)
-    my_logger.info('Real space voxel volume (angstroms^3): %3.3f', dV)
-    my_logger.info('Reciprocal space box width (angstroms^(-1)): %3.3f', qx_.max() - qx_.min())
-    my_logger.info('Reciprocal space box range (angstroms^(-1)): %3.3f < qx < %3.3f', qx_.min(), qx_.max())
-    my_logger.info('Maximum q vector (diagonal) (angstroms^(-1)): %3.3f', qr.max())
-    my_logger.info('Number of q shells: %i', nbins)
-    my_logger.info('Width of q shells (angstroms^(-1)): %3.3f', qstep)
-    my_logger.info('Random seed: %i', seed)
+    ### PART 10
+    ### bunch of logging stuff was here that I deleted
 
-    if not quiet:
-        if gui:
-            my_logger.info("\n Step     Chi2     Rg    Support Volume")
-            my_logger.info(" ----- --------- ------- --------------")
-        else:
-            print("\n Step     Chi2     Rg    Support Volume")
-            print(" ----- --------- ------- --------------")
+    my_logger.info('blah blah')
 
-    if PYFFTW:
-        a = np.copy(rho)
-        rho = pyfftw.empty_aligned(a.shape, dtype='complex64')
-        rho[:] = a
-        rhoprime = pyfftw.empty_aligned(a.shape, dtype='complex64')
-        newrho = pyfftw.empty_aligned(a.shape, dtype='complex64')
-        try:
-            # Try to plan our transforms with the wisdom we have already
-            fftw_object = pyfftw.FFTW(rho,
-                                      rhoprime,
-                                      direction="FFTW_FORWARD",
-                                      flags=("FFTW_WISDOM_ONLY",))
-        except RuntimeError as e:
-            # If we don't have enough wisdom, print a warning and proceed.
-            print(e)
-            start = time.perf_counter()
-            fftw_object = pyfftw.FFTW(rho,
-                                      rhoprime,
-                                      direction="FFTW_FORWARD",
-                                      flags=("FFTW_MEASURE",))
-            print("Generating wisdom took {}s".format(time.perf_counter() - start))
-            with open("fft.wisdom", "wb") as the_file:
-                wisdom = pyfftw.export_wisdom()
-                pickle.dump(wisdom, the_file)
 
-    if DENSS_GPU:
-        rho = cp.array(rho)
-        qbin_labels = cp.array(qbin_labels)
-        qbins = cp.array(qbins)
-        qbinsc = cp.array(qbinsc)
-        Idata = cp.array(Idata)
-        qbin_args = cp.array(qbin_args)
-        sigqdata = cp.array(sigqdata)
-        support = cp.array(support)
-        chi = cp.array(chi)
-        supportV = cp.array(supportV)
-        Imean = cp.array(Imean)
-        newrho = cp.array(newrho)
-        qblravel = cp.array(qblravel)
-        xcount = cp.array(xcount)
+    ### PART 11
+    ### removing PYFFTW  DENSS_GPU stuff, by default it is false
+
+    # if PYFFTW:
+        # ...
+    # if DENSS_GPU:
+        #  ...
+
+
+
+
+    ### PART 13
+    ### The actual iteration loop
 
     for j in range(steps):
         if abort_event is not None:
@@ -314,41 +299,75 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
                 my_logger.info('Aborted!')
                 return []
 
-        # F = myfftn(rho, DENSS_GPU=DENSS_GPU)
-        F = myrfftn(rho, DENSS_GPU=DENSS_GPU)
+        ### PART 14
+        ### for each sas curve, do the modulus constraint
 
-        # sometimes, when using denss_refine.py with non-random starting rho,
-        # the resulting Fs result in zeros in some locations and the algorithm to break
-        # here just make those values to be 1e-16 to be non-zero
-        F[np.abs(F) == 0] = 1e-16
 
-        # APPLY RECIPROCAL SPACE RESTRAINTS
-        # calculate spherical average of intensities from 3D Fs
-        # I3D = myabs(F, DENSS_GPU=DENSS_GPU)**2
-        I3D = abs2(F)
-        Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=DENSS_GPU)
+        ### NEW
+        ### make an array to hold the reconstructed densities for each d
+        PA_rhods = np.zeros( (len(PA_dparams), rho.shape[0], rho.shape[1], rho.shape[2]))
 
-        # scale Fs to match data
-        factors = mysqrt(Idata / Imean, DENSS_GPU=DENSS_GPU)
-        # do not scale bins outside of desired range
-        # so set those factors to 1.0
-        factors[~qba] = 1.0
-        F *= factors[qbin_labels]
+        for PA_i_dparam, PA_dparam in enumerate(PA_dparams):
 
-        try:
-            Iq_calc[:, 1] = Imean[qbinsc <= qmax]
-            chi[j] = calc_chi2(Iq_exp, Iq_calc, scale=True, offset=False, interpolation=True, return_sf=False,
-                               return_fit=False)
-        except:
-            # in case the interpolation fails for whatever reason, like the GPU status or something
-            chi[j] = mysum(((Imean[qba] - Idata[qba]) / sigqdata[qba]) ** 2, DENSS_GPU=DENSS_GPU) / Idata[qba].size
 
-        # APPLY REAL SPACE RESTRAINTS
-        # rhoprime = myifftn(F, DENSS_GPU=DENSS_GPU).real
-        rhoprime = myirfftn(F, DENSS_GPU=DENSS_GPU).real
+            ### for this d param, get rho to the power of d (handling the negatives)
+            PA_neg_loc = np.where(rho<0)
+            PA_rhod = np.abs(rho)**PA_dparam
+            PA_rhod[PA_neq_loc] *= -1
+
+
+            F = myrfftn(PA_rhod, DENSS_GPU=DENSS_GPU)
+
+            # sometimes, when using denss_refine.py with non-random starting rho,
+            # the resulting Fs result in zeros in some locations and the algorithm to break
+            # here just make those values to be 1e-16 to be non-zero
+            F[np.abs(F) == 0] = 1e-16
+
+            # APPLY RECIPROCAL SPACE RESTRAINTS
+            # calculate spherical average of intensities from 3D Fs
+            # I3D = myabs(F, DENSS_GPU=DENSS_GPU)**2
+            I3D = abs2(F)
+            Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=DENSS_GPU)
+
+            # scale Fs to match data
+            factors = mysqrt(Idata / Imean, DENSS_GPU=DENSS_GPU)
+            # do not scale bins outside of desired range
+            # so set those factors to 1.0
+            factors[~qba] = 1.0
+            F *= factors[qbin_labels]
+
+
+            ### There was a try: except: statement here. I have just left the except part.
+            PA_chi[PA_i_dparam][j] = mysum(((Imean[qba] - PA_Idatas[PA_i_dparam][qba]) / PA_sigqdata[PA_i_dparam][qba]) ** 2, DENSS_GPU=DENSS_GPU) / PA_Idatas[PA_i_dparam][qba].size
+
+
+            # APPLY REAL SPACE RESTRAINTS
+            PA_rhods[PA_i_dparam] = myirfftn(F, DENSS_GPU=DENSS_GPU).real
+
+
+            ### invert the powering we did at the start of the loop
+            PA_neg_loc = np.where(PA_rhods[PA_i_dparam]<0)
+            PA_rhods[PA_i_dparam] = np.abs(PA_rhods[PA_i_dparam])**(1/PA_dparam)
+            PA_rhods[PA_i_dparam][PA_neg_loc] *= -1
+
+
+
+        ### average back the unscaled rhos back together
+        rhoprime = np.mean(PA_rhods, axis=0)
+        
+
+
+        ### PART 15
+        ### Now that we have remade a version of rhoprime,
+        ### everything down the line should hold
+
+        ### you are here!!
+
+
 
         # use Guinier's law to approximate quickly
         rg_j = calc_rg_by_guinier_first_2_points(qbinsc, Imean, DENSS_GPU=DENSS_GPU)
+
         rg[j] = rg_j
 
         # Error Reduction
