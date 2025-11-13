@@ -145,6 +145,7 @@ def main():
 
     # This is the main processing step to get the robust reference.
     print("Generating robust reference via iterative averaging...")
+
     try:
         # This function performs the full iterative averaging.
         # If args.enan is True, it will robustly select enantiomers inside its loop
@@ -173,6 +174,7 @@ def main():
     # This is the single, final alignment (and interpolation) step.
     # We align the *original* (pristine) maps to the new robust reference.
     print("Performing final alignment to reference...")
+
     try:
         if args.enan:
             # Select enantiomer AND return the final ALIGNED map

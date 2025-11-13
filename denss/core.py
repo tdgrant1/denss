@@ -2107,8 +2107,7 @@ def minimize_rho(refrho, movrho, T=np.zeros(6), thorough=True, low_pass_filter=T
         # but better at navigating noisy landscapes.
         result = optimize.minimize(minimize_rho_score, T,
                                    method='Nelder-Mead',
-                                   args=(refrho3, movrho3),
-                                   options={'maxiter': 200, 'xatol': 0.01})
+                                   args=(refrho3, movrho3))
         Topt = result.x  # .x instead of [0]
     else:
         # Faster, gradient-based method
@@ -2343,6 +2342,7 @@ def align(refrho, movrho, coarse=True, thorough=True, abort_event=None):
             topn = 1
 
         movrho, score = coarse_then_fine_alignment(refrho=refrho, movrho=movrho, coarse=coarse, topn=topn,
+                                                   thorough=thorough,
                                                    abort_event=abort_event)
 
         if movrho is not None:
@@ -2559,7 +2559,6 @@ def iterative_average(rhos, cycles=5, cores=1, thorough=True, abort_event=None, 
         refrho_start (np.ndarray): Optional starting reference map. If None,
                                    the first map in rhos is used.
     """
-
     def log_info(message):
         """Helper to print or log information."""
         if my_logger:
