@@ -2039,7 +2039,7 @@ def largest_indices(a, n):
     return np.unravel_index(indices, a.shape)
 
 
-def coarse_then_fine_alignment(refrho, movrho, coarse=True, topn=1,
+def coarse_then_fine_alignment(refrho, movrho, coarse=True, topn=1, thorough=True,
                                abort_event=None):
     """Course alignment followed by fine alignment.
         Select the topn candidates from the grid search
@@ -2057,7 +2057,7 @@ def coarse_then_fine_alignment(refrho, movrho, coarse=True, topn=1,
             return None, None
 
     for i in range(movrhos.shape[0]):
-        movrhos[i], scores[i] = minimize_rho(refrho, movrhos[i])
+        movrhos[i], scores[i] = minimize_rho(refrho, movrhos[i], thorough=thorough)
 
         if abort_event is not None:
             if abort_event.is_set():
