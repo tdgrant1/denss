@@ -2537,7 +2537,7 @@ def binary_average(rhos, cores=1, thorough=True, abort_event=None, single_proc=F
 
 
 def iterative_average(rhos, cycles=5, cores=1, thorough=True, abort_event=None, single_proc=False, my_logger=None,
-                      enan=False, refrho_start=None):
+                      enan=False, refrho_start=None, avg_queue=None):
     """
     Generate a reference map using iterative alignment and averaging.
 
@@ -2558,12 +2558,15 @@ def iterative_average(rhos, cycles=5, cores=1, thorough=True, abort_event=None, 
                      alignment (align_multiple).
         refrho_start (np.ndarray): Optional starting reference map. If None,
                                    the first map in rhos is used.
+        avg_queue (Queue): Optional queue for sending progress messages to GUI.
     """
     def log_info(message):
         """Helper to print or log information."""
+        if avg_queue is not None:
+            avg_queue.put_nowait(message + '\n')
         if my_logger:
             my_logger.info(message)
-        else:
+        elif avg_queue is None:
             print(message)
 
     if rhos.shape[0] < 2:
@@ -2870,7 +2873,8 @@ class Sasrec(object):
             chi2.append(chi2value)
         al = np.array(al)
         chi2 = np.array(chi2)
-        print()
+        if not quiet:
+            print()
         # find optimal alpha value based on where chi2 begins to rise, to 10% above the ideal chi2
         # interpolate between tested alphas to find more precise value
         x = np.linspace(al[0], al[-1], 1000)
@@ -3973,7 +3977,7 @@ class PDB2MRC(object):
             self.pdb.calculate_unique_volume()
         elif self.pdb.unique_volume is None:
             if not self.quiet: print("Looking up unique atomic volumes...")
-            self.pdb.lookup_unique_volume()
+            self.pdb.lookup_unique_volume(quiet=quiet)
         self.pdb.unique_radius = sphere_radius_from_volume(self.pdb.unique_volume)
         if radii_sf is None:
             self.radii_sf = np.ones(len(self.modifiable_atom_types))
@@ -4197,9 +4201,9 @@ class PDB2MRC(object):
                                                                                                      n=nsamples)
             optimal_values_warning = """
                 To ensure the highest accuracy, manually set the -s option to {os:.2f} and
-                the -v option to {ov:.2f}, which will set -n option to {on:d} and thus 
+                the -v option to {ov:.2f}, which will set -n option to {on:d} and thus
                 may take a long time to calculate and use a lot of memory.
-                If that requires too much computation, set -s first, and -n to the 
+                If that requires too much computation, set -s first, and -n to the
                 limit you prefer (n=512 may approach an upper limit for many computers).
                 """.format(os=optimal_side, ov=optimal_voxel, on=optimal_nsamples)
 
@@ -4347,7 +4351,8 @@ class PDB2MRC(object):
         self.water_shell_idx = water_shell_idx = uniform_shell.astype(bool)
 
         if self.dx > 2 * self.r_water and self.shell_type == "water":
-            print("Voxel size too large for water form factor hydration shell. Changing shell type to uniform.")
+            if not self.quiet:
+                print("Voxel size too large for water form factor hydration shell. Changing shell type to uniform.")
             self.shell_type = "uniform"
 
         if self.shell_mrcfile is not None:
