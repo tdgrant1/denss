@@ -14,6 +14,9 @@ Try out DENSS without installing the code using the DENSSWeb server. Run DENSSWe
 
 ## NEWS
 
+#### DENSS v1.8.7 released with more robust iterative averaging procedure
+A new averaging procedure has been implemented. The iterative averaging protocol replaces the old binary tree method. The new procedure is more robust and results in higher resolution averages, while remaining fast. Several bug fixes have also been released as part of DENSS v1.8.7. 
+
 #### DENSS now on PyPI and installable with pip
 DENSS v1.8.0 has been refactored to be more compatible with modern Python conventions, including convenient package installation with pip. DENSS now requires Python > 3.6+. As a result, all command line programs have slightly different names, using hyphens rather than dots, and losing the trailing `.py` extension. For example, the old `denss.align.py` is now `denss-align`.
 
