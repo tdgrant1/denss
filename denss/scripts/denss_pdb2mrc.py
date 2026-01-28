@@ -89,6 +89,7 @@ def main():
     parser.add_argument("-shell_mrcfile", "--shell_mrcfile", default=None, type=str, help=argparse.SUPPRESS) #help="Filename of hydration shell mrc file (default=None)")
     parser.add_argument("-fit_radii", "--fit_radii", dest="fit_radii", action="store_true", help=argparse.SUPPRESS) #help="Fit atomic radii for excluded volume calculation (optional, default=False)")
     parser.add_argument("--radii_sf", default=None, type=float, nargs='+', help=argparse.SUPPRESS) #help="Atomic radii scale factors for excluded volume calculation (optional, ordered as [H C N O])")
+    parser.add_argument("--modifiable_atom_types", default=None, nargs='+', help=argparse.SUPPRESS)  # help="Modifiable atom types for scaling atomic radii for excluded volume calculation (optional, give as space separate list of atom types, such as H C N O)")
     parser.add_argument("--set_radii_explicitly", default=None, type=str, help=argparse.SUPPRESS) #help="Set atomic radii explicitly for different atom types. Ignores --radii_sf. Format H:1.07:C:1.58:N:0.084:O:1.30"
     parser.add_argument("-fit_scale_on", "--fit_scale_on", dest="fit_scale", action="store_true", help="Include scale factor in least squares fit to data (optional, default=True)")
     parser.add_argument("-fit_scale_off", "--fit_scale_off", dest="fit_scale", action="store_false", help="Do not include offset in least squares fit to data.")
@@ -217,7 +218,7 @@ def main():
         pdb=pdb,
         ignore_waters=args.ignore_waters,
         explicitH=args.explicitH,
-        modifiable_atom_types=None,
+        modifiable_atom_types=args.modifiable_atom_types,
         center_coords=args.center,
         radii_sf=args.radii_sf,
         recalculate_atomic_volumes=args.recalculate_atomic_volumes,

@@ -4311,7 +4311,7 @@ class PDB2MRC(object):
         if not self.quiet: print('Finished in vacuo density.')
 
     def calculate_excluded_volume(self, quiet=False):
-        if not self.quiet: print('Calculating excluded volume...')
+        # if not self.quiet: print('Calculating excluded volume...')
         if self.exvol_type == "gaussian":
             # generate excluded volume assuming gaussian dummy atoms
             # this function outputs in electron count units
@@ -4337,7 +4337,7 @@ class PDB2MRC(object):
             # self.rho_exvol = ndimage.gaussian_filter(self.supportexvol*1.0,sigma=sigma,mode='wrap')
             self.rho_exvol = 1.0 * self.supportexvol
             self.rho_exvol *= ne / self.rho_exvol.sum()  # put in electron count units
-        if not self.quiet: print('Finished excluded volume.')
+        # if not self.quiet: print('Finished excluded volume.')
 
     def calculate_hydration_shell(self):
         if not self.quiet: print('Calculating hydration shell...')
