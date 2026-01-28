@@ -97,6 +97,8 @@ def main():
     parser.add_argument("-nm", "--nmaps", default=20, type=int, help="Number of maps to be generated (default 20)")
     parser.add_argument("-j", "--cores", type=int, default=1,
                         help="Number of cores used for parallel processing. (default: 1)")
+    parser.add_argument("--cycles", type=int, default=5,
+                        help="Number of cycles for iterative averaging. (default: 5)")
     parser.add_argument("--disable_alignment_and_averaging", action="store_true",
                         help="Do not perform alignment and averaging (e.g., if you just want to run multiple ab initio reconstructions). ")
     parser.add_argument("-en_on", "--enantiomer_on", action="store_true", dest="enan",
@@ -141,6 +143,7 @@ def main():
     del args.shrinkwrap_sigma_end_in_vox
     del args.thorough_alignment
     del args.disable_alignment_and_averaging
+    del args.cycles
 
     __spec__ = None
 
@@ -319,6 +322,7 @@ def main():
             # because they are products of multiple interpolations.
             refrho, _, _ = denss.iterative_average(
                 allrhos,
+                cycles=superargs.cycles,
                 cores=superargs.cores,
                 thorough=superargs.thorough_alignment,
                 enan=superargs.enan,

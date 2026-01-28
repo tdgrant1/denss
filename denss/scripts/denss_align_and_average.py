@@ -39,6 +39,8 @@ def main():
                                      formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("--version", action="version", version="%(prog)s v{version}".format(version=denss.__version__))
     parser.add_argument("-f", "--files", type=str, nargs="+", help="List of MRC files")
+    parser.add_argument("--cycles", type=int, default=5,
+                        help="Number of cycles for iterative averaging. (default: 5)")
     parser.add_argument("-ref", "--ref", default=None, type=str,
                         help="Reference filename (.mrc or .pdb file, optional)")
     parser.add_argument("-c_on", "--center_on", dest="center", action="store_true", help="Center PDB (default).")
@@ -156,6 +158,7 @@ def main():
         # because they are products of multiple interpolations.
         refrho, _, _ = denss.iterative_average(
             allrhos,
+            cycles=args.cycles,
             cores=args.cores,
             thorough=args.thorough_alignment,
             enan=args.enan,
