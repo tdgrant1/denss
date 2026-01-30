@@ -4546,7 +4546,20 @@ class PDB2MRC(object):
             self.bounds[2:, 0] = 0
             self.bounds[2:, 1] = np.inf
             self.params = np.append(self.params, self.radii_sf)
-            self.penalty_weights = np.append(self.penalty_weights, np.ones(len(self.param_names[2:])))
+
+            # Determine how many weights we need to add
+            num_radii_params = len(self.param_names[2:])
+            num_provided_weights = len(self.penalty_weights)
+
+            # If the user provided weights for [rho0, shell, atom1, atom2...], use them.
+            # Otherwise, append 1.0 for the missing radii parameters.
+            if num_provided_weights < len(self.param_names):
+                missing_count = len(self.param_names) - num_provided_weights
+                extra_weights = np.ones(missing_count)
+                self.penalty_weights = np.append(self.penalty_weights, extra_weights)
+            else:
+                # If the user provided enough (or too many), slice it to match param_names
+                self.penalty_weights = np.array(self.penalty_weights[:len(self.param_names)])
 
         if not self.fit_all:
             # disable all fitting if requested
