@@ -810,6 +810,92 @@ def clean_up_data(Iq):
     """
     return Iq[(~np.isclose(Iq[:, 1], 0)) & (~np.isclose(Iq[:, 2], 0))]
 
+def clean_low_q_artifacts(q, I, err, window_size=10, z_threshold=3.0, slope_limit_neg=-5.0, slope_limit_pos=2.0,
+                          buffer=4):
+    """
+    Scans backwards to trim beam stop artifacts.
+
+    Args:
+        window_size: Increased to 10 to be 'stiffer' against smooth artifacts.
+        z_threshold: Decreased to 3.0 to be slightly stricter on outliers.
+        slope_limit_neg: Rejects sharp UPTURNS (Leakage).
+        slope_limit_pos: Rejects sharp DOWNTURNS (Shadowing).
+        buffer: If a cut is found, discard this many EXTRA points to be safe.
+    """
+    # Safety: need enough points
+    if len(q) < window_size * 3:
+        return np.column_stack((q, I, err))
+
+    start_search_idx = min(20, len(q) // 5)
+    first_good_index = 0
+    cut_found = False
+
+    for i in range(start_search_idx, 0, -1):
+        # 1. Define window (look ahead)
+        train_q = q[i: i + window_size]
+        train_I = I[i: i + window_size]
+
+        valid_mask = train_I > 0
+        if np.sum(valid_mask) < 3: continue
+
+        # 2. Fit Polynomial (Smoothness Check)
+        try:
+            coeffs = np.polyfit(train_q[valid_mask], np.log(train_I[valid_mask]), 2)
+            poly2 = np.poly1d(coeffs)
+        except:
+            continue
+
+        target_q = q[i - 1]
+        actual_I = I[i - 1]
+
+        if actual_I <= 0:
+            first_good_index = i
+            cut_found = True
+            break
+
+        pred_log_I = poly2(target_q)
+        actual_log_I = np.log(actual_I)
+        residual = abs(actual_log_I - pred_log_I)
+
+        # 3. Physics Check: Slope limits
+        # We check the slope between current point (i-1) and next (i)
+        if q[i - 1] > 0 and q[i] > 0:
+            d_logI = np.log(I[i]) - np.log(I[i - 1])
+            d_logQ = np.log(q[i]) - np.log(q[i - 1])
+            local_slope = d_logI / d_logQ
+
+            # Reject Leakage (Wall Rising to Left)
+            if local_slope < slope_limit_neg:
+                first_good_index = i
+                cut_found = True
+                break
+
+            # Reject Shadow (Wall Falling to Left / Rising to Right)
+            # Interference usually has slope < 1.0. Shadows are steeper.
+            if local_slope > slope_limit_pos:
+                first_good_index = i
+                cut_found = True
+                break
+
+        # 4. Residual Check
+        if residual > (z_threshold * 0.1):
+            first_good_index = i
+            cut_found = True
+            break
+
+    # --- The Safety Buffer ---
+    # If we found a bad region, the "edge" is often tainted.
+    # Move the start index forward by 'buffer' amount.
+    if cut_found:
+        first_good_index = min(first_good_index + buffer, len(q) - 1)
+
+    # Iq_clean = np.column_stack((
+    #     q[first_good_index:],
+    #     I[first_good_index:],
+    #     err[first_good_index:]
+    # ))
+
+    return first_good_index
 
 def calc_rg_I0_by_guinier(Iq, nb=None, ne=None):
     """calculate Rg, I(0) by fitting Guinier equation to data.
@@ -893,91 +979,176 @@ def P2Rg(r, P):
     rg2 = num / denom
     return rg2 ** 0.5
 
+def estimate_rough_alpha(Iq, D, sasrec_class):
+    """
+    Quickly scans alpha values to find a reasonable smoothing level.
+    """
+    alphas = np.logspace(-10, 20, 31)
 
-def estimate_dmax(Iq, dmax=None, clean_up=True):
-    """Attempt to roughly estimate Dmax directly from data."""
-    # first, clean up the data
+    best_alpha = 0.0
+    max_score = -np.inf
+
+    for a in alphas:
+        try:
+            sas = sasrec_class(Iq, D=D, qc=None, alpha=a, extrapolate=False)
+        except np.linalg.LinAlgError:
+            continue
+
+        chi2 = sas.chi2
+
+        # Calculate Regularization Term
+        if hasattr(sas, 'In'):
+            regul = np.sum(sas.In ** 2)
+        else:
+            regul = 1.0
+
+        if regul <= 1e-100: regul = 1e-100
+        if chi2 <= 1e-100: chi2 = 1e-100
+
+        # Tuned Weight: 0.3 favors smoothness
+        current_score = -np.log(chi2) - 0.3 * np.log(regul)
+
+        if current_score > max_score:
+            max_score = current_score
+            best_alpha = a
+
+    return best_alpha
+
+
+def estimate_dmax(Iq, dmax=None, clean_up=True, plot=False):
+    """
+    Robust Dmax estimator with Connectedness Constraint.
+    """
     if clean_up:
         Iq = clean_up_data(Iq)
+
     q = Iq[:, 0]
     I = Iq[:, 1]
     nq = len(q)
+
+    # --- Step 1: BIC Search (Alpha=0) ---
     if dmax is None:
-        # first, estimate a very rough rg from the first 20 data points
         nmax = 20
         try:
             rg, I0 = calc_rg_I0_by_guinier(Iq, ne=nmax)
         except:
             rg = calc_rg_by_guinier_peak(Iq, exp=1, ne=100)
-        # next, dmax is roughly 3.5*rg for most particles
-        # so calculate P(r) using a larger dmax, say twice as large, so 7*rg
-        D = 7 * rg
+
+        # Search range
+        D_min = 1.5 * rg
+        D_max = 8.0 * rg
         dmax_given = False
     else:
-        # allow user to give an initial estimate of Dmax
-        # multiply by 2 to allow for enough large r values
-        D = 2 * dmax
+        D_min = 0.5 * dmax
+        D_max = 2.0 * dmax
         dmax_given = True
-    # create a calculated q range for Sasrec for low q out to q=0
-    qmin = np.min(q)
-    dq = (q.max() - q.min()) / (q.size - 1)
-    nqc = int(qmin / dq)
-    qc = np.concatenate(([0.0], np.arange(nqc) * dq + (qmin - nqc * dq), q))
-    # run Sasrec to perform IFT
-    sasrec = Sasrec(Iq[:nq // 2], D, qc=None, alpha=0.0, extrapolate=False)
-    # if the rg estimate was way off, it would screw up Dmax estimate
-    # but the sasrec rg should be more accurate, even with a screwed up guinier estimate
-    # so run it again, but this time with the Dmax = 7*sasrec.rg
-    # only do this if rg is significantly different
-    if not dmax_given:  # rg only exists if Dmax was not given initially
-        if np.abs(sasrec.rg - rg) > 0.2 * sasrec.rg:
-            sasrec = Sasrec(Iq[:nq // 2], D=7 * sasrec.rg, qc=None, alpha=0.0, extrapolate=False)
-    # lets test a bunch of different dmax's on a logarithmic spacing
-    # then see where chi2 is minimal. that at least gives us a good ball park of Dmax
-    # the main problem is that we don't know the scale even remotely, or the units,
-    # so we need to check many orders of magnitude
-    Ds = np.logspace(.1, np.log10(2 * 7 * sasrec.rg), 10)
-    chi2 = np.zeros(len(Ds))
+
+    Ds = np.logspace(np.log10(D_min), np.log10(D_max), 30)
+    bic = np.zeros(len(Ds))
+
     for i in range(len(Ds)):
-        sasrec = Sasrec(Iq[:nq // 2], D=Ds[i], qc=None, alpha=0.0, extrapolate=False)
-        chi2[i] = sasrec.calc_chi2()
-    order = np.argsort(chi2)
-    D = 2 * np.interp(2 * chi2.min(), chi2[order], Ds[order])
-    # one final time with new D and full q range
-    sasrec = Sasrec(Iq, D=D, qc=None, alpha=0.0, extrapolate=False)
-    # now filter the P(r) curve for estimating Dmax better
-    qmax = 2 * np.pi / D
-    # qmax_fraction = 0.5
-    r, Pfilt, sigrfilt = filter_P(sasrec.r, sasrec.P, sasrec.Perr, qmax=qmax)  # qmax_fraction*Iq[:,0].max())
-    # import matplotlib.pyplot as plt
-    # plt.plot(sasrec.r,sasrec.r*0,'k--')
-    # plt.plot(sasrec.r, sasrec.P,'b-')
-    # plt.plot(r,Pfilt,'r-')
-    # estimate D as the first position where P becomes less than 0.01*P.max(), after P.max()
-    Pargmax = Pfilt.argmax()
-    # catch cases where the P(r) plot goes largely negative at large r values,
-    # as this indicates repulsion. Set the new Pargmax, which is really just an
-    # identifier for where to begin searching for Dmax, to be any P value whose
-    # absolute value is greater than at least 10% of Pfilt.max. The large 10% is to
-    # avoid issues with oscillations in P(r).
-    argmax_threshold = 0.05
-    above_idx = np.where((np.abs(Pfilt) > argmax_threshold * Pfilt.max()) & (r > r[Pargmax]))
-    Pargmax = np.max(above_idx)
-    dmax_threshold = (0.01 * Pfilt.max())
-    near_zero_idx = np.where((np.abs(Pfilt[Pargmax:]) < dmax_threshold))[0]
-    near_zero_idx += Pargmax
-    D_idx = near_zero_idx[0]
-    D = r[D_idx]
-    sasrec.D = np.copy(D)
-    # plt.plot(sasrec.r,sasrec.r*0+argmax_threshold*Pfilt.max(),'g--')
-    # plt.plot(sasrec.r,sasrec.r*0-argmax_threshold*Pfilt.max(),'g--')
-    # plt.plot(sasrec.r,sasrec.r*0+dmax_threshold,'r--')
-    # plt.axvline(D,c='r')
-    # plt.plot()
-    # plt.show()
-    # exit()
-    sasrec.update()
-    return D, sasrec
+        try:
+            sasrec = Sasrec(Iq[:nq // 2], D=Ds[i], qc=None, alpha=0.0, extrapolate=False)
+            chi2_val = sasrec.calc_chi2()
+            q_max_fit = sasrec.q.max()
+            k = Ds[i] * q_max_fit / np.pi
+            n_pts = len(sasrec.I_data)
+            rss = chi2_val * (n_pts - k)
+            if rss <= 1e-12: rss = 1e-12
+            bic[i] = n_pts * np.log(rss / n_pts) + k * np.log(n_pts)
+        except:
+            bic[i] = np.inf
+
+    best_idx = np.argmin(bic)
+    D_broad = Ds[best_idx]
+
+    # --- Step 2: Estimate Alpha ---
+    try:
+        temp_sas = Sasrec(Iq, D=D_broad, alpha=0)
+        if hasattr(temp_sas, 'optimize_alpha'):
+            rough_alpha = temp_sas.optimize_alpha(quiet=True)
+        else:
+            rough_alpha = estimate_rough_alpha(Iq, D_broad, Sasrec)
+    except:
+        rough_alpha = estimate_rough_alpha(Iq, D_broad, Sasrec)
+
+    # --- Step 3: OVERSMOOTHING ---
+    smooth_alpha = rough_alpha * 50.0
+    sasrec = Sasrec(Iq, D=D_broad, qc=None, alpha=smooth_alpha, extrapolate=False)
+    P_smooth = sasrec.P
+    r = sasrec.r
+
+    # --- Step 4: Connectedness Truncation (THE FIX) ---
+    Pargmax = P_smooth.argmax()
+    Pmax = P_smooth.max()
+
+    # 1. Identify "Main Body" (Where signal is > 5% of max)
+    is_main_body = (P_smooth > 0.05 * Pmax) | (r <= r[Pargmax])
+    last_main_body_idx = np.max(np.where(is_main_body)[0])
+    r_body_end = r[last_main_body_idx]
+
+    # 2. Find Candidate Cutoff (First Minimum Logic)
+    # Scan forward from the body end. If P(r) starts rising (oscillation), stop.
+    # If P(r) hits noise floor, stop.
+
+    cut_idx = len(r) - 1
+
+    # Look for the "dip" before any potential noise bump
+    for i in range(last_main_body_idx + 1, len(r) - 1):
+        curr_val = P_smooth[i]
+        next_val = P_smooth[i + 1]
+
+        # Stop at zero crossing (or near zero)
+        if curr_val <= 0.0:
+            cut_idx = i
+            break
+
+        # Stop if we hit a local minimum (derivative turns positive)
+        # This prevents including the "bumps" seen in your plots
+        if next_val > curr_val:
+            cut_idx = i
+            break
+
+    D_candidate = r[cut_idx]
+
+    # 3. Apply Safety Clamp
+    # The tail cannot reasonably be longer than 30-40% of the body
+    # We clamp Dmax to 1.3x the Main Body End.
+    D_clamp = r_body_end * 1.3
+
+    # Final decision: Pick the smaller of the Candidate or the Clamp
+    if D_candidate > D_clamp:
+        D_final = D_clamp
+        # Update cut_idx for plotting
+        cut_idx = np.argmin(np.abs(r - D_final))
+    else:
+        D_final = D_candidate
+
+    # --- PLOTTING ---
+    if plot:
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(10, 6))
+        plt.plot(r, P_smooth, 'b-', lw=2, label=f'Oversmoothed P(r)')
+        plt.fill_between(r, 0, P_smooth, alpha=0.1, color='b')
+
+        # Visualize the Clamp
+        plt.axvspan(0, r_body_end, color='c', alpha=0.2, label='Main Body (>5%)')
+        plt.axvline(D_clamp, color='orange', linestyle='--', label=f'Safety Clamp (1.3x Body): {D_clamp:.1f}')
+
+        plt.axvline(D_final, color='r', lw=2, label=f'Final Dmax: {D_final:.1f}')
+        plt.plot(r[cut_idx], P_smooth[cut_idx], 'ro')
+
+        plt.title(f"Dmax Est (Broad={D_broad:.1f}, Final={D_final:.1f})")
+        plt.xlabel("r [A]")
+        plt.ylabel("P(r)")
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.show()
+
+    # Reset to alpha=0.0 for the user
+    sasrec = Sasrec(Iq, D=D_final, qc=None, alpha=0.0, extrapolate=False)
+
+    return D_final, sasrec
 
 
 def filter_P(r, P, sigr=None, qmax=0.5, cutoff=0.75, qmin=0.0, cutoffmin=1.25):

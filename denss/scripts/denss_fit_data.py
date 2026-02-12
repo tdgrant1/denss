@@ -101,7 +101,8 @@ def main():
         Iq[:,0] *= 0.1
 
     if args.n1 is None:
-        n1 = 0
+        # n1 = 0
+        n1 = denss.clean_low_q_artifacts(Iq[:,0], Iq[:,1], Iq[:,2], window_size=6, z_threshold=5.0)
     else:
         n1 = args.n1
     if args.n2 is None:
@@ -116,7 +117,7 @@ def main():
         #note that denss.estimate_dmax does NOT extrapolate
         #the high q data, even though by default
         #denss.Sasrec does extrapolate.
-        D, sasrec = denss.estimate_dmax(Iq, clean_up=True)
+        D, sasrec = denss.estimate_dmax(Iq[n1:n2], clean_up=True)
     else:
         D = args.dmax
 
