@@ -1156,8 +1156,6 @@ def estimate_dmax(Iq, dmax=None, clean_up=True, plot=False, n_steps=15, _is_seco
 
     D_broad = best_D_broad
 
-    print(D_broad)
-
     # --- Step 2: Estimate Alpha ---
     try:
         temp_sas = Sasrec(Iq, D=D_broad, alpha=0)
@@ -1168,7 +1166,6 @@ def estimate_dmax(Iq, dmax=None, clean_up=True, plot=False, n_steps=15, _is_seco
     except:
         rough_alpha = estimate_rough_alpha(Iq, D_broad, Sasrec)
 
-    print(rough_alpha, D_broad)
     # --- Step 3: OVERSMOOTHING (x10) ---
     smooth_alpha = rough_alpha * 50.0
     sasrec = Sasrec(Iq, D=D_broad, qc=None, alpha=smooth_alpha, extrapolate=True)
