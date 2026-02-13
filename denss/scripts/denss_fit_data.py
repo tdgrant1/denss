@@ -163,20 +163,6 @@ def main():
     nshc = qmaxc/(np.pi/D)
     print("Number of experimental Shannon channels: %d"%(nsh))
     print("Number of calculated Shannon channels: %d"%(nshc))
-    if (nsh > 500) or (nshc>500):
-        print("WARNING: Nsh > 500. Calculation may take a while. Please double check Dmax is accurate.")
-        #give the user a few seconds to cancel with CTRL-C
-        waittime = 10
-        try:
-            for i in range(waittime+1):
-                sys.stdout.write("\rTo cancel, press CTRL-C in the next %d seconds. "%(waittime-i))
-                sys.stdout.flush()
-                time.sleep(1)
-            print()
-        except KeyboardInterrupt:
-            print("Canceling...")
-            exit()
-
 
     #calculate chi2 when alpha=0, to get the best possible chi2 for reference
     sasrec = denss.Sasrec(Iq[n1:n2], D, qc=qc, r=r, nr=args.nr, ne=nes, alpha=0.0, extrapolate=args.extrapolate)
