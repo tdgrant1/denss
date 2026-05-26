@@ -191,13 +191,13 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
 
 
     ### PART 7
-    ### chi is calculated for each sas profile,
-    ### rg and support is calculated for each real model (only one of those)
+    ### chi, rg is calculated for each sas profile,
+    ### support is calculated for each real model (only one of those)
 
 
     ### NEW
     PA_chi = np.zeros( (len(PA_Is), steps + 1))
-
+    PA_rg = np.zeros( (len(PA_Is), steps + 1))
 
 
     rg = np.zeros((steps + 1), dtype=np.complex128)
@@ -307,6 +307,8 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
         ### make an array to hold the reconstructed densities for each d
         PA_rhods = np.zeros( (len(PA_dparams), rho.shape[0], rho.shape[1], rho.shape[2]))
 
+        PA_Imeans = np.zeros( (len(PA_dparams), nbins+1 ) )
+
         for PA_i_dparam, PA_dparam in enumerate(PA_dparams):
 
 
@@ -328,6 +330,9 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
             # I3D = myabs(F, DENSS_GPU=DENSS_GPU)**2
             I3D = abs2(F)
             Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount, DENSS_GPU=DENSS_GPU)
+
+            PA_Imeans[PA_i_dparam] = Imean
+
 
             # scale Fs to match data
             factors = mysqrt(Idata / Imean, DENSS_GPU=DENSS_GPU)
@@ -351,53 +356,54 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
             PA_rhods[PA_i_dparam][PA_neg_loc] *= -1
 
 
+            # use Guinier's law to approximate quickly
+            rg_j = calc_rg_by_guinier_first_2_points(qbinsc, Imean, DENSS_GPU=DENSS_GPU)
+            PA_rg[PA_i_dparam, j] = rg_j
+
 
         ### average back the unscaled rhos back together
         rhoprime = np.mean(PA_rhods, axis=0)
-        
 
 
         ### PART 15
-        ### Now that we have remade a version of rhoprime,
-        ### everything down the line should hold
-
-        ### you are here!!
-
-
-
-        # use Guinier's law to approximate quickly
-        rg_j = calc_rg_by_guinier_first_2_points(qbinsc, Imean, DENSS_GPU=DENSS_GPU)
-
-        rg[j] = rg_j
 
         # Error Reduction
+        ### Now that we have remade a version of rhoprime,
+        ### everything down the line should hold (?)
         newrho *= 0
         newrho[support] = rhoprime[support]
+
+
+
+
+        ### PART 16
+        ### write out the file as we go
 
         if not DENSS_GPU and j % write_freq == 0:
             if write_xplor_format:
                 write_xplor(rhoprime / dV, side, fprefix + "_current.xplor")
             write_mrc(rhoprime / dV, side, fprefix + "_current.mrc")
 
+
+
+
+        ### PART 17
+        ### positivity and symmerty averaging
+
         # enforce positivity by making all negative density points zero.
         if positivity:  # and j in positivity_steps:
             newrho[newrho < 0] = 0.0
 
-        # apply non-crystallographic symmetry averaging
+
+        # apply non-crystallographic symmetry (ncs) averaging
         if ncs != 0 and j in ncs_steps:
-            if DENSS_GPU:
-                newrho = cp.asnumpy(newrho)
             if ncs_type == "icosahedral":
                 newrho, shift = center_rho_roll(newrho, recenter_mode="com", maxfirst=True, return_shift=True)
                 support = np.roll(np.roll(np.roll(support, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
             else:
                 newrho = align2xyz(newrho)
-            if DENSS_GPU:
-                newrho = cp.array(newrho)
 
         if ncs != 0 and j in [stepi + 1 for stepi in ncs_steps]:
-            if DENSS_GPU:
-                newrho = cp.asnumpy(newrho)
             if ncs_type == "icosahedral":
                 rotations = get_icosahedral_matrices()
                 newrho_total = np.copy(newrho)
@@ -453,13 +459,9 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
                     newrho, support = shrinkwrap_by_density_value(newrho, absv=True, sigma=sigma, threshold=threshold,
                                                                   recenter=recenter, recenter_mode=recenter_mode)
 
-            if DENSS_GPU:
-                newrho = cp.array(newrho)
-
+        ### PART 17
+        ### recenter the density to the center of mass
         if recenter and j in recenter_steps:
-            if DENSS_GPU:
-                newrho = cp.asnumpy(newrho)
-                support = cp.asnumpy(support)
 
             # cannot run center_rho_roll() function since we want to also recenter the support
             # perhaps we should fix this in the future to clean it up
@@ -473,15 +475,12 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
             newrho = np.roll(np.roll(np.roll(newrho, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
             support = np.roll(np.roll(np.roll(support, shift[0], axis=0), shift[1], axis=1), shift[2], axis=2)
 
-            if DENSS_GPU:
-                newrho = cp.array(newrho)
-                support = cp.array(support)
+
+        ### PART 18
+        ### shrinkwrap
 
         # update support using shrinkwrap method
         if shrinkwrap and j >= shrinkwrap_minstep and j % shrinkwrap_iter == 1:
-            if DENSS_GPU:
-                newrho = cp.asnumpy(newrho)
-                support = cp.asnumpy(support)
 
             if shrinkwrap_old_method:
                 absv = True
@@ -509,15 +508,12 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
             if sigma > shrinkwrap_sigma_end:
                 sigma = shrinkwrap_sigma_decay * sigma
 
-            if DENSS_GPU:
-                newrho = cp.array(newrho)
-                support = cp.array(support)
+
+        ### PART 19
+        ### shrinkwrap
 
         # run erode when shrinkwrap is run
         if erode and shrinkwrap and j > shrinkwrap_minstep and j % shrinkwrap_iter == 1:
-            if DENSS_GPU:
-                newrho = cp.asnumpy(newrho)
-                support = cp.asnumpy(support)
 
             # eroded is the region of the support _not_ including the boundary pixels
             # so it is the entire interior. erode_region is _just_ the boundary pixels
@@ -527,13 +523,12 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
             # set all negative density in boundary pixels to zero.
             newrho[(newrho < 0) & (erode_region)] = 0
 
-            if DENSS_GPU:
-                newrho = cp.array(newrho)
-                support = cp.array(support)
+
+
+        ### PART 20
+        ### enforce connectivity of shrinkwrap
 
         if enforce_connectivity and j in enforce_connectivity_steps:
-            if DENSS_GPU:
-                newrho = cp.asnumpy(newrho)
 
             # first run shrinkwrap to define the features
             if shrinkwrap_old_method:
@@ -581,63 +576,40 @@ def reconstruct_abinitio_from_scattering_profile_PA(q, I, sigq, dmax, qraw=None,
             # clean up density based on new support
             newrho[~support] = 0
 
-            if DENSS_GPU:
-                newrho = cp.array(newrho)
-                support = cp.array(support)
 
         supportV[j] = mysum(support, DENSS_GPU=DENSS_GPU) * dV
 
-        # convert possibly imaginary rg to string for printing
-        rg_str = (f"{rg[j].real:3.2f}" if abs(rg[j].imag) < 1e-10 else
-                  f"{rg[j].imag:3.2f}j" if abs(rg[j].real) < 1e-10 else
-                  f"{rg[j].real:3.2f}{rg[j].imag:+3.2f}j")
 
-        if not quiet:
-            if gui:
-                my_logger.info("% 5i % 4.2e %s       % 5i          ", j, chi[j], rg_str, supportV[j])
-            else:
-                sys.stdout.write("\r% 5i  % 4.2e %s       % 5i          " % (j, chi[j], rg_str, supportV[j]))
-                sys.stdout.flush()
 
-        # occasionally report progress in logger
-        if j % 500 == 0 and not gui:
-            my_logger.info('Step % 5i: % 4.2e %s       % 5i          ', j, chi[j], rg_str, supportV[j])
+        ### PART 21
+        ### log some stuff (cutting this)
+
+
+        ### PART 22
+        ### lesser: calculate if the chi is small enough?
+        ### do at least 100 iterations, for now lets set it to true and always break at 100
 
         if j > 101 + shrinkwrap_minstep:
-            if DENSS_GPU:
-                lesser = mystd(chi[j - 100:j], DENSS_GPU=DENSS_GPU).get() < chi_end_fraction * mymean(chi[j - 100:j],
-                                                                                                      DENSS_GPU=DENSS_GPU).get()
-            else:
-                lesser = mystd(chi[j - 100:j], DENSS_GPU=DENSS_GPU) < chi_end_fraction * mymean(chi[j - 100:j],
-                                                                                                DENSS_GPU=DENSS_GPU)
+#             if DENSS_GPU:
+                # lesser = mystd(chi[j - 100:j], DENSS_GPU=DENSS_GPU).get() < chi_end_fraction * mymean(chi[j - 100:j],
+            # else:
+                # lesser = mystd(chi[j - 100:j], DENSS_GPU=DENSS_GPU) < chi_end_fraction * mymean(chi[j - 100:j],
+                        #                                                                         DENSS_GPU=DENSS_GPU)
+            lesser=True
             if lesser:
                 break
 
         rho = newrho
 
-    # convert back to numpy outside of for loop
-    if DENSS_GPU:
-        rho = cp.asnumpy(rho)
-        qbin_labels = cp.asnumpy(qbin_labels)
-        qbin_args = cp.asnumpy(qbin_args)
-        sigqdata = cp.asnumpy(sigqdata)
-        Imean = cp.asnumpy(Imean)
-        chi = cp.asnumpy(chi)
-        qbins = cp.asnumpy(qbins)
-        qbinsc = cp.asnumpy(qbinsc)
-        Idata = cp.asnumpy(Idata)
-        support = cp.asnumpy(support)
-        supportV = cp.asnumpy(supportV)
-        Idata = cp.asnumpy(Idata)
-        newrho = cp.asnumpy(newrho)
-        qblravel = cp.asnumpy(qblravel)
-        xcount = cp.asnumpy(xcount)
 
-    # F = myfftn(rho)
+
+    ### PART 22
+    ### We are out of the iteration loop now.
+
     F = myrfftn(rho)
     # calculate spherical average intensity from 3D Fs
     I3D = abs2(F)
-    # I3D = myabs(F)**2
+
     Imean = mybinmean(I3D.ravel(), qblravel, xcount=xcount)
 
     # scale Fs to match data

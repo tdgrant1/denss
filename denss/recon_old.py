@@ -594,6 +594,7 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
             if lesser:
                 break
 
+
         rho = newrho
 
     # convert back to numpy outside of for loop
