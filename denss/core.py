@@ -1752,25 +1752,31 @@ def reconstruct_abinitio_from_scattering_profile(q, I, sigq, dmax, qraw=None, Ir
                 newrho = newrho_total / len(rotations)
             else:
                 if ncs_axis == 1:
-                    axes = (1, 2)  # longest
+                    axes = (1, 2)  # Principal axis is 0
+                    perp_axes = (0, 2)  # Perpendicular axis is 1
                 if ncs_axis == 2:
-                    axes = (0, 2)  # middle
+                    axes = (0, 2)  # Principal axis is 1
+                    perp_axes = (0, 1)  # Perpendicular axis is 2
                 if ncs_axis == 3:
-                    axes = (0, 1)  # shortest
+                    axes = (0, 1)  # Principal axis is 2
+                    perp_axes = (1, 2)  # Perpendicular axis is 0
+
                 degrees = 360. / ncs
                 newrho_total = np.copy(newrho)
+
                 if ncs_type == "dihedral":
-                    # first, rotate original about perpendicular axis by 180
-                    # then apply n-fold cyclical rotation
-                    d2fold = ndimage.rotate(newrho, 180, axes=axes, reshape=False)
+                    # Pass the perpendicular axes here
+                    d2fold = ndimage.rotate(newrho, 180, axes=perp_axes, reshape=False)
                     newrhosym = np.copy(newrho) + d2fold
                     newrhosym /= 2.0
                     newrho_total = np.copy(newrhosym)
                 else:
                     newrhosym = np.copy(newrho)
+
                 for nrot in range(1, ncs):
                     sym = ndimage.rotate(newrhosym, degrees * nrot, axes=axes, reshape=False)
                     newrho_total += np.copy(sym)
+
                 newrho = newrho_total / ncs
 
             # run shrinkwrap after ncs averaging to get new support
